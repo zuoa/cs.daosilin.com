@@ -3,7 +3,7 @@ from flask_caching import Cache
 
 from ajlog import logger
 from config import CUP_NAME
-from database import MatchPlayer, Player, CupDayChampion, create_tables
+from database import MatchPlayer, Player, CupDayChampion, create_tables, Config
 
 app = Flask(__name__)
 
@@ -74,7 +74,9 @@ def index_cup_day(cup, day=None):
 
     cup_days = MatchPlayer.get_cup_day_set()
 
-    return render_template('index.html', players=player_data, cup=cup, day=day, cup_days=cup_days, current_day=day)
+    last_crawl_time = Config.get_value("last_crawl_time")
+
+    return render_template('index.html', players=player_data, cup=cup, day=day, cup_days=cup_days, current_day=day, last_crawl_time=last_crawl_time)
 
 
 @app.cli.command("init-db")

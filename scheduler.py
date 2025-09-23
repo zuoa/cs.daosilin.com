@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 from ajlog import logger
 from config import CUP_NAME, CUP_TEAM_NUM, DEFAULT_CRAWL_PLAYER_IDS
-from database import create_tables, Match, MatchPlayer, Player, CupDayChampion
+from database import create_tables, Match, MatchPlayer, Player, CupDayChampion, Config
 from utils import get_play_day
 from wm import WMAPI
 
@@ -192,6 +192,8 @@ def crawl_all():
             time.sleep(10)
 
     logger.info(f"====== 所有玩家数据爬取完成：{CUP_NAME} {today} ======")
+
+    Config.set_value("last_crawl_time", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 
 def judge_champion(day=None):

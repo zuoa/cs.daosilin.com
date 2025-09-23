@@ -205,6 +205,36 @@ class Player(BaseModel, CRUDMixin):
         table_name = 'player'
 
 
+class Config(BaseModel, CRUDMixin):
+    """全局配置模型"""
+    key = CharField(max_length=64, unique=True)  # 配置键
+    value = TextField(null=True)  # 配置值
+
+    class Meta:
+        table_name = 'config'
+
+    @classmethod
+    def get_value(cls, key: str) -> Optional[str]:
+        """获取配置值"""
+        try:
+            config = cls.get(cls.key == key)
+            return config.value
+        except cls.DoesNotExist:
+            return None
+
+    @classmethod
+    def set_value(cls, key: str, value: str) -> 'Config':
+        """设置配置值"""
+        try:
+            config, created = cls.get_or_create(key=key)
+            config.value = value
+            config.save()
+            return config
+        except Exception as e:
+            logger.error(f"设置配置值失败: {str(e)}")
+            raise
+
+
 class CupDayChampion(BaseModel, CRUDMixin):
     cup_name = CharField(max_length=128)  # 杯赛名称
     day = CharField(max_length=64)  # 日期
@@ -248,6 +278,7 @@ class CupDayChampion(BaseModel, CRUDMixin):
         except Exception as e:
             logger.error(f"获取冠军信息失败: {str(e)}")
             return None
+
 
 class MatchPlayer(BaseModel, CRUDMixin):
     match_id = CharField(max_length=64)  # 比赛唯一标识
@@ -334,7 +365,6 @@ class MatchPlayer(BaseModel, CRUDMixin):
         except Exception as e:
             logger.error(f"get_dup_day_set error: {e}")
             return []
-
 
     @classmethod
     def get_match_exploit(cls, cup_name: str, player_id, play_day: str) -> Optional[Dict[str, Any]]:
@@ -479,4 +509,4 @@ class MatchPlayer(BaseModel, CRUDMixin):
 def create_tables():
     """Create database tables if they don't exist"""
     with db:
-        db.create_tables([Match, MatchPlayer, Player,CupDayChampion], safe=True)
+        db.create_tables([Config, Match, MatchPlayer, Player, CupDayChampion], safe=True)
