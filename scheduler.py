@@ -195,6 +195,7 @@ def crawl_all():
 
     logger.info(f"====== 所有玩家数据爬取完成：{CUP_NAME} {today} ======")
 
+    calc_titles(today)
 
 
 def judge_champion(day=None):
@@ -289,7 +290,7 @@ def create_scheduler():
     # 添加任务
     scheduler.add_job(
         func=crawl_data,
-        trigger=CronTrigger(hour='19-23', minute='*/10'),
+        trigger=CronTrigger(hour='18-23', minute='*/10'),
         id='crawl_job_evening',
         name='数据爬取任务-晚间',
         replace_existing=True
@@ -316,14 +317,8 @@ def create_scheduler():
     return scheduler
 
 
-def calc_titles():
+def calc_titles(today):
     try:
-        # 获取所有杯赛
-        cup_days = MatchPlayer.get_cup_day_set()
-        if not cup_days:
-            logger.warning("没有找到任何比赛数据")
-            return
-
         # 获取杯赛名称（从配置或数据库）
         cup_name = CUP_NAME
 
@@ -334,13 +329,11 @@ def calc_titles():
         else:
             logger.error(f"计算 {cup_name} 称号失败")
 
-        # 计算每个比赛日的称号
-        for day in cup_days:
-            success = title_service.calculate_and_save_titles(cup_name, day)
-            if success:
-                logger.info(f"成功计算 {cup_name} {day} 的称号")
-            else:
-                logger.error(f"计算 {cup_name} {day} 称号失败")
+        success = title_service.calculate_and_save_titles(cup_name, today)
+        if success:
+            logger.info(f"成功计算 {cup_name} {today} 的称号")
+        else:
+            logger.error(f"计算 {cup_name} {today} 称号失败")
 
     except Exception as e:
         logger.error(f"计算称号失败: {str(e)}")
@@ -349,9 +342,6 @@ def calc_titles():
 if __name__ == '__main__':
     load_dotenv()
     create_tables()
-    calc_titles()
-    crawl_all()
-
     scheduler = create_scheduler()
     try:
         scheduler.start()

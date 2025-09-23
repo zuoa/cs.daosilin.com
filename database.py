@@ -244,7 +244,6 @@ class PlayerTitle(BaseModel, CRUDMixin):
     title_description = TextField(null=True)  # 称号描述
     title_category = CharField(max_length=64)  # 称号分类
     title_type = CharField(max_length=32)  # 称号类型 (positive/negative/neutral)
-    title_rarity = CharField(max_length=32)  # 称号稀有度
     title_priority = IntegerField(default=1)  # 称号优先级
     title_score = DoubleField(default=0.0)  # 称号匹配分数
     is_active = BooleanField(default=True)  # 是否激活
@@ -293,7 +292,6 @@ class PlayerTitle(BaseModel, CRUDMixin):
                     title_description=title_data['description'],
                     title_category=title_data['category'],
                     title_type=title_data['type'],
-                    title_rarity=title_data['rarity'],
                     title_priority=title_data['priority'],
                     title_score=title_data['score']
                 )
@@ -463,6 +461,7 @@ class MatchPlayer(BaseModel, CRUDMixin):
                 fn.COALESCE(fn.SUM(cls.hit_count), 0).alias('total_hit_count'),
                 fn.COALESCE(fn.SUM(cls.throws_count), 0).alias('total_throws_count'),
                 fn.COALESCE(fn.SUM(cls.snipe_num), 0).alias('total_snipe_num'),
+                fn.COALESCE(fn.SUM(cls.fire_count), 0).alias('total_fire_count'),
 
                 # 安全的除法运算，避免除零错误
                 Case(None, [
@@ -557,6 +556,7 @@ class MatchPlayer(BaseModel, CRUDMixin):
                 'avg_headshot_ratio': float(result.avg_headshot_ratio or 0),
                 'total_mvp': result.total_mvp or 0,
                 'match_mvp_count': result.match_mvp_count or 0,
+                'total_fire_count': result.total_fire_count or 0,
             }
 
         except cls.DoesNotExist:

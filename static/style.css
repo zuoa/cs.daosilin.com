@@ -1022,42 +1022,6 @@ html {
     border: 1px solid var(--neutral-300);
 }
 
-/* 称号稀有度样式 */
-.title-legendary {
-    background: linear-gradient(135deg, #ffd700, #ffed4e);
-    color: #8b4513;
-    border: 1px solid #ffd700;
-    box-shadow: 0 0 8px rgba(255, 215, 0, 0.3);
-    animation: legendary-glow 2s ease-in-out infinite alternate;
-}
-
-.title-epic {
-    background: linear-gradient(135deg, #9d4edd, #c77dff);
-    color: white;
-    border: 1px solid #9d4edd;
-    box-shadow: 0 0 6px rgba(157, 78, 221, 0.3);
-}
-
-.title-rare {
-    background: linear-gradient(135deg, #3b82f6, #60a5fa);
-    color: white;
-    border: 1px solid #3b82f6;
-    box-shadow: 0 0 4px rgba(59, 130, 246, 0.3);
-}
-
-.title-common {
-    /* 使用默认样式 */
-}
-
-/* 传奇称号发光动画 */
-@keyframes legendary-glow {
-    0% {
-        box-shadow: 0 0 8px rgba(255, 215, 0, 0.3);
-    }
-    100% {
-        box-shadow: 0 0 16px rgba(255, 215, 0, 0.6);
-    }
-}
 
 /* 称号详情卡片样式 */
 .titles-grid {
@@ -1109,17 +1073,6 @@ html {
     background: linear-gradient(90deg, var(--warning-400), var(--warning-600));
 }
 
-.title-card.title-legendary::before {
-    background: linear-gradient(90deg, #ffd700, #ffed4e);
-}
-
-.title-card.title-epic::before {
-    background: linear-gradient(90deg, #9d4edd, #c77dff);
-}
-
-.title-card.title-rare::before {
-    background: linear-gradient(90deg, #3b82f6, #60a5fa);
-}
 
 .title-header {
     display: flex;
@@ -1140,18 +1093,6 @@ html {
     color: var(--primary-500);
 }
 
-.title-card.title-legendary .title-icon {
-    color: #ffd700;
-    animation: legendary-glow 2s ease-in-out infinite alternate;
-}
-
-.title-card.title-epic .title-icon {
-    color: #9d4edd;
-}
-
-.title-card.title-rare .title-icon {
-    color: #3b82f6;
-}
 
 .title-description {
     font-size: 11px;
