@@ -235,6 +235,19 @@ class CupDayChampion(BaseModel, CRUDMixin):
             (('cup_name', 'day'), True),
         )
 
+    @classmethod
+    def get_champion_by_cup_and_day(cls, cup_name: str, day: str) -> Optional[Dict[str, Any]]:
+        """根据杯赛名称和日期获取冠军信息"""
+        try:
+            record = (cls.select()
+                      .where((cls.cup_name == cup_name) & (cls.day == day))
+                      .get())
+            return record.to_dict()
+        except cls.DoesNotExist:
+            return None
+        except Exception as e:
+            logger.error(f"获取冠军信息失败: {str(e)}")
+            return None
 
 class MatchPlayer(BaseModel, CRUDMixin):
     match_id = CharField(max_length=64)  # 比赛唯一标识

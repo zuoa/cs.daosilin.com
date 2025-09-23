@@ -401,12 +401,26 @@ body {
     color: var(--warning-500);
     font-size: 18px;
     filter: drop-shadow(0 2px 4px rgba(245, 158, 11, 0.3));
+    margin-left: 6px;
+    transition: all 0.2s ease;
+}
+
+.trophy-icon:hover {
+    transform: scale(1.1);
+    filter: drop-shadow(0 3px 6px rgba(245, 158, 11, 0.4));
 }
 
 .shield-icon {
     color: var(--primary-500);
     font-size: 18px;
     filter: drop-shadow(0 2px 4px rgba(59, 130, 246, 0.3));
+    margin-left: 6px;
+    transition: all 0.2s ease;
+}
+
+.shield-icon:hover {
+    transform: scale(1.1);
+    filter: drop-shadow(0 3px 6px rgba(59, 130, 246, 0.4));
 }
 
 .rating-highlight {

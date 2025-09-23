@@ -8,6 +8,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="/static/style.css" rel="stylesheet">
 </head>
 <body>
@@ -60,12 +61,13 @@
                                 {% if player.avatar %}
                                     <img src="https://wsrv.nl/?url={{ player.avatar }}" alt="{{ player.nickname }}" class="player-avatar" onerror="this.style.display='none'">
                                 {% endif %}
-                                {% if player.icon == 'trophy' %}
-                                    <span class="trophy-icon">🏆</span>
-                                {% elif player.icon == 'shield' %}
-                                    <span class="shield-icon">🛡️</span>
-                                {% endif %}
                                 {{ player.alias_name or player.nickname }}
+
+                                {% if player.is_champion %}
+                                    <i class="fas fa-trophy trophy-icon"></i>
+                                {% elif player.is_runner_up %}
+                                    <i class="fas fa-medal shield-icon"></i>
+                                {% endif %}
                             </div>
                         </td>
                         <td>{{ player.match_count }}</td>
