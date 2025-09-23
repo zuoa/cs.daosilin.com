@@ -122,6 +122,13 @@ body {
     font-feature-settings: 'kern' 1, 'liga' 1;
 }
 
+.title a{
+    color: #ffffff;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
 .subtitle {
     font-family: 'Inter', 'Noto Sans SC', sans-serif;
     font-size: 1.3rem;
