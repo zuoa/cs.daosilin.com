@@ -19,7 +19,7 @@ def crawl_data(default_player_id='76561198068647788'):
     """爬取数据的函数"""
     wm = WMAPI(token='c27dd7695e6913c414a018601470e48426c96805', token_steam_id='76561198256708927')
     print(default_player_id)
-    match_list = wm.get_match_list(default_player_id, 50)
+    match_list = wm.get_match_list(default_player_id, 10)
     print(match_list)
     for match in match_list:
         match_id = match.get('matchId')
