@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{cup}} {{day or ''}} 数据统计</title>
+    <title>{{cup | upper}} {{day or ''}} 数据统计</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -15,7 +15,7 @@
     <div class="container fade-in">
         <div class="header">
             <div class="header-decoration"></div>
-            <h1 class="title">{{cup}}</h1>
+            <h1 class="title">{{cup | upper}}</h1>
             {% if current_day %}<p class="subtitle"></p>{% endif %}
             <div> </div>
         </div>
