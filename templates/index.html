@@ -16,6 +16,19 @@
             <div class="header-decoration"></div>
             <h1 class="title">鲨鱼MajorS1数据统计</h1>
             <p class="subtitle"></p>
+            <div> </div>
+        </div>
+
+        <!-- Cup Days Navigation -->
+        <div class="cup-days-container">
+            <div class="cup-days-list">
+                {% for day in cup_days %}
+                <a href="/{{ cup }}/{{ day }}/" class="cup-day-item {% if day == current_day %}active{% endif %}" data-current-day="{{ current_day }}" data-day="{{ day }}">
+                    <span class="day-number">{{ loop.index }}</span>
+                    <span class="day-name">{{ day }}</span>
+                </a>
+                {% endfor %}
+            </div>
         </div>
 
         <div class="table-container">
@@ -56,10 +69,10 @@
                             </div>
                         </td>
                         <td>{{ player.match_count }}</td>
-                        <td class="{% if player.win_count >= player.match_count * 0.7 %}rating-highlight{% endif %}">{{ player.win_count }}</td>
-                        <td class="{% if player.win_rate >= 0.7 %}rating-highlight{% endif %}">{{ "%.1f"|format(player.win_rate * 100) }}%</td>
+                        <td>{{ player.win_count }}</td>
+                        <td><span class="{% if player.win_rate >= 0.6 %}highlight-natural{% endif %}">{{ "%.1f"|format(player.win_rate * 100) }}%</span></td>
                         <td>{{ "%.2f"|format(player.kd_ratio) }}</td>
-                        <td class="{% if player.avg_pw_rating >= 1.57 %}rating-highlight{% endif %}">{{ "%.2f"|format(player.avg_pw_rating) }}</td>
+                        <td > <span class="{% if player.avg_pw_rating >= 1.57 %}highlight-natural{% endif %}"> {{ "%.2f"|format(player.avg_pw_rating) }}</span></td>
                         <td class="{% if player.avg_adpr >= 140 %}adr-highlight-1{% elif player.avg_adpr >= 120 %}adr-highlight-2{% elif player.avg_adpr >= 100 %}adr-highlight-3{% elif player.avg_adpr >= 80 %}adr-highlight-4{% else %}adr-highlight-5{% endif %}">{{ "%.2f"|format(player.avg_adpr) }}</td>
                         <td>{{ "%.2f"|format(player.avg_we) }}</td>
                         <td>{{ "%.1f"|format(player.avg_headshot_ratio * 100) }}%</td>
@@ -239,11 +252,10 @@
         <div class="footer">
             <div class="footer-content">
                 <div class="footer-note">
-                    数据统计 · 实时更新 · 专业分析
+                    数据统计 · 实时更新 · 专业分析 · 数据时间：  （数据更新会有15分钟左右延时）
                 </div>
                 <div class="watermark">
-                    <span class="footer-icon">📺</span>
-                    B站 <a href="https://space.bilibili.com/1148526945" target="_blank">主播记录</a>
+                   Made with ❤️ by <a href="https://space.bilibili.com/3493076609796324" target="_blank">AJ</a>
                 </div>
             </div>
         </div>
@@ -276,7 +288,32 @@
         // 页面加载完成后更新标题
         document.addEventListener('DOMContentLoaded', function() {
             updatePageTitle();
+            initializeCupDaysNavigation();
         });
+
+        // 初始化杯赛日程导航功能
+        function initializeCupDaysNavigation() {
+            const cupDayItems = document.querySelectorAll('.cup-day-item');
+            const currentDay = '{{ current_day }}';
+            
+            // 确保当前天按钮有active类
+            cupDayItems.forEach(item => {
+                const dayValue = item.getAttribute('data-day');
+                if (dayValue === currentDay) {
+                    item.classList.add('active');
+                } else {
+                    item.classList.remove('active');
+                }
+                
+                item.addEventListener('click', function(e) {
+                    // 简单的点击反馈
+                    this.style.transform = 'scale(0.95)';
+                    setTimeout(() => {
+                        this.style.transform = '';
+                    }, 150);
+                });
+            });
+        }
 
         function toggleDrawer(index) {
             const drawer = document.getElementById(`drawer-${index}`);

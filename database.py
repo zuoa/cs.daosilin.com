@@ -208,11 +208,32 @@ class Player(BaseModel, CRUDMixin):
 class CupDayChampion(BaseModel, CRUDMixin):
     cup_name = CharField(max_length=128)  # 杯赛名称
     day = CharField(max_length=64)  # 日期
-    champion_team_id = CharField(max_length=64, null=True)
-    runner_up_team_id = CharField(max_length=64, null=True)
+    champion_team_name = TextField(null=True)
+    champion_team_player_ids = TextField(null=True)
+    runner_up_team_name = TextField(null=True)
+    runner_up_team_player_ids = TextField(null=True)
+
+    @classmethod
+    def is_exist(cls, cup_name: str, day: str) -> Optional[bool]:
+        """获取用户最新的一条运动记录"""
+        try:
+            exist = (cls.select()
+                     .where(cls.cup_name == cup_name, cls.day == day)
+                     .limit(1)
+                     .get())
+            return True
+        except cls.DoesNotExist:
+            return False
+        except Exception as e:
+            return False
 
     class Meta:
         table_name = 'cup_day_champion'
+
+        ## 联合主键
+        indexes = (
+            (('cup_name', 'day'), True),
+        )
 
 
 class MatchPlayer(BaseModel, CRUDMixin):
@@ -266,6 +287,7 @@ class MatchPlayer(BaseModel, CRUDMixin):
     we = DoubleField()  # WE值
     throws_count = IntegerField()  # 投掷物数量
     team_id = CharField(max_length=64, null=True)  # 队伍ID
+    team_name = CharField(max_length=64, null=True)
     first_death = IntegerField()  # 首死数
     snipe_num = IntegerField()  # 狙击数
     mvp = BooleanField()  # 是否为MVP
@@ -287,6 +309,19 @@ class MatchPlayer(BaseModel, CRUDMixin):
         except Exception as e:
             logger.error(f"获取最新记录失败: {str(e)}")
             return False
+
+    @classmethod
+    def get_cup_day_set(cls):
+        try:
+            query = (cls
+                     .select(cls.play_day, fn.COUNT(cls.id).alias('count'))
+                     .group_by(cls.play_day)
+                     .having(fn.COUNT(cls.id) > 1))
+            return [record.play_day for record in query]
+        except Exception as e:
+            logger.error(f"get_dup_day_set error: {e}")
+            return []
+
 
     @classmethod
     def get_match_exploit(cls, cup_name: str, player_id, play_day: str) -> Optional[Dict[str, Any]]:
@@ -418,6 +453,7 @@ class MatchPlayer(BaseModel, CRUDMixin):
         except Exception as e:
             logger.error(f"get_match_exploit error: {e}")
             return None
+
     class Meta:
         table_name = 'match_player'
 
@@ -430,4 +466,4 @@ class MatchPlayer(BaseModel, CRUDMixin):
 def create_tables():
     """Create database tables if they don't exist"""
     with db:
-        db.create_tables([Match, MatchPlayer, Player], safe=True)
+        db.create_tables([Match, MatchPlayer, Player,CupDayChampion], safe=True)

@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 from ajlog import logger
 from config import CUP_NAME, CUP_TEAM_NUM, DEFAULT_CRAWL_PLAYER_IDS
-from database import create_tables, Match, MatchPlayer, Player
+from database import create_tables, Match, MatchPlayer, Player, CupDayChampion
 from utils import get_play_day
 from wm import WMAPI
 
@@ -19,7 +19,7 @@ def crawl_data(default_player_id='76561198068647788'):
     """爬取数据的函数"""
     wm = WMAPI(token='c27dd7695e6913c414a018601470e48426c96805', token_steam_id='76561198256708927')
     print(default_player_id)
-    match_list = wm.get_match_list(default_player_id, 10)
+    match_list = wm.get_match_list(default_player_id, 50)
     print(match_list)
     for match in match_list:
         match_id = match.get('matchId')
@@ -126,6 +126,7 @@ def crawl_data(default_player_id='76561198068647788'):
                     "we": match_player.get('we'),
                     "throws_count": match_player.get('throwsCnt'),
                     "team_id": match_player.get('teamId'),
+                    "team_name": match_model.get(f"team1_name") if match_player.get('team') == 1 else match_model.get("team2_name"),
                     "snipe_num": match_player.get('snipeNum'),
                     "first_death": match_player.get('firstDeath'),
                     "mvp": match_player.get('mvp'),
@@ -193,6 +194,98 @@ def crawl_all():
     logger.info(f"====== 所有玩家数据爬取完成：{CUP_NAME} {today} ======")
 
 
+def judge_champion(day=None):
+    if day is None:
+        day = (datetime.datetime.now() - datetime.timedelta(days=1)).strftime("%Y%m%d")
+    match_list = Match.filter_records(**{'cup_name': CUP_NAME, 'play_day': day})
+    team_wins = {}
+
+    # 比赛分几轮，每一轮对阵会有2-3场比赛，取得2场胜利的队伍为该轮胜者，然后进入下一轮，最终轮的胜者为冠军,冠军的对手就是亚军。不是简单统计胜场多的
+    # 还需要算出亚军，冠军的最后一轮的对手就是亚军
+    rounds = {}
+    for match in match_list:
+        team1 = match.get('team1_name')
+        team2 = match.get('team2_name')
+        win_team = team1 if match.get('team1_score') > match.get('team2_score') else team2
+        if not team1 or not team2 or not win_team:
+            continue
+
+        round_key = frozenset([team1, team2])
+        if round_key not in rounds:
+            rounds[round_key] = {team1: 0, team2: 0}
+        rounds[round_key][win_team] += 1
+
+    # 计算每个队伍的胜场数
+    for teams, results in rounds.items():
+        for team, wins in results.items():
+            if wins >= 2:
+                team_wins[team] = team_wins.get(team, 0) + 1
+
+    if team_wins:
+        # 计算冠军,需要比赛了三轮了才算， 计算team_wins中value最大有没有超过等于3的
+        if max(team_wins.values()) < 3:
+            logger.info("昨日比赛未完成三轮，无法判断冠军队伍")
+            return
+
+        champion_player_ids = ''
+        runner_up_player_ids = ''
+        champion_team = max(team_wins, key=team_wins.get)
+        logger.info(f"昨日冠军队伍是 {champion_team}，共赢得 {team_wins[champion_team]} 轮比赛")
+
+        # 计算亚军
+        runner_up_team = None
+        final_round_teams = [teams for teams in rounds.keys() if champion_team in teams]
+        if final_round_teams:
+            final_round = final_round_teams[-1]
+            # Fix: Convert frozenset to set, subtract champion, then get the remaining team
+            runner_up_team = list(final_round - {champion_team})[0]
+            logger.info(f"昨日亚军队伍是 {runner_up_team}")
+
+        champion_players = MatchPlayer.filter_records(**{'cup_name': CUP_NAME, 'play_day': day, 'team_name': champion_team})
+        if champion_players:
+            champion_players_map = {
+                player['player_id']: player for player in champion_players
+            }
+            champion_player_ids = ','.join([pk for pk in champion_players_map.keys()])
+            logger.info(f"冠军队伍 {champion_team} 的成员有： {champion_player_ids} ")
+
+        if runner_up_team:
+            runner_up_players = MatchPlayer.filter_records(**{'cup_name': CUP_NAME, 'play_day': day, 'team_name': runner_up_team})
+            if runner_up_players:
+                runner_up_players_map = {
+                    player['player_id']: player for player in runner_up_players
+                }
+                runner_up_player_ids = ','.join([pk for pk in runner_up_players_map.keys()])
+                logger.info(f"亚军队伍 {runner_up_team} 的成员有： {runner_up_player_ids} ")
+
+        # 保存冠军和亚军信息到数据库
+        if CupDayChampion.is_exist(CUP_NAME, day):
+            logger.info(f"{day} 的冠军信息已存在，跳过保存")
+            return
+
+        CupDayChampion.create(**{
+            'cup_name': CUP_NAME,
+            'day': day,
+            'champion_team_name': champion_team,
+            'runner_up_team_name': runner_up_team,
+            'champion_team_player_ids': champion_player_ids,
+            'runner_up_team_player_ids': runner_up_player_ids
+        })
+
+    else:
+        logger.info("昨日没有比赛数据，无法判断冠军队伍")
+
+    # for match in match_list:
+    #     win_team = match.get('win_team')
+    #     if win_team:
+    #         team_wins[win_team] = team_wins.get(win_team, 0) + 1
+    # if team_wins:
+    #     champion_team = max(team_wins, key=team_wins.get)
+    #     logger.info(f"昨日冠军队伍是 {champion_team}，共赢得 {team_wins[champion_team]} 场比赛")
+    # else:
+    #     logger.info("昨日没有比赛数据，无法判断冠军队伍")
+
+
 def create_scheduler():
     executors = {
         'default': ThreadPoolExecutor(max_workers=5)  # 根据需要调整数量
@@ -225,7 +318,9 @@ def create_scheduler():
 if __name__ == '__main__':
     load_dotenv()
     create_tables()
+    # judge_champion('20250922')
     crawl_all()
+
     scheduler = create_scheduler()
     try:
         scheduler.start()
