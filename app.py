@@ -20,6 +20,7 @@ def index_redirect():
 
 
 @app.route('/api/v1/players')
+@cache.cached(timeout=120)
 def api_players():
     cup = request.args.get('cup')
     if cup is None:
