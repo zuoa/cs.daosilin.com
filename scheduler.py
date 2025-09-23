@@ -289,7 +289,7 @@ def create_scheduler():
 
     # 添加任务
     scheduler.add_job(
-        func=crawl_data,
+        func=crawl_all,
         trigger=CronTrigger(hour='18-23', minute='*/10'),
         id='crawl_job_evening',
         name='数据爬取任务-晚间',
@@ -298,7 +298,7 @@ def create_scheduler():
 
     # 00:00-05:50 (次日凌晨)
     scheduler.add_job(
-        func=crawl_data,
+        func=crawl_all,
         trigger=CronTrigger(hour='0-5', minute='*/10'),
         id='crawl_job_night',
         name='数据爬取任务-凌晨',
