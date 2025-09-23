@@ -152,6 +152,7 @@ def crawl_data(default_player_id='76561198068647788'):
 
 
 def crawl_all():
+    Config.set_value("last_crawl_time", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     today = (datetime.datetime.now() - datetime.timedelta(hours=3)).strftime("%Y%m%d")
     logger.info(f"====== 开始爬取所有玩家数据：{CUP_NAME} {today} ======")
     today_players = MatchPlayer.filter_records(**{'cup_name': CUP_NAME, 'play_day': today})
@@ -193,7 +194,6 @@ def crawl_all():
 
     logger.info(f"====== 所有玩家数据爬取完成：{CUP_NAME} {today} ======")
 
-    Config.set_value("last_crawl_time", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
 
 def judge_champion(day=None):
