@@ -49,8 +49,6 @@ def index_cup_day(cup, day=None):
 
     player_data = []
     for player_id, player in players_map.items():
-        print(player)
-
         d = MatchPlayer.get_match_exploit(cup, player_id, day)
         if d:
             player.update(d)
