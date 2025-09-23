@@ -1,8 +1,9 @@
 from flask import Flask, render_template
 from flask_caching import Cache
 
+from ajlog import logger
 from config import CUP_NAME
-from database import MatchPlayer, Player, CupDayChampion
+from database import MatchPlayer, Player, CupDayChampion, create_tables
 
 app = Flask(__name__)
 
@@ -53,6 +54,16 @@ def index(cup, day):
     cup_days = MatchPlayer.get_cup_day_set()
 
     return render_template('index.html', players=player_data, cup=cup, day=day, cup_days=cup_days, current_day=day)
+
+
+@app.cli.command("init-db")
+def init_db():
+    """Initialize the database tables"""
+    try:
+        create_tables()
+        logger.info("数据库初始化完成")
+    except Exception as e:
+        logger.error(f"数据库初始化失败: {str(e)}")
 
 
 if __name__ == '__main__':
