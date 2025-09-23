@@ -1,0 +1,7 @@
+Flask
+apscheduler
+requests
+peewee
+gunicorn==21.2.0
+python-dotenv==1.0.0
+openai

@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{cup}} {{day}} 数据统计</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="/static/style.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container fade-in">
+        <div class="header">
+            <div class="header-decoration"></div>
+            <h1 class="title">鲨鱼MajorS1数据统计</h1>
+            <p class="subtitle"></p>
+        </div>
+
+        <div class="table-container">
+            <table class="stats-table">
+                <thead>
+                    <tr>
+                        <th>序号</th>
+                        <th>选手</th>
+                        <th>场次</th>
+                        <th>胜场</th>
+                        <th>胜率</th>
+                        <th>K/D</th>
+                        <th>Rating</th>
+                        <th>ADPR</th>
+                        <th>WE</th>
+                        <th>爆头率</th>
+                        <th>MVP</th>
+                        <th>总击杀</th>
+                        <th>总死亡</th>
+                        <th>详情</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for player in players %}
+                    <tr data-index="{{ loop.index }}" class="{% if loop.index % 2 == 0 %}even-row{% else %}odd-row{% endif %}">
+                        <td>{{loop.index }} </td>
+                        <td>
+                            <div class="player-name">
+                                {% if player.avatar %}
+                                    <img src="https://wsrv.nl/?url={{ player.avatar }}" alt="{{ player.nickname }}" class="player-avatar" onerror="this.style.display='none'">
+                                {% endif %}
+                                {% if player.icon == 'trophy' %}
+                                    <span class="trophy-icon">🏆</span>
+                                {% elif player.icon == 'shield' %}
+                                    <span class="shield-icon">🛡️</span>
+                                {% endif %}
+                                {{ player.alias_name or player.nickname }}
+                            </div>
+                        </td>
+                        <td>{{ player.match_count }}</td>
+                        <td class="{% if player.win_count >= player.match_count * 0.7 %}rating-highlight{% endif %}">{{ player.win_count }}</td>
+                        <td class="{% if player.win_rate >= 0.7 %}rating-highlight{% endif %}">{{ "%.1f"|format(player.win_rate * 100) }}%</td>
+                        <td>{{ "%.2f"|format(player.kd_ratio) }}</td>
+                        <td class="{% if player.avg_pw_rating >= 1.57 %}rating-highlight{% endif %}">{{ "%.2f"|format(player.avg_pw_rating) }}</td>
+                        <td class="{% if player.avg_adpr >= 140 %}adr-highlight-1{% elif player.avg_adpr >= 120 %}adr-highlight-2{% elif player.avg_adpr >= 100 %}adr-highlight-3{% elif player.avg_adpr >= 80 %}adr-highlight-4{% else %}adr-highlight-5{% endif %}">{{ "%.2f"|format(player.avg_adpr) }}</td>
+                        <td>{{ "%.2f"|format(player.avg_we) }}</td>
+                        <td>{{ "%.1f"|format(player.avg_headshot_ratio * 100) }}%</td>
+                        <td>{{ player.total_mvp }}</td>
+                        <td>{{ player.total_kills }}</td>
+                        <td>{{ player.total_deaths }}</td>
+                        <td>
+                            <span class="expand-icon" id="icon-{{ loop.index }}">▼</span>
+                        </td>
+                    </tr>
+                    <tr class="drawer" id="drawer-{{ loop.index }}">
+                        <td colspan="13">
+                            <div class="drawer-content">
+                                <div class="drawer-section">
+                                    <h4>基础数据</h4>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">胜场数</span>
+                                        <span class="drawer-value highlight">{{ player.win_count }}</span>
+                                    </div>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">胜率</span>
+                                        <span class="drawer-value highlight">{{ "%.1f"|format(player.win_rate * 100) }}%</span>
+                                    </div>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">总助攻</span>
+                                        <span class="drawer-value">{{ player.total_assists }}</span>
+                                    </div>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">首杀</span>
+                                        <span class="drawer-value">{{ player.total_first_kills }}</span>
+                                    </div>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">首死</span>
+                                        <span class="drawer-value">{{ player.total_first_deaths }}</span>
+                                    </div>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">爆头数</span>
+                                        <span class="drawer-value">{{ player.total_headshots }}</span>
+                                    </div>
+                                </div>
+
+                                <div class="drawer-section">
+                                    <h4>多杀数据</h4>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">2K</span>
+                                        <span class="drawer-value">{{ player.total_2k }}</span>
+                                    </div>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">3K</span>
+                                        <span class="drawer-value">{{ player.total_3k }}</span>
+                                    </div>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">4K</span>
+                                        <span class="drawer-value">{{ player.total_4k }}</span>
+                                    </div>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">5K</span>
+                                        <span class="drawer-value">{{ player.total_5k }}</span>
+                                    </div>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">多杀</span>
+                                        <span class="drawer-value">{{ player.total_multi_kills }}</span>
+                                    </div>
+                                </div>
+
+                                <div class="drawer-section">
+                                    <h4>残局数据</h4>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">1V2</span>
+                                        <span class="drawer-value">{{ player.total_1v2 }}</span>
+                                    </div>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">1V3</span>
+                                        <span class="drawer-value">{{ player.total_1v3 }}</span>
+                                    </div>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">1V4</span>
+                                        <span class="drawer-value">{{ player.total_1v4 }}</span>
+                                    </div>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">1V5</span>
+                                        <span class="drawer-value">{{ player.total_1v5 }}</span>
+                                    </div>
+                                </div>
+
+                                <div class="drawer-section">
+                                    <h4>投掷物数据</h4>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">闪光弹</span>
+                                        <span class="drawer-value">{{ player.total_flashes }}</span>
+                                    </div>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">成功闪光</span>
+                                        <span class="drawer-value">{{ player.total_flash_success }}</span>
+                                    </div>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">队友闪光</span>
+                                        <span class="drawer-value">{{ player.total_flash_teammate }}</span>
+                                    </div>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">闪光成功率</span>
+                                        <span class="drawer-value">{{ "%.2f"|format(player.flash_success_ratio) }}</span>
+                                    </div>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">命中数</span>
+                                        <span class="drawer-value">{{ player.total_hit_count }}</span>
+                                    </div>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">投掷数</span>
+                                        <span class="drawer-value">{{ player.total_throws_count }}</span>
+                                    </div>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">狙击数</span>
+                                        <span class="drawer-value">{{ player.total_snipe_num }}</span>
+                                    </div>
+                                </div>
+
+                                <div class="drawer-section">
+                                    <h4>场均数据</h4>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">场均击杀</span>
+                                        <span class="drawer-value">{{ "%.2f"|format(player.avg_kills) }}</span>
+                                    </div>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">场均死亡</span>
+                                        <span class="drawer-value">{{ "%.2f"|format(player.avg_deaths) }}</span>
+                                    </div>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">场均助攻</span>
+                                        <span class="drawer-value">{{ "%.2f"|format(player.avg_assists) }}</span>
+                                    </div>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">场均护甲伤害</span>
+                                        <span class="drawer-value">{{ "%.2f"|format(player.avg_damage_armar) }}</span>
+                                    </div>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">场均生命伤害</span>
+                                        <span class="drawer-value">{{ "%.2f"|format(player.avg_damage_health) }}</span>
+                                    </div>
+                                </div>
+
+                                <div class="drawer-section">
+                                    <h4>高级数据</h4>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">FK/FD</span>
+                                        <span class="drawer-value">{{ "%.2f"|format(player.fk_fd_ratio) }}</span>
+                                    </div>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">PWR Rating</span>
+                                        <span class="drawer-value">{{ "%.2f"|format(player.avg_pw_rating) }}</span>
+                                    </div>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">RWS</span>
+                                        <span class="drawer-value">{{ "%.2f"|format(player.avg_rws) }}</span>
+                                    </div>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">WE</span>
+                                        <span class="drawer-value">{{ "%.2f"|format(player.avg_we) }}</span>
+                                    </div>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">KAST</span>
+                                        <span class="drawer-value">{{ "%.2f"|format(player.avg_kast) }}</span>
+                                    </div>
+                                    <div class="drawer-item">
+                                        <span class="drawer-label">比赛MVP</span>
+                                        <span class="drawer-value highlight">{{ player.match_mvp_count }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="footer">
+            <div class="footer-content">
+                <div class="footer-note">
+                    数据统计 · 实时更新 · 专业分析
+                </div>
+                <div class="watermark">
+                    <span class="footer-icon">📺</span>
+                    B站 <a href="https://space.bilibili.com/1148526945" target="_blank">主播记录</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 从URL中提取cup和day参数
+        function getUrlParams() {
+            const pathParts = window.location.pathname.split('/').filter(part => part !== '');
+            return {
+                cup: pathParts[0] ? decodeURIComponent(pathParts[0]) : '2024秋季赛',
+                day: pathParts[1] ? decodeURIComponent(pathParts[1]) : 'Day 1'
+            };
+        }
+
+        // 更新页面标题
+        function updatePageTitle() {
+            const params = getUrlParams();
+            const titleElement = document.querySelector('.title');
+            const subtitleElement = document.querySelector('.subtitle');
+
+            if (titleElement) {
+                titleElement.textContent = `${params.cup}`;
+            }
+            if (subtitleElement) {
+                subtitleElement.textContent = `${params.day} 数据统计`;
+            }
+        }
+
+        // 页面加载完成后更新标题
+        document.addEventListener('DOMContentLoaded', function() {
+            updatePageTitle();
+        });
+
+        function toggleDrawer(index) {
+            const drawer = document.getElementById(`drawer-${index}`);
+            const icon = document.getElementById(`icon-${index}`);
+            const row = drawer.previousElementSibling;
+
+            if (drawer.classList.contains('open')) {
+                // 关闭抽屉
+                drawer.classList.remove('open');
+                icon.classList.remove('rotated');
+                row.classList.remove('expanded');
+                icon.textContent = '▼';
+
+                // 等待动画完成后隐藏元素
+                setTimeout(() => {
+                    drawer.style.display = 'none';
+                }, 300);
+            } else {
+                // 关闭其他已打开的抽屉
+                const openDrawers = document.querySelectorAll('.drawer.open');
+                openDrawers.forEach(openDrawer => {
+                    openDrawer.classList.remove('open');
+                    const openIcon = document.getElementById(openDrawer.id.replace('drawer-', 'icon-'));
+                    const openRow = openDrawer.previousElementSibling;
+                    openIcon.classList.remove('rotated');
+                    openRow.classList.remove('expanded');
+                    openIcon.textContent = '▼';
+
+                    // 等待动画完成后隐藏元素
+                    setTimeout(() => {
+                        openDrawer.style.display = 'none';
+                    }, 300);
+                });
+
+                // 打开当前抽屉
+                drawer.style.display = 'table-row';
+                // 强制重排以确保动画生效
+                drawer.offsetHeight;
+                drawer.classList.add('open');
+                icon.classList.add('rotated');
+                row.classList.add('expanded');
+                icon.textContent = '▲';
+            }
+        }
+
+        // 使用事件委托处理点击事件
+        document.addEventListener('DOMContentLoaded', function() {
+            const table = document.querySelector('.stats-table tbody');
+            table.addEventListener('click', function(e) {
+                const row = e.target.closest('tr[data-index]');
+                if (row) {
+                    const index = row.getAttribute('data-index');
+                    toggleDrawer(index);
+                }
+            });
+        });
+
+        // 添加键盘支持
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                const openDrawers = document.querySelectorAll('.drawer.open');
+                openDrawers.forEach(drawer => {
+                    drawer.classList.remove('open');
+                    const icon = document.getElementById(drawer.id.replace('drawer-', 'icon-'));
+                    const row = drawer.previousElementSibling;
+                    icon.classList.remove('rotated');
+                    row.classList.remove('expanded');
+                    icon.textContent = '▼';
+
+                    // 等待动画完成后隐藏元素
+                    setTimeout(() => {
+                        drawer.style.display = 'none';
+                    }, 300);
+                });
+            }
+        });
+    </script>
+</body>
+</html>
