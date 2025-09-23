@@ -1,11 +1,12 @@
-from flask import Flask, render_template
+from flask import Flask, render_template, request
 from flask_caching import Cache
 
 import title_service
 from ajlog import logger
-from config import CUP_NAME
+from config import CUP_NAME, AUTH_CODE
 from database import MatchPlayer, Player, CupDayChampion, create_tables, Config, PlayerTitle
 from title_service import title_service
+from utils import success, error
 
 app = Flask(__name__)
 
@@ -16,6 +17,45 @@ cache.init_app(app)
 @app.route('/')
 def index_redirect():
     return index_cup_day(CUP_NAME, None)
+
+
+@app.route('/api/v1/players')
+def api_players():
+    cup = request.args.get('cup')
+    if cup is None:
+        cup = CUP_NAME
+
+    auth = request.args.get('auth')
+    if auth != AUTH_CODE:
+        return error(403, "无权限访问")
+
+    day = request.args.get('day')
+
+    all_champions = CupDayChampion.filter_records(**{'cup_name': cup})
+    all_champions.sort(key=lambda champion: champion.get('day', ''))
+
+    all_players = Player.get_all()
+    for i in range(len(all_players)):
+        player = all_players[i]
+        player_id = player.get('player_id')
+        d = MatchPlayer.get_match_exploit(cup, player_id, day)
+        player.update(d)
+
+        for champion in all_champions:
+            if player_id in champion.get("champion_team_player_ids", '').split(','):
+                player.setdefault('trophy_history', []).append({
+                    'day': champion.get('day'),
+                    'team_name': champion.get('champion_team_name'),
+                    'trophy': 'champion',
+                })
+            if player_id in champion.get("runner_up_team_player_ids", '').split(','):
+                player.setdefault('trophy_history', []).append({
+                    'day': champion.get('day'),
+                    'team_name': champion.get('runner_up_team_name'),
+                    'trophy': 'runner_up',
+                })
+    last_crawl_time = Config.get_value("last_crawl_time")
+    return success({"players": all_players, "cache_time": last_crawl_time})
 
 
 @app.route('/<string:cup>/')
@@ -43,8 +83,10 @@ def index_cup_day(cup, day=None):
         "avatar": player["avatar"],
         "player_id": player["player_id"],
         "alias_name": all_players_map.get(player["player_id"], {}).get("alias_name", ""),
-        "is_champion": player["player_id"] in day_champion.get("champion_team_player_ids", '').split(',') if day_champion else False,
-        "is_runner_up": player["player_id"] in day_champion.get("runner_up_team_player_ids", '').split(',') if day_champion else False,
+        "is_champion": player["player_id"] in day_champion.get("champion_team_player_ids", '').split(
+            ',') if day_champion else False,
+        "is_runner_up": player["player_id"] in day_champion.get("runner_up_team_player_ids", '').split(
+            ',') if day_champion else False,
     } for player in players}
 
     player_data = []
@@ -80,7 +122,8 @@ def index_cup_day(cup, day=None):
 
     last_crawl_time = Config.get_value("last_crawl_time")
 
-    return render_template('index.html', players=player_data, cup=cup, day=day, cup_days=cup_days, current_day=day, last_crawl_time=last_crawl_time)
+    return render_template('index.html', players=player_data, cup=cup, day=day, cup_days=cup_days, current_day=day,
+                           last_crawl_time=last_crawl_time)
 
 
 @app.cli.command("init-db")
