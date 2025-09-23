@@ -133,6 +133,7 @@ def crawl_data(default_player_id='76561198068647788'):
                     "mvp": match_player.get('mvp'),
                     'cup_name': match_model.get('cup_name'),
                     'win': 1 if match_model.get("win_team") == match_player.get('team') else 0,
+                    'game_count': match_model.get('team1_score') + match_model.get('team2_score'),
                 }
 
                 if match_model.get("play_day") is not None:
@@ -342,6 +343,7 @@ def calc_titles(today):
 if __name__ == '__main__':
     load_dotenv()
     create_tables()
+    # crawl_all()
     scheduler = create_scheduler()
     try:
         scheduler.start()

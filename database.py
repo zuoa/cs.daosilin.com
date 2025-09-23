@@ -405,6 +405,7 @@ class MatchPlayer(BaseModel, CRUDMixin):
     play_day = CharField(max_length=64, null=True)
     cup_name = CharField(max_length=128, null=True)  # 杯赛名称
     win = IntegerField()
+    game_count = IntegerField()
 
     @classmethod
     def is_exist(cls, match_id: str, player_id: str) -> Optional[bool]:
@@ -494,6 +495,7 @@ class MatchPlayer(BaseModel, CRUDMixin):
                 fn.COALESCE(fn.AVG(cls.kast), 0).alias('avg_kast'),
                 fn.COALESCE(fn.AVG(cls.headshot_ratio), 0).alias('avg_headshot_ratio'),
                 fn.COALESCE(fn.SUM(cls.mvp_value), 0).alias('total_mvp'),
+                fn.COALESCE(fn.SUM(cls.game_count), 0).alias('total_game_count'),
                 fn.COALESCE(fn.SUM(Case(None, [(cls.mvp == True, 1)], 0)), 0).alias('match_mvp_count'),
             )
 
@@ -557,6 +559,7 @@ class MatchPlayer(BaseModel, CRUDMixin):
                 'total_mvp': result.total_mvp or 0,
                 'match_mvp_count': result.match_mvp_count or 0,
                 'total_fire_count': result.total_fire_count or 0,
+                'total_game_count': result.total_game_count or 0,
             }
 
         except cls.DoesNotExist:

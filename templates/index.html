@@ -58,6 +58,7 @@
                         <th>ADPR</th>
                         <th>WE</th>
                         <th>爆头率</th>
+                        <th>场伤</th>
                         <th>MVP</th>
                         <th>详情</th>
                     </tr>
@@ -130,6 +131,7 @@
                         <td class="{% if player.avg_adpr >= 140 %}adr-highlight-1{% elif player.avg_adpr >= 120 %}adr-highlight-2{% elif player.avg_adpr >= 100 %}adr-highlight-3{% elif player.avg_adpr >= 80 %}adr-highlight-4{% else %}adr-highlight-5{% endif %}">{{ "%.2f"|format(player.avg_adpr) }}</td>
                         <td>{{ "%.2f"|format(player.avg_we) }}</td>
                         <td>{{ "%.1f"|format(player.avg_headshot_ratio * 100) }}%</td>
+                        <td>{%if player.total_game_count > 0%}{{ "%d"|format(player.avg_damage_health / player.total_game_count) }}{%endif%}</td>
                         <td>{{ player.total_mvp }}</td>
                         <td>
                             <span class="expand-icon" id="icon-{{ loop.index }}">▼</span>
