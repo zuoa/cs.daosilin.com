@@ -1,0 +1,12 @@
+services:
+  app:
+    image: ghcr.io/zuoa/cs.daosilin.com:main
+    restart: "always"
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./data:/data
+    environment:
+      - "TZ=Asia/Shanghai"
+      - "DB_PATH=/data/cs.db"
+      - "AUTH=123123"

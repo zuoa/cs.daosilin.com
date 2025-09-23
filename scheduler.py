@@ -275,16 +275,6 @@ def judge_champion(day=None):
     else:
         logger.info("昨日没有比赛数据，无法判断冠军队伍")
 
-    # for match in match_list:
-    #     win_team = match.get('win_team')
-    #     if win_team:
-    #         team_wins[win_team] = team_wins.get(win_team, 0) + 1
-    # if team_wins:
-    #     champion_team = max(team_wins, key=team_wins.get)
-    #     logger.info(f"昨日冠军队伍是 {champion_team}，共赢得 {team_wins[champion_team]} 场比赛")
-    # else:
-    #     logger.info("昨日没有比赛数据，无法判断冠军队伍")
-
 
 def create_scheduler():
     executors = {
@@ -312,13 +302,20 @@ def create_scheduler():
     )
     logger.info("调度器已创建，任务已添加")
 
+    scheduler.add_job(
+        func=judge_champion,
+        trigger=CronTrigger(hour='0-2', minute='*/5'),
+        id='job_judge_champion',
+        name='冠军判断任务',
+        replace_existing=True
+    )
+
     return scheduler
 
 
 if __name__ == '__main__':
     load_dotenv()
     create_tables()
-    # judge_champion('20250922')
     crawl_all()
 
     scheduler = create_scheduler()

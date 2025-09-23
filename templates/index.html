@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{cup}} {{day}} 数据统计</title>
+    <title>{{cup}} {{day or ''}} 数据统计</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -15,8 +15,8 @@
     <div class="container fade-in">
         <div class="header">
             <div class="header-decoration"></div>
-            <h1 class="title">鲨鱼MajorS1数据统计</h1>
-            <p class="subtitle"></p>
+            <h1 class="title">{{cup}}</h1>
+            {% if current_day %}<p class="subtitle"></p>{% endif %}
             <div> </div>
         </div>
 
@@ -38,6 +38,7 @@
                     <tr>
                         <th>序号</th>
                         <th>选手</th>
+                        <th>赛季奖杯</th>
                         <th>场次</th>
                         <th>胜场</th>
                         <th>胜率</th>
@@ -68,6 +69,17 @@
                                 {% elif player.is_runner_up %}
                                     <i class="fas fa-medal shield-icon"></i>
                                 {% endif %}
+                            </div>
+                        </td>
+                        <td>
+                            <div class="trophy-container">
+                                {% for trophy in player.trophy_history %}
+                                    {% if trophy.get('trophy') == 'champion' %}
+                                        <i class="fas fa-trophy trophy-icon" title="{{trophy.get('day') }} 冠军"></i>
+                                    {% elif trophy.get('trophy')  == 'runner_up' %}
+                                        <i class="fas fa-medal shield-icon" title="{{trophy.get('day') }} 亚军"></i>
+                                    {% endif %}
+                                {% endfor %}
                             </div>
                         </td>
                         <td>{{ player.match_count }}</td>
@@ -264,32 +276,10 @@
     </div>
 
     <script>
-        // 从URL中提取cup和day参数
-        function getUrlParams() {
-            const pathParts = window.location.pathname.split('/').filter(part => part !== '');
-            return {
-                cup: pathParts[0] ? decodeURIComponent(pathParts[0]) : '2024秋季赛',
-                day: pathParts[1] ? decodeURIComponent(pathParts[1]) : 'Day 1'
-            };
-        }
 
-        // 更新页面标题
-        function updatePageTitle() {
-            const params = getUrlParams();
-            const titleElement = document.querySelector('.title');
-            const subtitleElement = document.querySelector('.subtitle');
-
-            if (titleElement) {
-                titleElement.textContent = `${params.cup}`;
-            }
-            if (subtitleElement) {
-                subtitleElement.textContent = `${params.day} 数据统计`;
-            }
-        }
 
         // 页面加载完成后更新标题
         document.addEventListener('DOMContentLoaded', function() {
-            updatePageTitle();
             initializeCupDaysNavigation();
         });
 

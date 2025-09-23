@@ -11,10 +11,15 @@ cache = Cache(config={'CACHE_TYPE': 'SimpleCache'})
 cache.init_app(app)
 
 
-# Path 参数 cup 、day
+@app.route('/')
+def index_redirect():
+    return index_cup_day(CUP_NAME, None)
+
+
+@app.route('/<string:cup>/')
 @app.route('/<string:cup>/<string:day>/')
 @cache.cached(timeout=60)
-def index(cup, day):
+def index_cup_day(cup, day=None):
     if cup is None:
         cup = CUP_NAME
 
@@ -22,6 +27,8 @@ def index(cup, day):
     all_players_map = {player["player_id"]: player for player in all_players}
 
     day_champion = CupDayChampion.get_champion_by_cup_and_day(cup, day)
+    all_champions = CupDayChampion.filter_records(**{'cup_name': cup})
+    all_champions.sort(key=lambda champion: champion.get('day', ''))
 
     filter_params = {
         'cup_name': cup,
@@ -45,6 +52,20 @@ def index(cup, day):
         d = MatchPlayer.get_match_exploit(cup, player_id, day)
         if d:
             player.update(d)
+
+        for champion in all_champions:
+            if player_id in champion.get("champion_team_player_ids", '').split(','):
+                player.setdefault('trophy_history', []).append({
+                    'day': champion.get('day'),
+                    'team_name': champion.get('champion_team_name'),
+                    'trophy': 'champion',
+                })
+            if player_id in champion.get("runner_up_team_player_ids", '').split(','):
+                player.setdefault('trophy_history', []).append({
+                    'day': champion.get('day'),
+                    'team_name': champion.get('runner_up_team_name'),
+                    'trophy': 'runner_up',
+                })
 
         player_data.append(player)
 
