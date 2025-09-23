@@ -48,7 +48,7 @@
                     <tr>
                         <th>序号</th>
                         <th>选手</th>
-                        <th>称号</th>
+{#                        <th>称号</th>#}
                         <th>赛季奖杯</th>
                         <th>场次</th>
                         <th>胜场</th>
@@ -58,7 +58,6 @@
                         <th>ADPR</th>
                         <th>WE</th>
                         <th>爆头率</th>
-                        <th>场伤</th>
                         <th>MVP</th>
                         <th>详情</th>
                     </tr>
@@ -81,37 +80,37 @@
                                 {% endif %}
                             </div>
                         </td>
-                        <td>
-                            <div class="title-container">
-                                {% if player.titles %}
-                                    {% set unique_titles = [] %}
-                                    {% for title in player.titles %}
-                                        {% if title.title_name not in unique_titles %}
-                                            {% set _ = unique_titles.append(title.title_name) %}
-                                        {% endif %}
-                                    {% endfor %}
-                                    {% set displayed_titles = [] %}
-                                    {% for title in player.titles %}
-                                        {% if title.title_name in unique_titles and title.title_name not in displayed_titles %}
-                                            {% set _ = displayed_titles.append(title.title_name) %}
-                                            {% if displayed_titles|length <= 2 %}
-                                                <div class="title-badge title-{{ title.title_type }}" 
-                                                     title="{{ title.title_description }}">
-                                                    <span class="title-name">{{ title.title_name }}</span>
-                                                </div>
-                                            {% endif %}
-                                        {% endif %}
-                                    {% endfor %}
-                                    {% if unique_titles|length > 2 %}
-                                        <div class="title-more" title="还有 {{ unique_titles|length - 2 }} 个称号">
-                                            +{{ unique_titles|length - 2 }}
-                                        </div>
-                                    {% endif %}
-                                {% else %}
-                                    <span class="no-title"></span>
-                                {% endif %}
-                            </div>
-                        </td>
+{#                        <td>#}
+{#                            <div class="title-container">#}
+{#                                {% if player.titles %}#}
+{#                                    {% set unique_titles = [] %}#}
+{#                                    {% for title in player.titles %}#}
+{#                                        {% if title.title_name not in unique_titles %}#}
+{#                                            {% set _ = unique_titles.append(title.title_name) %}#}
+{#                                        {% endif %}#}
+{#                                    {% endfor %}#}
+{#                                    {% set displayed_titles = [] %}#}
+{#                                    {% for title in player.titles %}#}
+{#                                        {% if title.title_name in unique_titles and title.title_name not in displayed_titles %}#}
+{#                                            {% set _ = displayed_titles.append(title.title_name) %}#}
+{#                                            {% if displayed_titles|length <= 2 %}#}
+{#                                                <div class="title-badge title-{{ title.title_type }}" #}
+{#                                                     title="{{ title.title_description }}">#}
+{#                                                    <span class="title-name">{{ title.title_name }}</span>#}
+{#                                                </div>#}
+{#                                            {% endif %}#}
+{#                                        {% endif %}#}
+{#                                    {% endfor %}#}
+{#                                    {% if unique_titles|length > 2 %}#}
+{#                                        <div class="title-more" title="还有 {{ unique_titles|length - 2 }} 个称号">#}
+{#                                            +{{ unique_titles|length - 2 }}#}
+{#                                        </div>#}
+{#                                    {% endif %}#}
+{#                                {% else %}#}
+{#                                    <span class="no-title"></span>#}
+{#                                {% endif %}#}
+{#                            </div>#}
+{#                        </td>#}
                         <td>
                             <div class="trophy-container">
                                 {% for trophy in player.trophy_history %}
@@ -131,7 +130,6 @@
                         <td class="{% if player.avg_adpr >= 140 %}adr-highlight-1{% elif player.avg_adpr >= 120 %}adr-highlight-2{% elif player.avg_adpr >= 100 %}adr-highlight-3{% elif player.avg_adpr >= 80 %}adr-highlight-4{% else %}adr-highlight-5{% endif %}">{{ "%.2f"|format(player.avg_adpr) }}</td>
                         <td>{{ "%.2f"|format(player.avg_we) }}</td>
                         <td>{{ "%.1f"|format(player.avg_headshot_ratio * 100) }}%</td>
-                        <td>{%if player.total_game_count > 0%}{{ "%d"|format(player.avg_damage_health / player.total_game_count) }}{%endif%}</td>
                         <td>{{ player.total_mvp }}</td>
                         <td>
                             <span class="expand-icon" id="icon-{{ loop.index }}">▼</span>
