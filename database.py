@@ -235,6 +235,75 @@ class Config(BaseModel, CRUDMixin):
             raise
 
 
+class PlayerTitle(BaseModel, CRUDMixin):
+    """玩家称号模型"""
+    player_id = CharField(max_length=64)  # 玩家ID
+    cup_name = CharField(max_length=128, null=True)  # 杯赛名称
+    play_day = CharField(max_length=64, null=True)  # 比赛日期
+    title_name = CharField(max_length=128)  # 称号名称
+    title_description = TextField(null=True)  # 称号描述
+    title_category = CharField(max_length=64)  # 称号分类
+    title_type = CharField(max_length=32)  # 称号类型 (positive/negative/neutral)
+    title_rarity = CharField(max_length=32)  # 称号稀有度
+    title_priority = IntegerField(default=1)  # 称号优先级
+    title_score = DoubleField(default=0.0)  # 称号匹配分数
+    is_active = BooleanField(default=True)  # 是否激活
+    awarded_at = DateTimeField(default=datetime.now)  # 获得时间
+
+    class Meta:
+        table_name = 'player_title'
+        indexes = (
+            (('player_id', 'cup_name', 'play_day'), False),
+        )
+
+    @classmethod
+    def get_player_titles(cls, player_id: str, cup_name: str = None, play_day: str = None) -> List[Dict[str, Any]]:
+        """获取玩家称号"""
+        try:
+            query = cls.select().where(cls.player_id == player_id, cls.is_active == True)
+            if cup_name:
+                query = query.where(cls.cup_name == cup_name)
+            if play_day:
+                query = query.where(cls.play_day == play_day)
+            
+            query = query.order_by(cls.title_priority.desc(), cls.title_score.desc())
+            return list(query.dicts())
+        except Exception as e:
+            logger.error(f"获取玩家称号失败: {str(e)}")
+            return []
+
+    @classmethod
+    def update_player_titles(cls, player_id: str, cup_name: str, play_day: str, titles_data: List[Dict]) -> bool:
+        """更新玩家称号"""
+        try:
+            # 先删除该玩家在指定杯赛和日期的旧称号
+            cls.delete().where(
+                cls.player_id == player_id,
+                cls.cup_name == cup_name,
+                cls.play_day == play_day
+            ).execute()
+            
+            # 插入新称号
+            for title_data in titles_data:
+                cls.create(
+                    player_id=player_id,
+                    cup_name=cup_name,
+                    play_day=play_day,
+                    title_name=title_data['name'],
+                    title_description=title_data['description'],
+                    title_category=title_data['category'],
+                    title_type=title_data['type'],
+                    title_rarity=title_data['rarity'],
+                    title_priority=title_data['priority'],
+                    title_score=title_data['score']
+                )
+            
+            return True
+        except Exception as e:
+            logger.error(f"更新玩家称号失败: {str(e)}")
+            return False
+
+
 class CupDayChampion(BaseModel, CRUDMixin):
     cup_name = CharField(max_length=128)  # 杯赛名称
     day = CharField(max_length=64)  # 日期
@@ -509,4 +578,4 @@ class MatchPlayer(BaseModel, CRUDMixin):
 def create_tables():
     """Create database tables if they don't exist"""
     with db:
-        db.create_tables([Config, Match, MatchPlayer, Player, CupDayChampion], safe=True)
+        db.create_tables([Config, Match, MatchPlayer, Player, CupDayChampion, PlayerTitle], safe=True)

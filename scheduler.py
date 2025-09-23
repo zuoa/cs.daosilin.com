@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 from ajlog import logger
 from config import CUP_NAME, CUP_TEAM_NUM, DEFAULT_CRAWL_PLAYER_IDS
 from database import create_tables, Match, MatchPlayer, Player, CupDayChampion, Config
+from title_service import title_service
 from utils import get_play_day
 from wm import WMAPI
 
@@ -315,9 +316,40 @@ def create_scheduler():
     return scheduler
 
 
+def calc_titles():
+    try:
+        # 获取所有杯赛
+        cup_days = MatchPlayer.get_cup_day_set()
+        if not cup_days:
+            logger.warning("没有找到任何比赛数据")
+            return
+
+        # 获取杯赛名称（从配置或数据库）
+        cup_name = CUP_NAME
+
+        # 计算整个杯赛的称号
+        success = title_service.calculate_and_save_titles(cup_name)
+        if success:
+            logger.info(f"成功计算 {cup_name} 的称号")
+        else:
+            logger.error(f"计算 {cup_name} 称号失败")
+
+        # 计算每个比赛日的称号
+        for day in cup_days:
+            success = title_service.calculate_and_save_titles(cup_name, day)
+            if success:
+                logger.info(f"成功计算 {cup_name} {day} 的称号")
+            else:
+                logger.error(f"计算 {cup_name} {day} 称号失败")
+
+    except Exception as e:
+        logger.error(f"计算称号失败: {str(e)}")
+
+
 if __name__ == '__main__':
     load_dotenv()
     create_tables()
+    calc_titles()
     crawl_all()
 
     scheduler = create_scheduler()

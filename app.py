@@ -3,7 +3,8 @@ from flask_caching import Cache
 
 from ajlog import logger
 from config import CUP_NAME
-from database import MatchPlayer, Player, CupDayChampion, create_tables, Config
+from database import MatchPlayer, Player, CupDayChampion, create_tables, Config, PlayerTitle
+from title_service import title_service
 
 app = Flask(__name__)
 
@@ -67,6 +68,10 @@ def index_cup_day(cup, day=None):
                     'trophy': 'runner_up',
                 })
 
+        # 获取玩家称号
+        titles = title_service.get_player_titles(player_id, cup, day)
+        player['titles'] = titles
+
         player_data.append(player)
 
     # 根据rating排序
@@ -87,6 +92,67 @@ def init_db():
         logger.info("数据库初始化完成")
     except Exception as e:
         logger.error(f"数据库初始化失败: {str(e)}")
+
+
+@app.cli.command("calculate-titles")
+def calculate_titles():
+    """Calculate titles for all players"""
+    try:
+        from flask import current_app
+        with current_app.app_context():
+            # 获取所有杯赛
+            cup_days = MatchPlayer.get_cup_day_set()
+            if not cup_days:
+                logger.warning("没有找到任何比赛数据")
+                return
+            
+            # 获取杯赛名称（从配置或数据库）
+            cup_name = CUP_NAME
+            
+            # 计算整个杯赛的称号
+            success = title_service.calculate_and_save_titles(cup_name)
+            if success:
+                logger.info(f"成功计算 {cup_name} 的称号")
+            else:
+                logger.error(f"计算 {cup_name} 称号失败")
+            
+            # 计算每个比赛日的称号
+            for day in cup_days:
+                success = title_service.calculate_and_save_titles(cup_name, day)
+                if success:
+                    logger.info(f"成功计算 {cup_name} {day} 的称号")
+                else:
+                    logger.error(f"计算 {cup_name} {day} 称号失败")
+                    
+    except Exception as e:
+        logger.error(f"计算称号失败: {str(e)}")
+
+
+@app.cli.command("title-stats")
+def title_stats():
+    """Show title statistics"""
+    try:
+        from flask import current_app
+        with current_app.app_context():
+            cup_name = CUP_NAME
+            stats = title_service.get_title_statistics(cup_name)
+            
+            print(f"\n=== 称号统计信息 ===")
+            print(f"总玩家数: {stats.get('total_players', 0)}")
+            print(f"\n称号分布:")
+            for title_name, count in stats.get('title_distribution', {}).items():
+                print(f"  {title_name}: {count}")
+            
+            print(f"\n稀有度分布:")
+            for rarity, count in stats.get('rarity_distribution', {}).items():
+                print(f"  {rarity}: {count}")
+            
+            print(f"\n分类分布:")
+            for category, count in stats.get('category_distribution', {}).items():
+                print(f"  {category}: {count}")
+                
+    except Exception as e:
+        logger.error(f"获取称号统计失败: {str(e)}")
 
 
 if __name__ == '__main__':
