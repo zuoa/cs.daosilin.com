@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ player.alias_name or player.nickname }} - {{cup | upper}} 选手详情</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <link href="/static/player_detail.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/echarts/5.4.3/echarts.min.js"></script>
+    
+</head>
+<body>
+<div class="player-detail-container">
+    <!-- 选手头部信息 -->
+    <div class="player-header">
+        <div class="player-info">
+            {% if player.avatar %}
+            <img src="https://wsrv.nl/?url={{ player.avatar }}" alt="{{ player.nickname }}" class="player-avatar" onerror="this.style.display='none'">
+            {% endif %}
+            <div class="player-basic-info">
+                <h1>{{ player.alias_name or player.nickname }}</h1>
+                {% if cup %}
+                <div class="cup-name">{{ cup }}</div>
+                {% endif %}
+                <div class="player-id">ID: {{ player.player_id }}</div>
+                {% if player.steam_id %}
+                <div class="player-id">Steam ID: {{ player.steam_id }}</div>
+                {% endif %}
+            </div>
+            
+            <!-- 杯赛日期导航 - 移到选手信息右上角 -->
+            <div class="cup-days-nav">
+                <div class="cup-days-list">
+                    <a href="/player/{{ player.player_id }}/{{ cup }}/" 
+                       class="cup-day-item {% if not day %}active{% endif %}">
+                        全部
+                    </a>
+                    {% for cup_day in cup_days %}
+                    <a href="/player/{{ player.player_id }}/{{ cup }}/{{ cup_day }}/" 
+                       class="cup-day-item {% if cup_day == day %}active{% endif %}">
+                        {{ cup_day }}
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- 核心数据概览 -->
+        <div class="player-stats-overview">
+            <div class="stats-cards">
+                <div class="stat-card">
+                    <div class="stat-value">{{ "%.2f"|format(player_data.avg_pw_rating) }}</div>
+                    <div class="stat-label">PWR Rating</div>
+                    <div class="stat-rank">排名 #{{ player_rankings.get('avg_pw_rating', 'N/A') }}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ player_data.match_count }}</div>
+                    <div class="stat-label">比赛场次</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ "%.1f"|format(player_data.win_rate * 100) }}%</div>
+                    <div class="stat-label">胜率</div>
+                    <div class="stat-rank">排名 #{{ player_rankings.get('win_rate', 'N/A') }}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ "%.2f"|format(player_data.kd_ratio) }}</div>
+                    <div class="stat-label">K/D 比</div>
+                    <div class="stat-rank">排名 #{{ player_rankings.get('kd_ratio', 'N/A') }}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ player_data.total_kills }}</div>
+                    <div class="stat-label">总击杀</div>
+                    <div class="stat-rank">排名 #{{ player_rankings.get('total_kills', 'N/A') }}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value">{{ player_data.total_mvp }}</div>
+                    <div class="stat-label">MVP次数</div>
+                    <div class="stat-rank">排名 #{{ player_rankings.get('total_mvp', 'N/A') }}</div>
+                </div>
+            </div>
+            <div class="hexagon-chart-container">
+                <div id="hexagonChart" class="hexagon-chart"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 奖杯历史 -->
+    {% if trophy_history %}
+    <div class="trophy-section">
+        <h2 class="section-title">
+            <i class="fas fa-trophy"></i>
+            奖杯历史
+        </h2>
+        <div class="trophy-grid">
+            {% for trophy in trophy_history %}
+            <div class="trophy-item {{ trophy.trophy }}">
+                <div class="trophy-icon-container">
+                    {% if trophy.trophy == 'champion' %}
+                    <i class="fas fa-crown trophy-icon"></i>
+                    <div class="trophy-glow"></div>
+                    {% else %}
+                    <i class="fas fa-medal trophy-icon"></i>
+                    <div class="trophy-glow"></div>
+                    {% endif %}
+                </div>
+                <div class="trophy-content">
+                    <div class="trophy-day">
+                        {% if trophy.trophy == 'champion' %}
+                        <span class="trophy-title">冠军</span>
+                        {% else %}
+                        <span class="trophy-title">亚军</span>
+                        {% endif %}
+                        <span class="trophy-date">{{ trophy.day }}</span>
+                    </div>
+                    <div class="trophy-team">{{ trophy.team_name }} 队</div>
+                </div>
+                <div class="trophy-ribbon"></div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    <!-- 称号信息 -->
+    {% if titles %}
+    <div class="titles-section">
+        <h2 class="section-title">
+            <i class="fas fa-crown"></i>
+            选手称号
+        </h2>
+        <div class="titles-grid">
+            {% for title in titles %}
+            <div class="title-card {{ title.title_type }}">
+                <div class="title-icon">
+                    {% if title.title_type == 'positive' %}
+                        <i class="fas fa-star"></i>
+                    {% elif title.title_type == 'negative' %}
+                        <i class="fas fa-skull"></i>
+                    {% else %}
+                        <i class="fas fa-medal"></i>
+                    {% endif %}
+                </div>
+                <div class="title-content">
+                    <span class="title-name">{{ title.title_name }}</span>
+                    {% if title.awarded_at %}
+                    <div class="title-date">{{ title.awarded_at.strftime('%Y-%m-%d') if title.awarded_at else '' }}</div>
+                    {% endif %}
+                </div>
+                <div class="title-glow"></div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+
+
+    <!-- 地图统计分析 -->
+    <div class="map-stats-section">
+        <h2 class="section-title">
+            <i class="fas fa-map"></i>
+            地图表现分析
+        </h2>
+        {% if map_stats %}
+        <div class="map-stats-grid">
+            {% for map_stat in map_stats[:4] %}
+            <div class="map-stat-card">
+                <div class="map-stat-image">
+                    {% if map_stat.map_url %}
+                    <img src="{{ map_stat.map_url }}" alt="{{ map_stat.map_name }}" class="map-image" onerror="this.style.display='none'">
+                    {% endif %}
+                    <div class="map-overlay">
+                        <div class="map-name">{{ map_stat.map_name }}</div>
+                        <div class="map-name-en">{{ map_stat.map_name_en }}</div>
+                    </div>
+                </div>
+                <div class="map-stat-content">
+                    <div class="map-stat-title">比赛场次</div>
+                    <div class="map-stat-value">{{ map_stat.match_count }}</div>
+                    <div class="map-stat-rating">Rating: {{ "%.2f"|format(map_stat.avg_rating) }}</div>
+                    <div class="map-stat-details">
+                        <div class="map-detail-item">
+                            <span class="detail-label">胜率:</span>
+                            <span class="detail-value">{{ "%.1f"|format(map_stat.win_rate) }}%</span>
+                        </div>
+                        <div class="map-detail-item">
+                            <span class="detail-label">K/D:</span>
+                            <span class="detail-value">{{ "%.2f"|format(map_stat.kd_ratio) }}</span>
+                        </div>
+                        <div class="map-detail-item">
+                            <span class="detail-label">ADPR:</span>
+                            <span class="detail-value">{{ "%.1f"|format(map_stat.avg_adpr) }}</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="no-map-data">
+            <i class="fas fa-map-marked-alt"></i>
+            <p>暂无地图数据</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- 详细数据 -->
+    <div class="detailed-stats">
+        <h2 class="section-title">
+            <i class="fas fa-database"></i>
+            详细数据统计
+        </h2>
+        <div class="stats-grid">
+            <div class="stats-category">
+                <div class="category-title">基础数据</div>
+                <div class="stat-item">
+                    <span class="stat-item-label">比赛场次</span>
+                    <span class="stat-item-value">{{ player_data.match_count }}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-item-label">胜场数</span>
+                    <span class="stat-item-value">{{ player_data.win_count }}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-item-label">胜率</span>
+                    <span class="stat-item-value">{{ "%.1f"|format(player_data.win_rate * 100) }}%</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-item-label">总击杀</span>
+                    <span class="stat-item-value">{{ player_data.total_kills }}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-item-label">总死亡</span>
+                    <span class="stat-item-value">{{ player_data.total_deaths }}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-item-label">总助攻</span>
+                    <span class="stat-item-value">{{ player_data.total_assists }}</span>
+                </div>
+            </div>
+
+            <div class="stats-category">
+                <div class="category-title">击杀数据</div>
+                <div class="stat-item">
+                    <span class="stat-item-label">首杀数</span>
+                    <span class="stat-item-value">{{ player_data.total_first_kills }}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-item-label">首死数</span>
+                    <span class="stat-item-value">{{ player_data.total_first_deaths }}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-item-label">爆头数</span>
+                    <span class="stat-item-value">{{ player_data.total_headshots }}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-item-label">爆头率</span>
+                    <span class="stat-item-value">{{ "%.1f"|format(player_data.avg_headshot_ratio * 100) }}%</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-item-label">K/D 比</span>
+                    <span class="stat-item-value">{{ "%.2f"|format(player_data.kd_ratio) }}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-item-label">FK/FD 比</span>
+                    <span class="stat-item-value">{{ "%.2f"|format(player_data.fk_fd_ratio) }}</span>
+                </div>
+            </div>
+
+            <div class="stats-category">
+                <div class="category-title">多杀数据</div>
+                <div class="stat-item">
+                    <span class="stat-item-label">2K</span>
+                    <span class="stat-item-value">{{ player_data.total_2k }}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-item-label">3K</span>
+                    <span class="stat-item-value">{{ player_data.total_3k }}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-item-label">4K</span>
+                    <span class="stat-item-value">{{ player_data.total_4k }}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-item-label">5K</span>
+                    <span class="stat-item-value">{{ player_data.total_5k }}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-item-label">多杀总数</span>
+                    <span class="stat-item-value">{{ player_data.total_multi_kills }}</span>
+                </div>
+            </div>
+
+            <div class="stats-category">
+                <div class="category-title">残局数据</div>
+                <div class="stat-item">
+                    <span class="stat-item-label">1V2</span>
+                    <span class="stat-item-value">{{ player_data.total_1v2 }}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-item-label">1V3</span>
+                    <span class="stat-item-value">{{ player_data.total_1v3 }}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-item-label">1V4</span>
+                    <span class="stat-item-value">{{ player_data.total_1v4 }}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-item-label">1V5</span>
+                    <span class="stat-item-value">{{ player_data.total_1v5 }}</span>
+                </div>
+            </div>
+
+            <div class="stats-category">
+                <div class="category-title">投掷物数据</div>
+                <div class="stat-item">
+                    <span class="stat-item-label">闪光弹</span>
+                    <span class="stat-item-value">{{ player_data.total_flashes }}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-item-label">成功闪光</span>
+                    <span class="stat-item-value">{{ player_data.total_flash_success }}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-item-label">队友闪光</span>
+                    <span class="stat-item-value">{{ player_data.total_flash_teammate }}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-item-label">闪光成功率</span>
+                    <span class="stat-item-value">{{ "%.2f"|format(player_data.flash_success_ratio) }}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-item-label">投掷物总数</span>
+                    <span class="stat-item-value">{{ player_data.total_throws_count }}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-item-label">狙击数</span>
+                    <span class="stat-item-value">{{ player_data.total_snipe_num }}</span>
+                </div>
+            </div>
+
+            <div class="stats-category">
+                <div class="category-title">高级数据</div>
+                <div class="stat-item">
+                    <span class="stat-item-label">PWR Rating</span>
+                    <span class="stat-item-value">{{ "%.2f"|format(player_data.avg_pw_rating) }}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-item-label">RWS</span>
+                    <span class="stat-item-value">{{ "%.2f"|format(player_data.avg_rws) }}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-item-label">WE</span>
+                    <span class="stat-item-value">{{ "%.2f"|format(player_data.avg_we) }}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-item-label">ADPR</span>
+                    <span class="stat-item-value">{{ "%.2f"|format(player_data.avg_adpr) }}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-item-label">KAST</span>
+                    <span class="stat-item-value">{{ "%.2f"|format(player_data.avg_kast) }}</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-item-label">比赛MVP</span>
+                    <span class="stat-item-value">{{ player_data.match_mvp_count }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 图表分析 -->
+    <div class="charts-section">
+        <h2 class="section-title">
+            <i class="fas fa-chart-line"></i>
+            数据趋势分析
+        </h2>
+        <div class="charts-grid">
+            <div class="chart-container">
+                <div id="ratingChart" style="width: 100%; height: 280px;"></div>
+            </div>
+            <div class="chart-container">
+                <div id="kdChart" style="width: 100%; height: 280px;"></div>
+            </div>
+            <div class="chart-container">
+                <div id="killsChart" style="width: 100%; height: 280px;"></div>
+            </div>
+            <div class="chart-container">
+                <div id="winRateChart" style="width: 100%; height: 280px;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 页脚 -->
+    <div class="footer">
+        <div class="footer-content">
+            <div class="footer-note">
+                数据时间：{{last_crawl_time or ''}} （数据更新会有延时）
+            </div>
+            <div class="watermark">
+                Made with ❤️ by <a href="https://space.bilibili.com/3493076609796324" target="_blank">AJ</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// 图表数据
+const historicalData = JSON.parse('{{ historical_data | tojson | safe }}');
+
+// 选手数据
+const playerData = {
+    avg_pw_rating: {{ player_data.avg_pw_rating or 0 }},
+    avg_we: {{ player_data.avg_we or 0 }},
+    kd_ratio: {{ player_data.kd_ratio or 0 }},
+    avg_adpr: {{ player_data.avg_adpr or 0 }},
+    win_rate: {{ (player_data.win_rate or 0) * 100 }},
+    avg_headshot_ratio: {{ player_data.avg_headshot_ratio or 0 }},
+    total_kills: {{ player_data.total_kills or 0 }},
+    total_mvp: {{ player_data.total_mvp or 0 }},
+    match_count: {{ player_data.match_count or 0 }}
+};
+
+// 准备图表数据
+const chartData = {
+    labels: historicalData.map(item => item.day),
+    rating: historicalData.map(item => item.data.avg_pw_rating || 0),
+    kd: historicalData.map(item => item.data.kd_ratio || 0),
+    kills: historicalData.map(item => item.data.total_kills || 0),
+    winRate: historicalData.map(item => (item.data.win_rate || 0) * 100)
+};
+
+// 通用图表配置
+const commonOptions = {
+    backgroundColor: 'transparent',
+    textStyle: {
+        color: '#1e293b'
+    },
+    grid: {
+        left: '3%',
+        right: '4%',
+        bottom: '3%',
+        containLabel: true,
+        backgroundColor: 'transparent'
+    },
+    tooltip: {
+        trigger: 'axis',
+        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        borderColor: '#e2e8f0',
+        borderWidth: 1,
+        textStyle: {
+            color: '#1e293b'
+        }
+    },
+    legend: {
+        textStyle: {
+            color: '#1e293b'
+        }
+    }
+};
+
+// Rating 趋势图
+const ratingChart = echarts.init(document.getElementById('ratingChart'));
+const ratingOption = {
+    ...commonOptions,
+    title: {
+        text: 'PWR Rating 趋势',
+        textStyle: {
+            color: '#1e293b',
+            fontSize: 18,
+            fontWeight: '700',
+            fontFamily: 'Inter, Noto Sans SC, sans-serif'
+        },
+        left: 'center',
+        top: 10,
+        subtext: '选手综合评分变化趋势',
+        subtextStyle: {
+            color: '#64748b',
+            fontSize: 12,
+            fontWeight: '500'
+        }
+    },
+    grid: {
+        left: '5%',
+        right: '5%',
+        bottom: '8%',
+        top: '15%',
+        containLabel: true,
+        backgroundColor: 'transparent'
+    },
+    xAxis: {
+        type: 'category',
+        data: chartData.labels,
+        axisLine: {
+            lineStyle: {
+                color: '#e2e8f0',
+                width: 2
+            }
+        },
+        axisTick: {
+            lineStyle: {
+                color: '#e2e8f0',
+                width: 1
+            },
+            length: 4
+        },
+        axisLabel: {
+            color: '#64748b',
+            fontSize: 11,
+            fontWeight: '500',
+            formatter: function(value) {
+                return value.substring(4, 8) + '-' + value.substring(8, 10) + '-' + value.substring(10, 12);
+            }
+        }
+    },
+    yAxis: {
+        type: 'value',
+        min: 0,
+        max: function(value) {
+            return Math.ceil(value.max * 1.1);
+        },
+        axisLine: {
+            lineStyle: {
+                color: '#e2e8f0',
+                width: 2
+            }
+        },
+        axisTick: {
+            lineStyle: {
+                color: '#e2e8f0',
+                width: 1
+            },
+            length: 4
+        },
+        axisLabel: {
+            color: '#64748b',
+            fontSize: 11,
+            fontWeight: '500',
+            formatter: '{value}'
+        },
+        splitLine: {
+            lineStyle: {
+                color: '#f1f5f9',
+                width: 1,
+                type: 'dashed'
+            }
+        }
+    },
+    series: [{
+        name: 'PWR Rating',
+        type: 'line',
+        data: chartData.rating,
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 6,
+        lineStyle: {
+            color: '#3b82f6',
+            width: 3
+        },
+        itemStyle: {
+            color: '#3b82f6',
+            borderColor: '#ffffff',
+            borderWidth: 2
+        },
+        emphasis: {
+            itemStyle: {
+                color: '#1d4ed8',
+                borderColor: '#ffffff',
+                borderWidth: 3,
+                shadowBlur: 10,
+                shadowColor: 'rgba(59, 130, 246, 0.5)'
+            }
+        },
+        areaStyle: {
+            color: {
+                type: 'linear',
+                x: 0,
+                y: 0,
+                x2: 0,
+                y2: 1,
+                colorStops: [{
+                    offset: 0, color: 'rgba(59, 130, 246, 0.3)'
+                }, {
+                    offset: 1, color: 'rgba(59, 130, 246, 0.05)'
+                }]
+            }
+        }
+    }]
+};
+ratingChart.setOption(ratingOption);
+
+// K/D 趋势图
+const kdChart = echarts.init(document.getElementById('kdChart'));
+const kdOption = {
+    ...commonOptions,
+    title: {
+        text: 'K/D 比趋势',
+        textStyle: {
+            color: '#1e293b',
+            fontSize: 18,
+            fontWeight: '700',
+            fontFamily: 'Inter, Noto Sans SC, sans-serif'
+        },
+        left: 'center',
+        top: 10,
+        subtext: '击杀死亡比变化趋势',
+        subtextStyle: {
+            color: '#64748b',
+            fontSize: 12,
+            fontWeight: '500'
+        }
+    },
+    grid: {
+        left: '5%',
+        right: '5%',
+        bottom: '8%',
+        top: '15%',
+        containLabel: true,
+        backgroundColor: 'transparent'
+    },
+    xAxis: {
+        type: 'category',
+        data: chartData.labels,
+        axisLine: {
+            lineStyle: {
+                color: '#e2e8f0'
+            }
+        },
+        axisTick: {
+            lineStyle: {
+                color: '#e2e8f0'
+            }
+        },
+        axisLabel: {
+            color: '#64748b'
+        }
+    },
+    yAxis: {
+        type: 'value',
+        axisLine: {
+            lineStyle: {
+                color: '#e2e8f0'
+            }
+        },
+        axisLabel: {
+            color: '#64748b'
+        },
+        splitLine: {
+            lineStyle: {
+                color: '#f1f5f9'
+            }
+        }
+    },
+    series: [{
+        name: 'K/D 比',
+        type: 'line',
+        data: chartData.kd,
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 6,
+        lineStyle: {
+            color: '#ef4444',
+            width: 3
+        },
+        itemStyle: {
+            color: '#ef4444',
+            borderColor: '#ffffff',
+            borderWidth: 2
+        },
+        emphasis: {
+            itemStyle: {
+                color: '#dc2626',
+                borderColor: '#ffffff',
+                borderWidth: 3,
+                shadowBlur: 10,
+                shadowColor: 'rgba(239, 68, 68, 0.5)'
+            }
+        },
+        areaStyle: {
+            color: {
+                type: 'linear',
+                x: 0,
+                y: 0,
+                x2: 0,
+                y2: 1,
+                colorStops: [{
+                    offset: 0, color: 'rgba(239, 68, 68, 0.3)'
+                }, {
+                    offset: 1, color: 'rgba(239, 68, 68, 0.05)'
+                }]
+            }
+        }
+    }]
+};
+kdChart.setOption(kdOption);
+
+// 击杀数据图
+const killsChart = echarts.init(document.getElementById('killsChart'));
+const killsOption = {
+    ...commonOptions,
+    title: {
+        text: '总击杀数',
+        textStyle: {
+            color: '#1e293b',
+            fontSize: 18,
+            fontWeight: '700',
+            fontFamily: 'Inter, Noto Sans SC, sans-serif'
+        },
+        left: 'center',
+        top: 10,
+        subtext: '每日击杀数量统计',
+        subtextStyle: {
+            color: '#64748b',
+            fontSize: 12,
+            fontWeight: '500'
+        }
+    },
+    grid: {
+        left: '5%',
+        right: '5%',
+        bottom: '8%',
+        top: '15%',
+        containLabel: true,
+        backgroundColor: 'transparent'
+    },
+    xAxis: {
+        type: 'category',
+        data: chartData.labels,
+        axisLine: {
+            lineStyle: {
+                color: '#e2e8f0'
+            }
+        },
+        axisTick: {
+            lineStyle: {
+                color: '#e2e8f0'
+            }
+        },
+        axisLabel: {
+            color: '#64748b'
+        }
+    },
+    yAxis: {
+        type: 'value',
+        axisLine: {
+            lineStyle: {
+                color: '#e2e8f0'
+            }
+        },
+        axisLabel: {
+            color: '#64748b'
+        },
+        splitLine: {
+            lineStyle: {
+                color: '#f1f5f9'
+            }
+        }
+    },
+    series: [{
+        name: '总击杀',
+        type: 'bar',
+        data: chartData.kills,
+        barWidth: '60%',
+        itemStyle: {
+            color: {
+                type: 'linear',
+                x: 0,
+                y: 0,
+                x2: 0,
+                y2: 1,
+                colorStops: [{
+                    offset: 0, color: '#f59e0b'
+                }, {
+                    offset: 1, color: '#fbbf24'
+                }]
+            },
+            borderRadius: [6, 6, 0, 0],
+            shadowBlur: 4,
+            shadowColor: 'rgba(245, 158, 11, 0.3)'
+        },
+        emphasis: {
+            itemStyle: {
+                color: {
+                    type: 'linear',
+                    x: 0,
+                    y: 0,
+                    x2: 0,
+                    y2: 1,
+                    colorStops: [{
+                        offset: 0, color: '#d97706'
+                    }, {
+                        offset: 1, color: '#f59e0b'
+                    }]
+                },
+                shadowBlur: 8,
+                shadowColor: 'rgba(245, 158, 11, 0.5)'
+            }
+        }
+    }]
+};
+killsChart.setOption(killsOption);
+
+// 胜率趋势图
+const winRateChart = echarts.init(document.getElementById('winRateChart'));
+const winRateOption = {
+    ...commonOptions,
+    title: {
+        text: '胜率趋势',
+        textStyle: {
+            color: '#1e293b',
+            fontSize: 18,
+            fontWeight: '700',
+            fontFamily: 'Inter, Noto Sans SC, sans-serif'
+        },
+        left: 'center',
+        top: 10,
+        subtext: '比赛胜率变化趋势',
+        subtextStyle: {
+            color: '#64748b',
+            fontSize: 12,
+            fontWeight: '500'
+        }
+    },
+    grid: {
+        left: '5%',
+        right: '5%',
+        bottom: '8%',
+        top: '15%',
+        containLabel: true,
+        backgroundColor: 'transparent'
+    },
+    xAxis: {
+        type: 'category',
+        data: chartData.labels,
+        axisLine: {
+            lineStyle: {
+                color: '#e2e8f0'
+            }
+        },
+        axisTick: {
+            lineStyle: {
+                color: '#e2e8f0'
+            }
+        },
+        axisLabel: {
+            color: '#64748b'
+        }
+    },
+    yAxis: {
+        type: 'value',
+        max: 100,
+        axisLine: {
+            lineStyle: {
+                color: '#e2e8f0'
+            }
+        },
+        axisLabel: {
+            color: '#64748b',
+            formatter: '{value}%'
+        },
+        splitLine: {
+            lineStyle: {
+                color: '#f1f5f9'
+            }
+        }
+    },
+    series: [{
+        name: '胜率 (%)',
+        type: 'line',
+        data: chartData.winRate,
+        smooth: true,
+        symbol: 'circle',
+        symbolSize: 6,
+        lineStyle: {
+            color: '#10b981',
+            width: 3
+        },
+        itemStyle: {
+            color: '#10b981',
+            borderColor: '#ffffff',
+            borderWidth: 2
+        },
+        emphasis: {
+            itemStyle: {
+                color: '#059669',
+                borderColor: '#ffffff',
+                borderWidth: 3,
+                shadowBlur: 10,
+                shadowColor: 'rgba(16, 185, 129, 0.5)'
+            }
+        },
+        areaStyle: {
+            color: {
+                type: 'linear',
+                x: 0,
+                y: 0,
+                x2: 0,
+                y2: 1,
+                colorStops: [{
+                    offset: 0, color: 'rgba(16, 185, 129, 0.3)'
+                }, {
+                    offset: 1, color: 'rgba(16, 185, 129, 0.05)'
+                }]
+            }
+        }
+    }]
+};
+winRateChart.setOption(winRateOption);
+
+// 六边形图表
+const hexagonChart = echarts.init(document.getElementById('hexagonChart'));
+const hexagonData = [
+    { name: 'Rating', value: playerData.avg_pw_rating, max: 2.0 },
+    { name: 'WE', value: playerData.avg_we, max: 20.0 },
+    { name: 'K/D', value: playerData.kd_ratio, max: 2.0 },
+    { name: 'ADPR', value: playerData.avg_adpr, max: 100 },
+    { name: '胜率', value: playerData.win_rate, max: 100 },
+    { name: '爆头率', value: playerData.avg_headshot_ratio * 100, max: 100 }
+];
+
+const hexagonOption = {
+    backgroundColor: 'transparent',
+    radar: {
+        indicator: hexagonData.map(function(item) {
+            return {
+                name: item.name,
+                max: item.max,
+                min: 0
+            };
+        }),
+        center: ['50%', '50%'],
+        radius: '85%',
+        axisName: {
+            color: '#64748b',
+            fontSize: 11
+        },
+        splitArea: {
+            areaStyle: {
+                color: ['rgba(59, 130, 246, 0.08)', 'rgba(59, 130, 246, 0.04)', 'rgba(59, 130, 246, 0.02)']
+            }
+        },
+        splitLine: {
+            lineStyle: {
+                color: '#e2e8f0',
+                width: 1
+            }
+        },
+        axisLine: {
+            lineStyle: {
+                color: '#e2e8f0',
+                width: 1
+            }
+        },
+        splitNumber: 5
+    },
+    series: [{
+        name: '选手数据',
+        type: 'radar',
+        data: [{
+            value: hexagonData.map(function(item) {
+                // 确保数值不超过最大值
+                return Math.min(item.value, item.max);
+            }),
+            name: '当前数据',
+            areaStyle: {
+                color: 'rgba(59, 130, 246, 0.25)'
+            },
+            lineStyle: {
+                color: '#3b82f6',
+                width: 2
+            },
+            itemStyle: {
+                color: '#3b82f6',
+                borderColor: '#3b82f6',
+                borderWidth: 2
+            },
+            symbolSize: 6
+        }]
+    }]
+};
+hexagonChart.setOption(hexagonOption);
+
+// 响应式处理
+window.addEventListener('resize', function() {
+    ratingChart.resize();
+    kdChart.resize();
+    killsChart.resize();
+    winRateChart.resize();
+    hexagonChart.resize();
+});
+</script>
+</body>
+</html>

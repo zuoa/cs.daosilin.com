@@ -343,6 +343,7 @@ def calc_titles(today):
 if __name__ == '__main__':
     load_dotenv()
     create_tables()
+    calc_titles('20250921')
     # crawl_all()
     scheduler = create_scheduler()
     try:

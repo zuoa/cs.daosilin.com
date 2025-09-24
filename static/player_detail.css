@@ -1,0 +1,985 @@
+/* 选手详情页样式 - 扁平化设计 */
+.player-detail-container {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+    background: #f8fafc;
+    min-height: 100vh;
+    color: #1e293b;
+    font-family: 'Inter', 'Noto Sans SC', sans-serif;
+}
+
+
+/* 杯赛日期导航 - 移到选手信息右上角 */
+.cup-days-nav {
+    background: #ffffff;
+    padding: 15px;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.cup-days-list {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.cup-day-item {
+    background: #f1f5f9;
+    color: #64748b;
+    text-decoration: none;
+    padding: 12px 24px;
+    font-weight: 500;
+}
+
+.cup-day-item:hover {
+    background: #3b82f6;
+    color: #ffffff;
+}
+
+.cup-day-item.active {
+    background: #10b981;
+    color: #ffffff;
+}
+
+/* 选手头部信息 */
+.player-header {
+    background: #ffffff;
+    padding: 30px;
+    margin-bottom: 30px;
+    position: relative;
+}
+
+.player-header::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 5px;
+    background: #3b82f6;
+}
+
+.player-info {
+    display: flex;
+    align-items: center;
+    gap: 25px;
+    margin-bottom: 20px;
+    justify-content: space-between;
+    flex-wrap: wrap;
+}
+
+.player-avatar {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.player-basic-info h1 {
+    font-size: 2.5rem;
+    font-weight: 800;
+    margin: 0 0 10px 0;
+    color: #3b82f6;
+}
+
+.player-basic-info .cup-name {
+    font-size: 1.2rem;
+    color: #10b981;
+    margin-bottom: 12px;
+    font-weight: 600;
+    background: linear-gradient(135deg, #10b981, #059669);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: 0 2px 4px rgba(16, 185, 129, 0.1);
+}
+
+.player-basic-info .player-id {
+    font-size: 1.1rem;
+    color: #64748b;
+    margin-bottom: 8px;
+    font-weight: 500;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+/* 核心数据概览 */
+.player-stats-overview {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    gap: 30px;
+    margin-top: 20px;
+    align-items: center;
+}
+
+.stats-cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 15px;
+}
+
+.stat-card {
+    background: #ffffff;
+    padding: 20px;
+    text-align: center;
+    position: relative;
+}
+
+.stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: #3b82f6;
+}
+
+.stat-value {
+    font-size: 2rem;
+    font-weight: 800;
+    color: #3b82f6;
+    margin-bottom: 6px;
+}
+
+.stat-label {
+    font-size: 0.9rem;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.stat-rank {
+    font-size: 0.8rem;
+    color: #ef4444;
+    font-weight: 600;
+    background: rgba(239, 68, 68, 0.1);
+    padding: 2px 8px;
+    border-radius: 10px;
+    display: inline-block;
+}
+
+.hexagon-chart-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 320px;
+    background: #ffffff;
+}
+
+.hexagon-chart {
+    width: 300px;
+    height: 300px;
+}
+
+/* 称号信息 */
+.titles-section {
+    background: #ffffff;
+    padding: 30px;
+    margin-bottom: 30px;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.section-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 25px;
+    color: #3b82f6;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.section-title i {
+    font-size: 1.3rem;
+    color: #f59e0b;
+    text-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);
+}
+
+.titles-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 20px;
+}
+
+.title-card {
+    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+    padding: 20px;
+    text-align: center;
+    position: relative;
+    border-radius: 12px;
+    border: 1px solid rgba(226, 232, 240, 0.5);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+    cursor: pointer;
+}
+
+.title-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+.title-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    border-radius: 12px 12px 0 0;
+}
+
+.title-card.positive::before {
+    background: linear-gradient(90deg, #10b981, #34d399);
+}
+
+.title-card.negative::before {
+    background: linear-gradient(90deg, #ef4444, #f87171);
+}
+
+.title-card.neutral::before {
+    background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.title-icon {
+    font-size: 2rem;
+    margin-bottom: 12px;
+    position: relative;
+    z-index: 2;
+}
+
+.title-card.positive .title-icon {
+    color: #10b981;
+    text-shadow: 0 2px 4px rgba(16, 185, 129, 0.3);
+}
+
+.title-card.negative .title-icon {
+    color: #ef4444;
+    text-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);
+}
+
+.title-card.neutral .title-icon {
+    color: #f59e0b;
+    text-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);
+}
+
+.title-content {
+    position: relative;
+    z-index: 2;
+}
+
+.title-name {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+    display: block;
+    color: #1e293b;
+    line-height: 1.3;
+}
+
+.title-date {
+    font-size: 0.85rem;
+    color: #64748b;
+    font-weight: 500;
+    background: rgba(100, 116, 139, 0.1);
+    padding: 4px 8px;
+    border-radius: 6px;
+    display: inline-block;
+}
+
+.title-glow {
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 70%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+
+.title-card:hover .title-glow {
+    opacity: 1;
+}
+
+.title-card.positive:hover .title-glow {
+    background: radial-gradient(circle, rgba(16, 185, 129, 0.15) 0%, transparent 70%);
+}
+
+.title-card.negative:hover .title-glow {
+    background: radial-gradient(circle, rgba(239, 68, 68, 0.15) 0%, transparent 70%);
+}
+
+.title-card.neutral:hover .title-glow {
+    background: radial-gradient(circle, rgba(245, 158, 11, 0.15) 0%, transparent 70%);
+}
+
+/* 奖杯历史 */
+.trophy-section {
+    background: #ffffff;
+    padding: 30px;
+    margin-bottom: 30px;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.trophy-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 20px;
+    margin-top: 25px;
+}
+
+.trophy-item {
+    background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%);
+    padding: 25px;
+    text-align: center;
+    position: relative;
+    border-radius: 12px;
+    border: 1px solid rgba(226, 232, 240, 0.5);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+    cursor: pointer;
+}
+
+.trophy-item:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+.trophy-item::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    border-radius: 12px 12px 0 0;
+}
+
+.trophy-item.champion::before {
+    background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.trophy-item.runner-up::before {
+    background: linear-gradient(90deg, #6b7280, #9ca3af);
+}
+
+.trophy-icon-container {
+    position: relative;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.trophy-icon {
+    font-size: 3rem;
+    position: relative;
+    z-index: 2;
+}
+
+.trophy-item.champion .trophy-icon {
+    color: #f59e0b;
+    text-shadow: 0 4px 8px rgba(245, 158, 11, 0.4);
+}
+
+.trophy-item.runner-up .trophy-icon {
+    color: #6b7280;
+    text-shadow: 0 4px 8px rgba(107, 114, 128, 0.4);
+}
+
+.trophy-glow {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+
+.trophy-item.champion .trophy-glow {
+    background: radial-gradient(circle, rgba(245, 158, 11, 0.2) 0%, transparent 70%);
+}
+
+.trophy-item.runner-up .trophy-glow {
+    background: radial-gradient(circle, rgba(107, 114, 128, 0.2) 0%, transparent 70%);
+}
+
+.trophy-item:hover .trophy-glow {
+    opacity: 1;
+}
+
+.trophy-content {
+    position: relative;
+    z-index: 2;
+}
+
+.trophy-day {
+    margin-bottom: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.trophy-title {
+    font-size: 1.3rem;
+    font-weight: 800;
+    color: #1e293b;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.trophy-item.champion .trophy-title {
+    color: #f59e0b;
+    text-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);
+}
+
+.trophy-item.runner-up .trophy-title {
+    color: #6b7280;
+    text-shadow: 0 2px 4px rgba(107, 114, 128, 0.3);
+}
+
+.trophy-date {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #64748b;
+    background: rgba(100, 116, 139, 0.1);
+    padding: 6px 12px;
+    border-radius: 8px;
+    display: inline-block;
+}
+
+.trophy-team {
+    color: #64748b;
+    font-size: 0.95rem;
+    font-weight: 600;
+    background: rgba(59, 130, 246, 0.1);
+    padding: 8px 16px;
+    border-radius: 8px;
+    display: inline-block;
+    border: 1px solid rgba(59, 130, 246, 0.2);
+}
+
+.trophy-ribbon {
+    position: absolute;
+    top: -2px;
+    right: 20px;
+    width: 40px;
+    height: 8px;
+    background: linear-gradient(90deg, #f59e0b, #fbbf24);
+    border-radius: 0 0 4px 4px;
+    opacity: 0.8;
+}
+
+.trophy-item.champion .trophy-ribbon {
+    background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.trophy-item.runner-up .trophy-ribbon {
+    background: linear-gradient(90deg, #6b7280, #9ca3af);
+}
+
+/* 图表分析 */
+.charts-section {
+    background: #ffffff;
+    padding: 30px;
+    margin-bottom: 30px;
+}
+
+.charts-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 25px;
+    margin-top: 20px;
+}
+
+.chart-container {
+    background: #ffffff;
+    padding: 20px;
+    position: relative;
+}
+
+.chart-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: #3b82f6;
+}
+
+/* 图表标题样式已移至JavaScript配置中 */
+
+/* 地图统计分析 */
+.map-stats-section {
+    background: #ffffff;
+    padding: 30px;
+    margin-bottom: 30px;
+}
+
+.map-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.map-stat-card {
+    background: #ffffff;
+    border-radius: 12px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.map-stat-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+.map-stat-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: #10b981;
+    z-index: 2;
+}
+
+.map-stat-image {
+    position: relative;
+    height: 120px;
+    overflow: hidden;
+    background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+}
+
+.map-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s ease;
+}
+
+.map-stat-card:hover .map-image {
+    transform: scale(1.05);
+}
+
+.map-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(to bottom, rgba(0, 0, 0, 0.3) 0%, rgba(0, 0, 0, 0.7) 100%);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    color: white;
+    text-align: center;
+    padding: 10px;
+}
+
+.map-name {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 4px;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.map-name-en {
+    font-size: 0.85rem;
+    font-weight: 500;
+    opacity: 0.9;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.map-stat-content {
+    padding: 20px;
+    text-align: center;
+}
+
+.map-stat-title {
+    font-size: 0.9rem;
+    color: #64748b;
+    margin-bottom: 8px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.map-stat-value {
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: #1e293b;
+    margin-bottom: 8px;
+}
+
+.map-stat-rating {
+    font-size: 0.9rem;
+    color: #3b82f6;
+    font-weight: 600;
+    background: rgba(59, 130, 246, 0.1);
+    padding: 4px 12px;
+    border-radius: 10px;
+    display: inline-block;
+    margin-bottom: 15px;
+}
+
+.map-stat-details {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.map-detail-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.5);
+}
+
+.map-detail-item:last-child {
+    border-bottom: none;
+}
+
+.detail-label {
+    font-size: 0.85rem;
+    color: #64748b;
+    font-weight: 500;
+}
+
+.detail-value {
+    font-size: 0.9rem;
+    color: #1e293b;
+    font-weight: 700;
+}
+
+.no-map-data {
+    text-align: center;
+    padding: 60px 20px;
+    color: #64748b;
+}
+
+.no-map-data i {
+    font-size: 3rem;
+    margin-bottom: 15px;
+    color: #cbd5e1;
+}
+
+.no-map-data p {
+    font-size: 1.1rem;
+    font-weight: 500;
+    margin: 0;
+}
+
+/* 详细数据 */
+.detailed-stats {
+    background: #ffffff;
+    padding: 30px;
+    margin-bottom: 30px;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.stats-category {
+    background: #ffffff;
+    padding: 20px;
+    position: relative;
+}
+
+.stats-category::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: #8b5cf6;
+}
+
+.category-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 15px;
+    color: #3b82f6;
+    border-bottom: 2px solid rgba(59, 130, 246, 0.3);
+    padding-bottom: 10px;
+}
+
+.stat-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(226, 232, 240, 0.5);
+    transition: all 0.2s ease;
+}
+
+.stat-item:last-child {
+    border-bottom: none;
+}
+
+.stat-item:hover {
+    background: rgba(59, 130, 246, 0.05);
+    border-radius: 8px;
+    padding-left: 8px;
+    padding-right: 8px;
+}
+
+.stat-item-label {
+    color: #64748b;
+    font-size: 0.95rem;
+    font-weight: 500;
+}
+
+.stat-item-value {
+    color: #1e293b;
+    font-weight: 700;
+    font-size: 1.05rem;
+}
+
+/* 页脚 */
+.footer {
+    background: #ffffff;
+    padding: 25px;
+    margin-top: 30px;
+}
+
+.footer-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.footer-note {
+    color: #64748b;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.watermark {
+    color: #64748b;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.watermark a {
+    color: #3b82f6;
+    text-decoration: none;
+    font-weight: 600;
+    transition: color 0.3s ease;
+}
+
+.watermark a:hover {
+    color: #1d4ed8;
+}
+
+/* 动画效果 - 已移除 */
+
+/* 加载动画 - 已移除 */
+
+/* 数据高亮效果 - 已移除 */
+
+/* 响应式设计 */
+@media (max-width: 1200px) {
+    .player-detail-container {
+        padding: 15px;
+    }
+    
+    .charts-grid {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+    
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px;
+    }
+}
+
+@media (max-width: 768px) {
+    .player-detail-container {
+        padding: 10px;
+    }
+
+    .player-info {
+        flex-direction: column;
+        text-align: center;
+        gap: 20px;
+    }
+    
+    .cup-days-nav {
+        margin-left: 0;
+        margin-top: 15px;
+    }
+
+    .player-basic-info h1 {
+        font-size: 2rem;
+    }
+
+    .player-stats-overview {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+
+    .stats-cards {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+    }
+
+    .map-stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px;
+    }
+    
+    .map-stat-image {
+        height: 100px;
+    }
+    
+    .map-name {
+        font-size: 1rem;
+    }
+    
+    .map-name-en {
+        font-size: 0.8rem;
+    }
+
+    .stats-grid {
+        grid-template-columns: 1fr;
+        gap: 15px;
+    }
+
+    .titles-grid {
+        grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+        gap: 15px;
+    }
+
+    .trophy-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px;
+    }
+
+    .cup-days-list {
+        gap: 8px;
+    }
+
+    .cup-day-item {
+        padding: 10px 16px;
+        font-size: 0.9rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .player-detail-container {
+        padding: 8px;
+    }
+
+    .player-header {
+        padding: 20px;
+    }
+
+    .player-avatar {
+        width: 80px;
+        height: 80px;
+    }
+
+    .player-basic-info h1 {
+        font-size: 1.8rem;
+    }
+
+    .stats-cards {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+
+    .map-stats-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    
+    .map-stat-image {
+        height: 80px;
+    }
+    
+    .map-name {
+        font-size: 0.9rem;
+    }
+    
+    .map-name-en {
+        font-size: 0.75rem;
+    }
+    
+    .map-stat-value {
+        font-size: 1.5rem;
+    }
+
+    .trophy-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .titles-grid {
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 12px;
+    }
+
+    .cup-day-item {
+        padding: 8px 12px;
+        font-size: 0.8rem;
+    }
+
+    .section-title {
+        font-size: 1.3rem;
+    }
+
+    .stat-value {
+        font-size: 1.6rem;
+    }
+}
+
+@media (max-width: 360px) {
+    .player-basic-info h1 {
+        font-size: 1.5rem;
+    }
+
+    .stat-value {
+        font-size: 1.4rem;
+    }
+
+    .section-title {
+        font-size: 1.2rem;
+    }
+
+    .chart-container {
+        padding: 15px;
+    }
+
+    #ratingChart, #kdChart, #killsChart, #winRateChart {
+        height: 200px !important;
+    }
+}
