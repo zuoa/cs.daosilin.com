@@ -96,13 +96,14 @@ body {
 }
 
 .header {
-    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 50%, #2a2a2a 100%);
+    /*background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 50%, #2a2a2a 100%);*/
+    background: url("bg.png") center/cover no-repeat;
     color: white;
-    padding: 60px 40px;
+    padding: 80px 40px;
     text-align: center;
     position: relative;
     flex-shrink: 0;
-    border-bottom: 1px solid var(--neutral-200);
+    border-bottom: 3px solid var(--neutral-200);
     width: 100%;
     max-width: 1600px;
     box-sizing: border-box;
