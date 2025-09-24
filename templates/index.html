@@ -45,6 +45,10 @@
     <!-- Cup Days Navigation -->
     <div class="cup-days-container">
         <div class="cup-days-list">
+            <a href="/{{ cup }}/" class="cup-day-item {% if not current_day %}active{% endif %}" data-current-day="{{ current_day }}" data-day="">
+                <span class="day-number">全</span>
+                <span class="day-name">全部</span>
+            </a>
             {% for day in cup_days %}
             <a href="/{{ cup }}/{{ day }}/" class="cup-day-item {% if day == current_day %}active{% endif %}" data-current-day="{{ current_day }}" data-day="{{ day }}">
                 <span class="day-number">{{ loop.index }}</span>
@@ -151,7 +155,13 @@
                 <td>{{ "%.1f"|format(player.avg_headshot_ratio * 100) }}%</td>
                 <td>{{ player.total_mvp }}</td>
                 <td>
-                    <span class="expand-icon" id="icon-{{ loop.index }}">▼</span>
+                    <div class="action-buttons">
+                        <a href="/player/{{ player.player_id }}/{{ cup }}{% if day %}/{{ day }}{% endif %}/" 
+                           class="detail-button" title="查看详情">
+                            <i class="fas fa-user"></i>
+                        </a>
+                        <span class="expand-icon" id="icon-{{ loop.index }}">▼</span>
+                    </div>
                 </td>
             </tr>
             <tr class="drawer" id="drawer-{{ loop.index }}">

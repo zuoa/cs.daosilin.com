@@ -127,6 +127,103 @@ def index_cup_day(cup, day=None):
                            last_crawl_time=last_crawl_time)
 
 
+@app.route('/player/<string:player_id>/')
+@app.route('/player/<string:player_id>/<string:cup>/')
+@app.route('/player/<string:player_id>/<string:cup>/<string:day>/')
+@cache.cached(timeout=60)
+def player_detail(player_id, cup=None, day=None):
+    """选手详情页"""
+    if cup is None:
+        cup = CUP_NAME
+
+    # 获取选手基本信息
+    player = Player.get_by_id(player_id)
+    if not player:
+        return error(404, "选手不存在")
+
+    # 获取选手比赛数据
+    player_data = MatchPlayer.get_match_exploit(cup, player_id, day)
+    if not player_data:
+        return error(404, "该选手在此杯赛/日期下无数据")
+
+    # 获取选手称号
+    titles = PlayerTitle.get_player_titles(player_id, cup, day)
+
+    # 获取选手历史奖杯
+    all_champions = CupDayChampion.filter_records(**{'cup_name': cup})
+    all_champions.sort(key=lambda champion: champion.get('day', ''))
+    
+    trophy_history = []
+    for champion in all_champions:
+        if player_id in champion.get("champion_team_player_ids", '').split(','):
+            trophy_history.append({
+                'day': champion.get('day'),
+                'team_name': champion.get('champion_team_name'),
+                'trophy': 'champion',
+            })
+        if player_id in champion.get("runner_up_team_player_ids", '').split(','):
+            trophy_history.append({
+                'day': champion.get('day'),
+                'team_name': champion.get('runner_up_team_name'),
+                'trophy': 'runner_up',
+            })
+
+    # 获取选手历史数据（用于图表展示）
+    historical_data = []
+    cup_days = MatchPlayer.get_cup_day_set()
+    
+    for historical_day in cup_days:
+        day_data = MatchPlayer.get_match_exploit(cup, player_id, historical_day)
+        if day_data:
+            historical_data.append({
+                'day': historical_day,
+                'data': day_data
+            })
+
+    # 获取所有选手数据用于排名比较
+    all_players = Player.get_all()
+    all_players_data = []
+    for p in all_players:
+        p_data = MatchPlayer.get_match_exploit(cup, p["player_id"], day)
+        if p_data:
+            p_data['player_id'] = p["player_id"]
+            p_data['nickname'] = p["nickname"]
+            all_players_data.append(p_data)
+
+    # 计算排名
+    player_rankings = {}
+    ranking_fields = ['avg_pw_rating', 'total_kills', 'kd_ratio', 'win_rate', 'avg_adpr', 'total_mvp']
+    
+    for field in ranking_fields:
+        if field in player_data:
+            sorted_players = sorted(all_players_data, key=lambda x: x.get(field, 0), reverse=True)
+            try:
+                rank = next(i for i, p in enumerate(sorted_players) if p['player_id'] == player_id) + 1
+                player_rankings[field] = rank
+            except StopIteration:
+                player_rankings[field] = len(all_players_data)
+
+    # 获取选手地图统计数据
+    map_stats = MatchPlayer.get_player_map_stats(cup, player_id, day)
+
+    # 获取杯赛信息
+    cup_days = MatchPlayer.get_cup_day_set()
+    last_crawl_time = Config.get_value("last_crawl_time")
+
+    return render_template('player_detail.html', 
+                         player=player, 
+                         player_data=player_data,
+                         titles=titles,
+                         trophy_history=trophy_history,
+                         historical_data=historical_data,
+                         player_rankings=player_rankings,
+                         map_stats=map_stats,
+                         cup=cup, 
+                         day=day,
+                         cup_days=cup_days,
+                         last_crawl_time=last_crawl_time)
+
+
 @app.route('/api/admin/title/refresh')
 def api_admin_title_refresh():
     auth = request.args.get('auth')

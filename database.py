@@ -574,6 +574,93 @@ class MatchPlayer(BaseModel, CRUDMixin):
             logger.error(f"get_match_exploit error: {e}")
             return None
 
+    @classmethod
+    def get_player_map_stats(cls, cup_name: str, player_id: str, play_day: str = None) -> List[Dict[str, Any]]:
+        """获取选手地图统计数据"""
+        try:
+            # 构建查询条件
+            conditions = [
+                cls.player_id == player_id,
+                Match.cup_name == cup_name
+            ]
+            
+            if play_day:
+                conditions.append(cls.play_day == play_day)
+            
+            # 联表查询获取地图信息
+            query = (cls.select(
+                Match.map_name_en.alias('map_name_en'),
+                fn.MAX(Match.map_name).alias('map_name'),
+                fn.MAX(Match.map_url).alias('map_url'),
+                fn.MAX(Match.map_logo).alias('map_logo'),
+                fn.COUNT(fn.DISTINCT(cls.match_id)).alias('match_count'),
+                fn.COALESCE(fn.SUM(cls.win), 0).alias('win_count'),
+                fn.COALESCE(fn.SUM(cls.kill), 0).alias('total_kills'),
+                fn.COALESCE(fn.SUM(cls.death), 0).alias('total_deaths'),
+                fn.COALESCE(fn.SUM(cls.assist), 0).alias('total_assists'),
+                fn.COALESCE(fn.AVG(cls.pw_rating), 0).alias('avg_rating'),
+                fn.COALESCE(fn.AVG(cls.kill), 0).alias('avg_kills'),
+                fn.COALESCE(fn.AVG(cls.death), 0).alias('avg_deaths'),
+                fn.COALESCE(fn.AVG(cls.assist), 0).alias('avg_assists'),
+                fn.COALESCE(fn.AVG(cls.headshot_ratio), 0).alias('avg_headshot_ratio'),
+                fn.COALESCE(fn.AVG(cls.adpr), 0).alias('avg_adpr'),
+                fn.COALESCE(fn.SUM(cls.mvp_value), 0).alias('total_mvp'),
+                fn.COALESCE(fn.SUM(cls.two_kill), 0).alias('total_2k'),
+                fn.COALESCE(fn.SUM(cls.three_kill), 0).alias('total_3k'),
+                fn.COALESCE(fn.SUM(cls.four_kill), 0).alias('total_4k'),
+                fn.COALESCE(fn.SUM(cls.five_kill), 0).alias('total_5k'),
+                fn.COALESCE(fn.SUM(cls.vs2), 0).alias('total_1v2'),
+                fn.COALESCE(fn.SUM(cls.vs3), 0).alias('total_1v3'),
+                fn.COALESCE(fn.SUM(cls.vs4), 0).alias('total_1v4'),
+                fn.COALESCE(fn.SUM(cls.vs5), 0).alias('total_1v5'),
+            )
+            .join(Match, on=(cls.match_id == Match.match_id))
+            .where(*conditions)
+            .group_by(Match.map_name_en)
+            .order_by(fn.COUNT(fn.DISTINCT(cls.match_id)).desc()))
+            
+            results = query.execute()
+            map_stats = []
+            
+            for result in results:
+                win_rate = (result.win_count / result.match_count * 100) if result.match_count > 0 else 0
+                kd_ratio = (result.total_kills / result.total_deaths) if result.total_deaths > 0 else 0
+                
+                map_stats.append({
+                    'map_name': result.map_name,
+                    'map_name_en': result.match.map_name_en,
+                    'map_url': result.map_url,
+                    'map_logo': result.map_logo,
+                    'match_count': result.match_count,
+                    'win_count': result.win_count,
+                    'win_rate': win_rate,
+                    'total_kills': result.total_kills,
+                    'total_deaths': result.total_deaths,
+                    'total_assists': result.total_assists,
+                    'avg_rating': float(result.avg_rating or 0),
+                    'avg_kills': float(result.avg_kills or 0),
+                    'avg_deaths': float(result.avg_deaths or 0),
+                    'avg_assists': float(result.avg_assists or 0),
+                    'avg_headshot_ratio': float(result.avg_headshot_ratio or 0),
+                    'avg_adpr': float(result.avg_adpr or 0),
+                    'kd_ratio': kd_ratio,
+                    'total_mvp': result.total_mvp or 0,
+                    'total_2k': result.total_2k or 0,
+                    'total_3k': result.total_3k or 0,
+                    'total_4k': result.total_4k or 0,
+                    'total_5k': result.total_5k or 0,
+                    'total_1v2': result.total_1v2 or 0,
+                    'total_1v3': result.total_1v3 or 0,
+                    'total_1v4': result.total_1v4 or 0,
+                    'total_1v5': result.total_1v5 or 0,
+                })
+            
+            return map_stats
+            
+        except Exception as e:
+            logger.error(f"获取选手地图统计数据失败: {str(e)}")
+            return []
+
     class Meta:
         table_name = 'match_player'
 
