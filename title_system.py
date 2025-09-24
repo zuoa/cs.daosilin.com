@@ -468,10 +468,22 @@ class RefactoredTitleSystem:
                 category=TitleCategory.KILLING,
                 title_type=TitleType.NEUTRAL,
                 condition_func=lambda data, all_data: self._is_high_in_both(
-                    data, all_data, 'total_kills', 'total_deaths', 0.7
+                    data, all_data, 'total_kills', 'total_deaths', 0.5
                 ),
                 priority=2
             ),
+
+            Title(
+                name="莽夫",
+                description="击杀数很高但首死数也很高的玩家",
+                category=TitleCategory.KILLING,
+                title_type=TitleType.NEUTRAL,
+                condition_func=lambda data, all_data: self._is_high_in_both(
+                    data, all_data, 'total_kills', 'total_first_deaths', 0.5
+                ),
+                priority=2
+            ),
+
             Title(
                 name="躺赢专家",
                 description="胜率很高但个人评分很低的玩家",
@@ -505,7 +517,7 @@ class RefactoredTitleSystem:
         """
         if not all_players_data:
             return False
-        
+
         val1 = player_data.get(field1, 0)
         val2 = player_data.get(field2, 0)
         
@@ -551,11 +563,11 @@ class RefactoredTitleSystem:
         qualified_titles.sort(key=lambda x: (x[0].priority, x[1]), reverse=True)
         
         return qualified_titles
-    
+
     def _calculate_title_score(self, title: Title, player_data: Dict, all_players_data: List[Dict] = None) -> float:
         """计算称号匹配度分数"""
         score = 1.0  # 基础分数
-        
+
         # 根据称号类型调整分数
         if title.title_type == TitleType.POSITIVE:
             # 正面称号根据相关数据值调整分数
@@ -577,9 +589,9 @@ class RefactoredTitleSystem:
                 # 相对比较称号根据排名调整分数
                 if all_players_data:
                     score += self._calculate_relative_score(title, player_data, all_players_data)
-        
+
         return score
-    
+
     def _calculate_relative_score(self, title: Title, player_data: Dict, all_players_data: List[Dict]) -> float:
         """计算相对比较称号的分数"""
         # 根据称号名称确定比较的字段
@@ -593,25 +605,25 @@ class RefactoredTitleSystem:
             '胜率之王': 'win_rate',
             '多杀之王': 'total_multi_kills',
         }
-        
+
         field_name = field_mapping.get(title.name)
         if not field_name:
             return 0.0
-        
+
         player_value = player_data.get(field_name, 0)
         all_values = [p.get(field_name, 0) for p in all_players_data]
-        
+
         # 计算相对排名分数
-        relative_rank = self._calculate_relative_rank(player_value, all_values, 
+        relative_rank = self._calculate_relative_rank(player_value, all_values,
                                                     reverse=title.title_type == TitleType.POSITIVE)
-        
+
         # 极值称号额外加分
         if "之王" in title.name:
-            is_extreme = self._is_extreme_value(player_value, all_values, 
+            is_extreme = self._is_extreme_value(player_value, all_values,
                                               is_max=title.title_type == TitleType.POSITIVE)
             if is_extreme:
                 return 3.0 + relative_rank * 2.0
-        
+
         return relative_rank * 2.0
     
     def get_best_titles(self, player_data: Dict, max_titles: int = None, all_players_data: List[Dict] = None) -> List[Title]:
