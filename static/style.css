@@ -96,7 +96,7 @@ body {
 }
 
 .header {
-    background: var(--neutral-900);
+    background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 50%, #2a2a2a 100%);
     color: white;
     padding: 60px 40px;
     text-align: center;
@@ -107,52 +107,119 @@ body {
     max-width: 1600px;
     box-sizing: border-box;
 }
+/* 方案1: 动态粒子背景 */
+/*        .header {*/
+/*            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 50%, #2a2a2a 100%);*/
+/*            color: white;*/
+/*            padding: 80px 40px;*/
+/*            text-align: center;*/
+/*            position: relative;*/
+/*            overflow: hidden;*/
+/*            border-bottom: 3px solid #ffa500;*/
+/*        }*/
 
+        .header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background:
+                radial-gradient(circle at 20% 80%, rgba(255, 165, 0, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(0, 150, 255, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 40% 40%, rgba(255, 100, 100, 0.05) 0%, transparent 50%);
+            animation: floatingBg 8s ease-in-out infinite alternate;
+        }
 
-.title {
-    font-family: 'Poppins', 'Noto Sans SC', sans-serif;
-    font-size: 3.5rem;
-    font-weight: 700;
-    margin-bottom: 20px;
-    position: relative;
-    z-index: 2;
-    color: #ffffff;
-    letter-spacing: -0.03em;
-    line-height: 1.1;
-    font-feature-settings: 'kern' 1, 'liga' 1;
-}
+        .header .particles {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: 1;
+        }
 
-.title a{
-    color: #ffffff;
-    text-decoration: none;
-    transition: all 0.3s ease;
-    position: relative;
-}
+        .particle {
+            position: absolute;
+            width: 2px;
+            height: 2px;
+            background: #ffa500;
+            border-radius: 50%;
+            animation: float 6s infinite linear;
+            opacity: 0.7;
+        }
 
-.subtitle {
-    font-family: 'Inter', 'Noto Sans SC', sans-serif;
-    font-size: 1.3rem;
-    opacity: 0.9;
-    position: relative;
-    z-index: 2;
-    font-weight: 500;
-    letter-spacing: 0.015em;
-    color: var(--neutral-300);
-    line-height: 1.4;
-}
+        .particle:nth-child(1) { left: 10%; animation-delay: 0s; }
+        .particle:nth-child(2) { left: 20%; animation-delay: 1s; }
+        .particle:nth-child(3) { left: 30%; animation-delay: 2s; }
+        .particle:nth-child(4) { left: 40%; animation-delay: 3s; }
+        .particle:nth-child(5) { left: 50%; animation-delay: 4s; }
+        .particle:nth-child(6) { left: 60%; animation-delay: 0.5s; }
+        .particle:nth-child(7) { left: 70%; animation-delay: 1.5s; }
+        .particle:nth-child(8) { left: 80%; animation-delay: 2.5s; }
+        .particle:nth-child(9) { left: 90%; animation-delay: 3.5s; }
 
+        @keyframes float {
+            0% { transform: translateY(100vh) scale(0); opacity: 0; }
+            10% { opacity: 1; }
+            90% { opacity: 1; }
+            100% { transform: translateY(-10vh) scale(1); opacity: 0; }
+        }
+
+        @keyframes floatingBg {
+            0% { transform: scale(1) rotate(0deg); }
+            100% { transform: scale(1.1) rotate(2deg); }
+        }
+
+        .title {
+            font-size: 4rem;
+            font-weight: 900;
+            margin-bottom: 20px;
+            position: relative;
+            z-index: 3;
+            background: linear-gradient(45deg, #ffa500, #ff6b35, #ffa500);
+            background-size: 400% 400%;
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: gradientShift 3s ease-in-out infinite;
+            text-shadow: 0 0 30px rgba(255, 165, 0, 0.5);
+            letter-spacing: -0.02em;
+        }
+
+        @keyframes gradientShift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+
+        .subtitle {
+            font-size: 1.4rem;
+            opacity: 0.9;
+            position: relative;
+            z-index: 3;
+            font-weight: 400;
+            color: #cccccc;
+            animation: fadeInUp 1s ease-out 0.5s both;
+        }
+
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 0.9; transform: translateY(0); }
+        }
 .header-decoration {
-    position: absolute;
-    top: 20px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 40px;
-    height: 3px;
-    background: var(--primary-500);
-    border-radius: 2px;
-    z-index: 2;
-}
-
+            position: absolute;
+            top: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 60px;
+            height: 4px;
+            background: linear-gradient(90deg, #ffa500, #ff6b35);
+            border-radius: 2px;
+            z-index: 4;
+        }
 /* Cup Days Navigation Styles */
 .cup-days-container {
     background: #ffffff;
