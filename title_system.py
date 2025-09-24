@@ -185,10 +185,10 @@ class RefactoredTitleSystem:
         all_values = [p.get(field_name, 0) for p in all_players_data]
         
         rank = self._get_percentile_rank(player_value, all_values, reverse)
-        return rank >= (100 - percentile)
+        return rank <= percentile
     
     def _is_bottom_percentile(self, player_data: Dict, all_players_data: List[Dict], 
-                             field_name: str, percentile: float = 10.0) -> bool:
+                             field_name: str, percentile: float = 10.0, reverse=False) -> bool:
         """
         判断玩家是否在指定百分位以下
         
@@ -207,7 +207,7 @@ class RefactoredTitleSystem:
         player_value = player_data.get(field_name, 0)
         all_values = [p.get(field_name, 0) for p in all_players_data]
         
-        rank = self._get_percentile_rank(player_value, all_values, reverse=True)
+        rank = self._get_percentile_rank(player_value, all_values, reverse=reverse)
         return rank <= percentile
     
     def _is_top_players_by_accuracy(self, player_data: Dict, all_players_data: List[Dict], top_n: int = 3) -> bool:
@@ -370,39 +370,11 @@ class RefactoredTitleSystem:
         # 击杀相关前三称号
         titles.extend([
             Title(
-                name="爆头大师",
-                description="爆头率前三的精准射手",
-                category=TitleCategory.KILLING,
-                title_type=TitleType.POSITIVE,
-                condition_func=lambda data, all_data: self._is_top_players_by_field(data, all_data, 'avg_headshot_ratio', top_n=3),
-                priority=4
-            ),
-            Title(
-                name="连杀大师",
-                description="多杀次数前三的玩家",
-                category=TitleCategory.KILLING,
-                title_type=TitleType.POSITIVE,
-                condition_func=lambda data, all_data: self._is_top_players_by_field(data, all_data, 'total_multi_kills', top_n=3),
-                priority=3
-            ),
-            Title(
                 name="AWP大师",
-                description="AWP击杀数前三的狙击手",
+                description="AWP击杀数最多的狙击手",
                 category=TitleCategory.KILLING,
                 title_type=TitleType.POSITIVE,
-                condition_func=lambda data, all_data: self._is_top_players_by_field(data, all_data, 'total_snipe_num', top_n=3),
-                priority=4
-            ),
-        ])
-        
-        # 生存相关前三称号
-        titles.extend([
-            Title(
-                name="生存大师",
-                description="K/D比前三的生存专家",
-                category=TitleCategory.SURVIVAL,
-                title_type=TitleType.POSITIVE,
-                condition_func=lambda data, all_data: self._is_top_players_by_field(data, all_data, 'kd_ratio', top_n=3),
+                condition_func=lambda data, all_data: self._is_top_players_by_field(data, all_data, 'total_snipe_num', top_n=1),
                 priority=4
             ),
         ])
@@ -410,19 +382,11 @@ class RefactoredTitleSystem:
         # 技能相关前三称号
         titles.extend([
             Title(
-                name="神枪手",
-                description="命中率前三的精准射手",
-                category=TitleCategory.SKILL,
-                title_type=TitleType.POSITIVE,
-                condition_func=lambda data, all_data: self._is_top_players_by_accuracy(data, all_data, top_n=3),
-                priority=4
-            ),
-            Title(
                 name="输出大师",
-                description="平均伤害前三的输出手",
+                description="平均伤害最高的输出手",
                 category=TitleCategory.SKILL,
                 title_type=TitleType.POSITIVE,
-                condition_func=lambda data, all_data: self._is_top_players_by_field(data, all_data, 'avg_adpr', top_n=3),
+                condition_func=lambda data, all_data: self._is_top_players_by_field(data, all_data, 'avg_adpr', top_n=1),
                 priority=4
             ),
         ])
@@ -430,11 +394,11 @@ class RefactoredTitleSystem:
         # 团队合作前三称号
         titles.extend([
             Title(
-                name="闪光专家",
-                description="闪光成功率前三的辅助",
+                name="闪光大师",
+                description="闪光成功率最高的选手",
                 category=TitleCategory.TEAMWORK,
                 title_type=TitleType.POSITIVE,
-                condition_func=lambda data, all_data: self._is_top_players_by_field(data, all_data, 'flash_success_ratio', top_n=3),
+                condition_func=lambda data, all_data: self._is_top_players_by_field(data, all_data, 'flash_success_ratio', top_n=1),
                 priority=3
             ),
             Title(
@@ -446,9 +410,9 @@ class RefactoredTitleSystem:
                 priority=2
             ),
         ])
-        
+
         # ========== 前10%称号 ==========
-        
+
         titles.extend([
             Title(
                 name="精英射手",
@@ -456,22 +420,6 @@ class RefactoredTitleSystem:
                 category=TitleCategory.KILLING,
                 title_type=TitleType.POSITIVE,
                 condition_func=lambda data, all_data: self._is_top_percentile(data, all_data, 'total_kills', 10.0),
-                priority=3
-            ),
-            Title(
-                name="精英选手",
-                description="PWR评分排名前10%的玩家",
-                category=TitleCategory.SKILL,
-                title_type=TitleType.POSITIVE,
-                condition_func=lambda data, all_data: self._is_top_percentile(data, all_data, 'avg_pw_rating', 10.0),
-                priority=3
-            ),
-            Title(
-                name="精英生存者",
-                description="K/D比排名前10%的玩家",
-                category=TitleCategory.SURVIVAL,
-                title_type=TitleType.POSITIVE,
-                condition_func=lambda data, all_data: self._is_top_percentile(data, all_data, 'kd_ratio', 10.0),
                 priority=3
             ),
         ])
@@ -489,20 +437,12 @@ class RefactoredTitleSystem:
                 priority=2
             ),
             Title(
-                name="菜鸟选手",
-                description="PWR评分排名后10%的玩家",
-                category=TitleCategory.SKILL,
-                title_type=TitleType.NEGATIVE,
-                condition_func=lambda data, all_data: self._is_bottom_percentile(data, all_data, 'avg_pw_rating', 10.0),
-                priority=2
-            ),
-            Title(
-                name="送分童子",
-                description="死亡数排名后10%的玩家",
-                category=TitleCategory.SURVIVAL,
-                title_type=TitleType.NEGATIVE,
-                condition_func=lambda data, all_data: self._is_bottom_percentile(data, all_data, 'total_deaths', 10.0),
-                priority=2
+                name="自闪大师",
+                description="闪光队友成功率最高的选手",
+                category=TitleCategory.TEAMWORK,
+                title_type=TitleType.POSITIVE,
+                condition_func=lambda data, all_data: self._is_top_players_by_field(data, all_data, 'flash_teammate_ratio', top_n=1),
+                priority=3
             ),
         ])
         
@@ -510,36 +450,12 @@ class RefactoredTitleSystem:
         
         titles.extend([
             Title(
-                name="冠军收割者",
-                description="获得过冠军的传奇选手",
-                category=TitleCategory.ACHIEVEMENT,
-                title_type=TitleType.POSITIVE,
-                condition_func=lambda data: data.get('is_champion', False),
-                priority=5
-            ),
-            Title(
                 name="常胜将军",
-                description="胜率超过80%的胜利者",
+                description="胜率超过70%的胜利者",
                 category=TitleCategory.ACHIEVEMENT,
                 title_type=TitleType.POSITIVE,
-                condition_func=lambda data: data.get('win_rate', 0) > 0.8,
+                condition_func=lambda data: data.get('win_rate', 0) > 0.7,
                 priority=4
-            ),
-            Title(
-                name="铁人",
-                description="比赛场次超过30场的选手",
-                category=TitleCategory.CONSISTENCY,
-                title_type=TitleType.POSITIVE,
-                condition_func=lambda data: data.get('match_count', 0) > 30,
-                priority=2
-            ),
-            Title(
-                name="万年老二",
-                description="总是获得亚军的选手",
-                category=TitleCategory.ACHIEVEMENT,
-                title_type=TitleType.NEGATIVE,
-                condition_func=lambda data: data.get('is_runner_up', False) and not data.get('is_champion', False),
-                priority=1
             ),
         ])
         
@@ -553,16 +469,6 @@ class RefactoredTitleSystem:
                 title_type=TitleType.NEUTRAL,
                 condition_func=lambda data, all_data: self._is_high_in_both(
                     data, all_data, 'total_kills', 'total_deaths', 0.7
-                ),
-                priority=2
-            ),
-            Title(
-                name="莽夫",
-                description="射击次数很多但命中率很低的玩家",
-                category=TitleCategory.SKILL,
-                title_type=TitleType.NEUTRAL,
-                condition_func=lambda data, all_data: self._is_high_in_both(
-                    data, all_data, 'total_fire_count', 'total_hit_count', 0.3, reverse_second=True
                 ),
                 priority=2
             ),
@@ -679,8 +585,7 @@ class RefactoredTitleSystem:
         # 根据称号名称确定比较的字段
         field_mapping = {
             '击杀之王': 'total_kills',
-            '死亡之王': 'total_deaths', 
-            '评分之王': 'avg_pw_rating',
+            '死亡之王': 'total_deaths',
             '伤害之王': 'avg_adpr',
             '爆头之王': 'avg_headshot_ratio',
             '助攻之王': 'total_assists',

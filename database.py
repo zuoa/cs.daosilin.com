@@ -477,6 +477,10 @@ class MatchPlayer(BaseModel, CRUDMixin):
                     (fn.SUM(cls.flash) > 0, fn.ROUND(fn.SUM(cls.flash_success) * 1.0 / fn.SUM(cls.flash), 2))
                 ], 0).alias('flash_success_ratio'),
 
+                Case(None, [
+                    (fn.SUM(cls.flash) > 0, fn.ROUND(fn.SUM(cls.flash_teammate) * 1.0 / fn.SUM(cls.flash), 2))
+                ], 0).alias('flash_teammate_ratio'),
+
                 # 计算胜率
                 Case(None, [
                     (fn.COUNT(fn.DISTINCT(cls.match_id)) > 0, fn.ROUND(fn.COALESCE(fn.SUM(cls.win), 0) * 1.0 / fn.COUNT(fn.DISTINCT(cls.match_id)), 3))
@@ -543,6 +547,7 @@ class MatchPlayer(BaseModel, CRUDMixin):
                 'kd_ratio': float(result.kd_ratio or 0),
                 'fk_fd_ratio': float(result.fk_fd_ratio or 0),
                 'flash_success_ratio': float(result.flash_success_ratio or 0),
+                'flash_teammate_ratio': float(result.flash_teammate_ratio or 0),
                 'win_rate': float(result.win_rate or 0),
                 'avg_kills': float(result.avg_kills or 0),
                 'avg_deaths': float(result.avg_deaths or 0),
