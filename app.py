@@ -127,6 +127,35 @@ def index_cup_day(cup, day=None):
                            last_crawl_time=last_crawl_time)
 
 
+@app.route('/api/admin/title/refresh')
+def api_admin_title_refresh():
+    auth = request.args.get('auth')
+    if auth != AUTH_CODE:
+        return error(403, "无权限访问")
+
+    day = request.args.get('day')
+    cup_name = request.args.get('cup')
+    if cup_name is None:
+        cup_name = CUP_NAME
+        
+    try:
+        # 计算整个杯赛的称号
+        success = title_service.calculate_and_save_titles(cup_name)
+        if success:
+            logger.info(f"成功计算 {cup_name} 的称号")
+        else:
+            logger.error(f"计算 {cup_name} 称号失败")
+
+        success = title_service.calculate_and_save_titles(cup_name, day)
+        if success:
+            logger.info(f"成功计算 {cup_name} {day} 的称号")
+        else:
+            logger.error(f"计算 {cup_name} {day} 称号失败")
+
+    except Exception as e:
+        logger.error(f"计算称号失败: {str(e)}")
+
+
 @app.cli.command("init-db")
 def init_db():
     """Initialize the database tables"""
