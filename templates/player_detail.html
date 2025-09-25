@@ -147,7 +147,7 @@
                 <div class="title-content">
                     <span class="title-name">{{ title.title_name }}</span>
                     {% if title.awarded_at %}
-                    <div class="title-date">{{ title.awarded_at.strftime('%Y-%m-%d') if title.awarded_at else '' }}</div>
+                    <div class="title-date">{{ title.play_day or '' }}</div>
                     {% endif %}
                 </div>
                 <div class="title-glow"></div>
