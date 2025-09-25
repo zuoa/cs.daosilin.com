@@ -239,12 +239,28 @@ def judge_champion(day=None):
 
         # 计算亚军
         runner_up_team = None
-        final_round_teams = [teams for teams in rounds.keys() if champion_team in teams]
-        if final_round_teams:
-            final_round = final_round_teams[-1]
-            # Fix: Convert frozenset to set, subtract champion, then get the remaining team
-            runner_up_team = list(final_round - {champion_team})[0]
-            logger.info(f"昨日亚军队伍是 {runner_up_team}")
+        champion_rounds = [teams for teams in rounds.keys() if champion_team in teams]
+        if champion_rounds:
+            # 找到冠军队伍参与的最后一轮（决赛轮）
+            # 通过查找包含冠军队伍且比赛时间最晚的轮次来确定决赛轮
+            final_round = None
+            latest_match_time = None
+            
+            for round_teams in champion_rounds:
+                # 找到这一轮中冠军队伍参与的比赛的最晚时间
+                round_matches = [match for match in match_list 
+                               if match.get('team1_name') in round_teams and match.get('team2_name') in round_teams]
+                if round_matches:
+                    # 获取这一轮比赛的最晚结束时间
+                    round_latest_time = max(match.get('end_time', 0) for match in round_matches)
+                    if latest_match_time is None or round_latest_time > latest_match_time:
+                        latest_match_time = round_latest_time
+                        final_round = round_teams
+            
+            if final_round:
+                # 在决赛轮中找到冠军队伍的对手作为亚军
+                runner_up_team = list(final_round - {champion_team})[0]
+                logger.info(f"昨日亚军队伍是 {runner_up_team}")
 
         champion_players = MatchPlayer.filter_records(**{'cup_name': CUP_NAME, 'play_day': day, 'team_name': champion_team})
         if champion_players:
@@ -343,7 +359,6 @@ def calc_titles(today):
 if __name__ == '__main__':
     load_dotenv()
     create_tables()
-    # calc_titles('20250923')
     scheduler = create_scheduler()
     try:
         scheduler.start()
