@@ -324,11 +324,11 @@ def calc_titles(today):
         cup_name = CUP_NAME
 
         # 计算整个杯赛的称号
-        success = title_service.calculate_and_save_titles(cup_name)
-        if success:
-            logger.info(f"成功计算 {cup_name} 的称号")
-        else:
-            logger.error(f"计算 {cup_name} 称号失败")
+        # success = title_service.calculate_and_save_titles(cup_name)
+        # if success:
+        #     logger.info(f"成功计算 {cup_name} 的称号")
+        # else:
+        #     logger.error(f"计算 {cup_name} 称号失败")
 
         success = title_service.calculate_and_save_titles(cup_name, today)
         if success:
@@ -343,7 +343,7 @@ def calc_titles(today):
 if __name__ == '__main__':
     load_dotenv()
     create_tables()
-    # crawl_all()
+    # calc_titles('20250923')
     scheduler = create_scheduler()
     try:
         scheduler.start()
