@@ -76,7 +76,7 @@
                 <th>ADPR</th>
                 <th>WE</th>
                 <th>爆头率</th>
-                <th>MVP</th>
+                <th>MVP轮</th>
                 <th>详情</th>
             </tr>
             </thead>
@@ -89,8 +89,14 @@
                         {% if player.avatar %}
                         <img src="https://wsrv.nl/?url={{ player.avatar }}" alt="{{ player.nickname }}" class="player-avatar" onerror="this.style.display='none'">
                         {% endif %}
+
+
                         {{ player.alias_name or player.nickname }}
 
+                        {% if current_day %}
+                        <span class="team-tag team-color-default" data-team="{{player.team_name}}">#{{player.team_name}}</span>
+                        {% endif %}
+                        
                         {% if player.is_champion %}
                         <i class="fas fa-trophy trophy-icon"></i>
                         {% elif player.is_runner_up %}
@@ -372,7 +378,30 @@
     // 页面加载完成后更新标题
     document.addEventListener('DOMContentLoaded', function () {
         initializeCupDaysNavigation();
+        initializeTeamColors();
     });
+
+    // 初始化队伍颜色
+    function initializeTeamColors() {
+        const teamTags = document.querySelectorAll('.team-tag[data-team]');
+        const teamColorMap = new Map();
+        let colorIndex = 1;
+        
+        teamTags.forEach(tag => {
+            const teamName = tag.getAttribute('data-team');
+            
+            // 如果这个队伍还没有分配颜色，给它分配一个
+            if (!teamColorMap.has(teamName)) {
+                teamColorMap.set(teamName, colorIndex);
+                colorIndex = (colorIndex % 16) + 1; // 循环使用1-16的颜色
+            }
+            
+            // 应用颜色类
+            const assignedColor = teamColorMap.get(teamName);
+            tag.classList.remove('team-color-default');
+            tag.classList.add(`team-color-${assignedColor}`);
+        });
+    }
 
     // 初始化杯赛日程导航功能
     function initializeCupDaysNavigation() {

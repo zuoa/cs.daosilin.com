@@ -84,6 +84,7 @@ def index_cup_day(cup, day=None):
         "avatar": player["avatar"],
         "player_id": player["player_id"],
         "alias_name": all_players_map.get(player["player_id"], {}).get("alias_name", ""),
+        "team_name": player.get("team_name", ""),
         "is_champion": player["player_id"] in day_champion.get("champion_team_player_ids", '').split(
             ',') if day_champion else False,
         "is_runner_up": player["player_id"] in day_champion.get("runner_up_team_player_ids", '').split(
