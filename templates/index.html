@@ -94,7 +94,10 @@
                         {{ player.alias_name or player.nickname }}
 
                         {% if current_day %}
-                        <span class="team-tag team-color-default" data-team="{{player.team_name}}">#{{player.team_name}}</span>
+                        <span class="team-tag team-color-default" data-team="{{player.team_name}}">
+                            <i class="fas fa-crown" style="margin-right: 4px;"></i>
+                            {{player.team_name}}
+                        </span>
                         {% endif %}
                         
                         {% if player.is_champion %}
