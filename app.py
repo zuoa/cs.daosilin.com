@@ -3,6 +3,7 @@ from flask_caching import Cache
 
 import title_service
 from ajlog import logger
+from champion_service import judge_champion
 from config import CUP_NAME, AUTH_CODE
 from database import MatchPlayer, Player, CupDayChampion, create_tables, Config, PlayerTitle
 from title_service import title_service
@@ -225,6 +226,27 @@ def player_detail(player_id, cup=None, day=None):
                          last_crawl_time=last_crawl_time)
 
 
+@app.route('/api/admin/champion/judge')
+def api_admin_champion_judge():
+    auth = request.args.get('auth')
+    if auth != AUTH_CODE:
+        return error(403, "无权限访问")
+
+    day = request.args.get('day')
+    if day is None:
+        return error(400, "参数 day 不能为空")
+
+    cup_name = request.args.get('cup')
+    if cup_name is None:
+        cup_name = CUP_NAME
+
+    try:
+        judge_champion(cup_name, day)
+    except Exception as e:
+        logger.error(f"计算冠军和亚军失败: {str(e)}")
+
+    return success("计算冠军和亚军任务已触发")
+
 @app.route('/api/admin/title/refresh')
 def api_admin_title_refresh():
     auth = request.args.get('auth')
@@ -238,20 +260,22 @@ def api_admin_title_refresh():
         
     try:
         # 计算整个杯赛的称号
-        success = title_service.calculate_and_save_titles(cup_name)
-        if success:
+        is_success = title_service.calculate_and_save_titles(cup_name)
+        if is_success:
             logger.info(f"成功计算 {cup_name} 的称号")
         else:
             logger.error(f"计算 {cup_name} 称号失败")
 
-        success = title_service.calculate_and_save_titles(cup_name, day)
-        if success:
+        is_success = title_service.calculate_and_save_titles(cup_name, day)
+        if is_success:
             logger.info(f"成功计算 {cup_name} {day} 的称号")
         else:
             logger.error(f"计算 {cup_name} {day} 称号失败")
 
     except Exception as e:
         logger.error(f"计算称号失败: {str(e)}")
+
+    return success("计算称号任务已触发")
 
 
 @app.cli.command("init-db")
