@@ -154,7 +154,7 @@ def player_detail(player_id, cup=None, day=None):
     # 获取选手历史奖杯
     all_champions = CupDayChampion.filter_records(**{'cup_name': cup})
     all_champions.sort(key=lambda champion: champion.get('day', ''))
-    
+
     trophy_history = []
     for champion in all_champions:
         if player_id in champion.get("champion_team_player_ids", '').split(','):
@@ -173,7 +173,7 @@ def player_detail(player_id, cup=None, day=None):
     # 获取选手历史数据（用于图表展示）
     historical_data = []
     cup_days = MatchPlayer.get_cup_day_set()
-    
+
     for historical_day in cup_days:
         day_data = MatchPlayer.get_match_exploit(cup, player_id, historical_day)
         if day_data:
@@ -195,7 +195,7 @@ def player_detail(player_id, cup=None, day=None):
     # 计算排名
     player_rankings = {}
     ranking_fields = ['avg_pw_rating', 'total_kills', 'kd_ratio', 'win_rate', 'avg_adpr', 'total_mvp']
-    
+
     for field in ranking_fields:
         if field in player_data:
             sorted_players = sorted(all_players_data, key=lambda x: x.get(field, 0), reverse=True)
@@ -212,18 +212,18 @@ def player_detail(player_id, cup=None, day=None):
     cup_days = MatchPlayer.get_cup_day_set()
     last_crawl_time = Config.get_value("last_crawl_time")
 
-    return render_template('player_detail.html', 
-                         player=player, 
-                         player_data=player_data,
-                         titles=titles,
-                         trophy_history=trophy_history,
-                         historical_data=historical_data,
-                         player_rankings=player_rankings,
-                         map_stats=map_stats,
-                         cup=cup, 
-                         day=day,
-                         cup_days=cup_days,
-                         last_crawl_time=last_crawl_time)
+    return render_template('player_detail.html',
+                           player=player,
+                           player_data=player_data,
+                           titles=titles,
+                           trophy_history=trophy_history,
+                           historical_data=historical_data,
+                           player_rankings=player_rankings,
+                           map_stats=map_stats,
+                           cup=cup,
+                           day=day,
+                           cup_days=cup_days,
+                           last_crawl_time=last_crawl_time)
 
 
 @app.route('/api/admin/champion/judge')
@@ -241,11 +241,12 @@ def api_admin_champion_judge():
         cup_name = CUP_NAME
 
     try:
-        judge_champion(cup_name, day)
+        judge_champion(day, cup_name)
     except Exception as e:
         logger.error(f"计算冠军和亚军失败: {str(e)}")
 
     return success("计算冠军和亚军任务已触发")
+
 
 @app.route('/api/admin/title/refresh')
 def api_admin_title_refresh():
@@ -257,7 +258,7 @@ def api_admin_title_refresh():
     cup_name = request.args.get('cup')
     if cup_name is None:
         cup_name = CUP_NAME
-        
+
     try:
         # 计算整个杯赛的称号
         is_success = title_service.calculate_and_save_titles(cup_name)
