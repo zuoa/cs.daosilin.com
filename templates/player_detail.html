@@ -9,15 +9,36 @@
 </head>
 <body>
 <div class="player-detail-container">
-    <!-- Player header -->
+    {% set champion_count = trophy_history | selectattr('trophy', 'equalto', 'champion') | list | length %}
+    {% set runner_up_count = trophy_history | selectattr('trophy', 'equalto', 'runner_up') | list | length %}
+
+    <!-- ============ Player header ============ -->
     <header class="player-header">
         <div class="player-info">
             {% if player.avatar %}
             <img src="https://wsrv.nl/?url={{ player.avatar }}" alt="" class="player-avatar" onerror="this.style.display='none'">
             {% endif %}
             <div class="player-basic-info">
-                <h1>{{ player.alias_name or player.nickname }}</h1>
-                {% if cup %}<span class="cup-name">{{ cup }}</span>{% endif %}
+                <div class="name-line">
+                    <h1>{{ player.alias_name or player.nickname }}</h1>
+                    {% if cup %}<span class="cup-name">{{ cup }}</span>{% endif %}
+                    {% if champion_count or runner_up_count %}
+                    <span class="header-trophies">
+                        {% if champion_count %}
+                        <span class="inline-trophy champion" title="{% for t in trophy_history if t.trophy == 'champion' %}{{ t.day }} {{ t.team_name }}{% if not loop.last %} · {% endif %}{% endfor %}">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v2h3v3a5 5 0 0 1-5 5h-.3a7 7 0 0 1-4.7 4v3h3v2H9v-2h3v-3a7 7 0 0 1-4.7-4H7a5 5 0 0 1-5-5V6h3V4Zm0 4H4v1a3 3 0 0 0 2 2.83V8Zm14 0v3.83A3 3 0 0 0 21 9V8h-2Z"/></svg>
+                            {{ champion_count }}
+                        </span>
+                        {% endif %}
+                        {% if runner_up_count %}
+                        <span class="inline-trophy runner_up" title="{% for t in trophy_history if t.trophy == 'runner_up' %}{{ t.day }} {{ t.team_name }}{% if not loop.last %} · {% endif %}{% endfor %}">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.5 8 11 4.6-1.5 8-6 8-11V5l-8-3Z"/></svg>
+                            {{ runner_up_count }}
+                        </span>
+                        {% endif %}
+                    </span>
+                    {% endif %}
+                </div>
                 <div class="player-id">ID · {{ player.player_id }}{% if player.steam_id %} · Steam {{ player.steam_id }}{% endif %}</div>
             </div>
 
@@ -30,102 +51,115 @@
                 </div>
             </nav>
         </div>
-
-        <!-- Stats overview -->
-        <div class="player-stats-overview">
-            <div class="stats-cards">
-                <div class="stat-card">
-                    <div class="stat-value">{{ "%.2f"|format(player_data.avg_pw_rating) }}</div>
-                    <div class="stat-label">PWR Rating</div>
-                    <div class="stat-rank">排名 #{{ player_rankings.get('avg_pw_rating', '—') }}</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value">{{ player_data.match_count }}</div>
-                    <div class="stat-label">比赛场次</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value">{{ "%.1f"|format(player_data.win_rate * 100) }}%</div>
-                    <div class="stat-label">胜率</div>
-                    <div class="stat-rank">排名 #{{ player_rankings.get('win_rate', '—') }}</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value">{{ "%.2f"|format(player_data.kd_ratio) }}</div>
-                    <div class="stat-label">K/D</div>
-                    <div class="stat-rank">排名 #{{ player_rankings.get('kd_ratio', '—') }}</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value">{{ player_data.total_kills }}</div>
-                    <div class="stat-label">总击杀</div>
-                    <div class="stat-rank">排名 #{{ player_rankings.get('total_kills', '—') }}</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-value">{{ player_data.total_mvp }}</div>
-                    <div class="stat-label">MVP 次数</div>
-                    <div class="stat-rank">排名 #{{ player_rankings.get('total_mvp', '—') }}</div>
-                </div>
-            </div>
-            <div class="hexagon-chart-container">
-                <div id="hexagonChart" class="hexagon-chart"></div>
-            </div>
-        </div>
     </header>
 
-    {% if trophy_history %}
-    <section class="trophy-section">
-        <h2 class="section-title">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
-            奖杯历史
-        </h2>
-        <div class="trophy-grid">
-            {% for trophy in trophy_history %}
-            <div class="trophy-item {{ trophy.trophy }}">
-                <div class="trophy-icon-container">
-                    {% if trophy.trophy == 'champion' %}
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M5 4h14v2h3v3a5 5 0 0 1-5 5h-.3a7 7 0 0 1-4.7 4v3h3v2H9v-2h3v-3a7 7 0 0 1-4.7-4H7a5 5 0 0 1-5-5V6h3V4Zm0 4H4v1a3 3 0 0 0 2 2.83V8Zm14 0v3.83A3 3 0 0 0 21 9V8h-2Z"/></svg>
-                    {% else %}
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.5 8 11 4.6-1.5 8-6 8-11V5l-8-3Z"/></svg>
-                    {% endif %}
-                </div>
-                <div class="trophy-content">
-                    <div class="trophy-day">
-                        <span class="trophy-title">{% if trophy.trophy == 'champion' %}冠军{% else %}亚军{% endif %}</span>
-                        <span class="trophy-date">{{ trophy.day }}</span>
-                    </div>
-                    <div class="trophy-team">{{ trophy.team_name }}</div>
-                </div>
+    <!-- ============ Hero stats ============ -->
+    <section class="hero-stats">
+        <div class="stat-strip">
+            <div class="stat-strip-item">
+                <div class="stat-value">{{ "%.2f"|format(player_data.avg_pw_rating) }}</div>
+                <div class="stat-label">PWR Rating</div>
+                <div class="stat-rank">{% if player_rankings.get('avg_pw_rating') %}<strong>#{{ player_rankings.avg_pw_rating }}</strong>{% endif %}</div>
             </div>
-            {% endfor %}
+            <div class="stat-strip-item">
+                <div class="stat-value">{{ player_data.match_count }}</div>
+                <div class="stat-label">比赛场次</div>
+                <div class="stat-rank"></div>
+            </div>
+            <div class="stat-strip-item">
+                <div class="stat-value">{{ "%.1f"|format(player_data.win_rate * 100) }}%</div>
+                <div class="stat-label">胜率</div>
+                <div class="stat-rank">{% if player_rankings.get('win_rate') %}<strong>#{{ player_rankings.win_rate }}</strong>{% endif %}</div>
+            </div>
+            <div class="stat-strip-item">
+                <div class="stat-value">{{ "%.2f"|format(player_data.kd_ratio) }}</div>
+                <div class="stat-label">K/D</div>
+                <div class="stat-rank">{% if player_rankings.get('kd_ratio') %}<strong>#{{ player_rankings.kd_ratio }}</strong>{% endif %}</div>
+            </div>
+            <div class="stat-strip-item">
+                <div class="stat-value">{{ player_data.total_kills }}</div>
+                <div class="stat-label">总击杀</div>
+                <div class="stat-rank">{% if player_rankings.get('total_kills') %}<strong>#{{ player_rankings.total_kills }}</strong>{% endif %}</div>
+            </div>
+            <div class="stat-strip-item">
+                <div class="stat-value">{{ player_data.total_mvp }}</div>
+                <div class="stat-label">MVP</div>
+                <div class="stat-rank">{% if player_rankings.get('total_mvp') %}<strong>#{{ player_rankings.total_mvp }}</strong>{% endif %}</div>
+            </div>
+        </div>
+        <div class="hexagon-wrap">
+            <div id="hexagonChart" class="hexagon-chart"></div>
         </div>
     </section>
-    {% endif %}
 
+    <!-- ============ Titles (deduped + grouped) ============ -->
     {% if titles %}
-    <section class="titles-section">
+    {% set titles_by_name = {} %}
+    {% for t in titles %}
+        {% if t.title_name not in titles_by_name %}
+            {% set _ = titles_by_name.update({t.title_name: {'name': t.title_name, 'type': t.title_type, 'desc': t.title_description, 'days': []}}) %}
+        {% endif %}
+        {% if t.play_day and t.play_day not in titles_by_name[t.title_name].days %}
+            {% set _ = titles_by_name[t.title_name].days.append(t.play_day) %}
+        {% endif %}
+    {% endfor %}
+    {% set unique_titles = titles_by_name.values() | list %}
+    {% set positive_titles = unique_titles | selectattr('type', 'equalto', 'positive') | list %}
+    {% set neutral_titles = unique_titles | selectattr('type', 'equalto', 'neutral') | list %}
+    {% set negative_titles = unique_titles | selectattr('type', 'equalto', 'negative') | list %}
+
+    <section class="section titles-section has-titles">
         <h2 class="section-title">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>
-            选手称号
+            选手称号<span class="count">{{ unique_titles | length }}</span>
         </h2>
-        <div class="titles-grid">
-            {% for title in titles %}
-            <div class="title-card {{ title.title_type }}">
-                <div class="title-icon">
-                    {% if title.title_type == 'positive' %}★{% elif title.title_type == 'negative' %}!{% else %}·{% endif %}
-                </div>
-                <div class="title-content">
-                    <div class="title-name">{{ title.title_name }}</div>
-                    {% if title.play_day %}<div class="title-date">{{ title.play_day }}</div>{% endif %}
-                </div>
+
+        {% if positive_titles %}
+        <div class="titles-group positive">
+            <div class="titles-group-label"><span class="marker">★</span>正面</div>
+            <div class="titles-chips">
+                {% for t in positive_titles %}
+                <span class="title-chip title-positive" title="{{ t.desc }}{% if t.days %}&#10;获得日期：{{ t.days | sort | join('、') }}{% endif %}">
+                    {{ t.name }}{% if t.days | length > 1 %}<span class="chip-count">×{{ t.days | length }}</span>{% endif %}
+                </span>
+                {% endfor %}
             </div>
-            {% endfor %}
         </div>
+        {% endif %}
+
+        {% if neutral_titles %}
+        <div class="titles-group neutral">
+            <div class="titles-group-label"><span class="marker">·</span>中性</div>
+            <div class="titles-chips">
+                {% for t in neutral_titles %}
+                <span class="title-chip title-neutral" title="{{ t.desc }}{% if t.days %}&#10;获得日期：{{ t.days | sort | join('、') }}{% endif %}">
+                    {{ t.name }}{% if t.days | length > 1 %}<span class="chip-count">×{{ t.days | length }}</span>{% endif %}
+                </span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        {% if negative_titles %}
+        <div class="titles-group negative">
+            <div class="titles-group-label"><span class="marker">!</span>负面</div>
+            <div class="titles-chips">
+                {% for t in negative_titles %}
+                <span class="title-chip title-negative" title="{{ t.desc }}{% if t.days %}&#10;获得日期：{{ t.days | sort | join('、') }}{% endif %}">
+                    {{ t.name }}{% if t.days | length > 1 %}<span class="chip-count">×{{ t.days | length }}</span>{% endif %}
+                </span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
     </section>
     {% endif %}
 
-    <!-- Map stats -->
-    <section class="map-stats-section">
+    <!-- ============ Map stats ============ -->
+    <section class="section map-stats-section">
         <h2 class="section-title">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4-3 6v16l6-2 6 2 6-2V4l-6 2-6-2Z"/><path d="M9 4v16"/><path d="M15 6v16"/></svg>
-            地图表现
+            地图表现<span class="count">{{ map_stats | length if map_stats else 0 }}</span>
         </h2>
         {% if map_stats %}
         <div class="map-stats-grid">
@@ -140,23 +174,24 @@
                         {% if map_stat.map_name_en %}<div class="map-name-en">{{ map_stat.map_name_en }}</div>{% endif %}
                     </div>
                 </div>
-                <div class="map-stat-content">
-                    <div class="map-stat-title">场次</div>
-                    <div class="map-stat-value">{{ map_stat.match_count }}</div>
-                    <div class="map-stat-rating">Rating {{ "%.2f"|format(map_stat.avg_rating) }}</div>
-                    <div class="map-stat-details">
-                        <div class="map-detail-item">
-                            <span class="detail-label">胜率</span>
-                            <span class="detail-value">{{ "%.1f"|format(map_stat.win_rate) }}%</span>
-                        </div>
-                        <div class="map-detail-item">
-                            <span class="detail-label">K/D</span>
-                            <span class="detail-value">{{ "%.2f"|format(map_stat.kd_ratio) }}</span>
-                        </div>
-                        <div class="map-detail-item">
-                            <span class="detail-label">ADPR</span>
-                            <span class="detail-value">{{ "%.1f"|format(map_stat.avg_adpr) }}</span>
-                        </div>
+                <div class="map-stat-row">
+                    <div>
+                        <span class="map-count">{{ map_stat.match_count }}</span><span class="map-count-label">场次</span>
+                    </div>
+                    <div class="map-rating">Rating {{ "%.2f"|format(map_stat.avg_rating) }}</div>
+                </div>
+                <div class="map-stat-details">
+                    <div class="map-detail-item">
+                        <span class="detail-label">胜率</span>
+                        <span class="detail-value">{{ "%.0f"|format(map_stat.win_rate) }}%</span>
+                    </div>
+                    <div class="map-detail-item">
+                        <span class="detail-label">K/D</span>
+                        <span class="detail-value">{{ "%.2f"|format(map_stat.kd_ratio) }}</span>
+                    </div>
+                    <div class="map-detail-item">
+                        <span class="detail-label">ADPR</span>
+                        <span class="detail-value">{{ "%.1f"|format(map_stat.avg_adpr) }}</span>
                     </div>
                 </div>
             </div>
@@ -170,8 +205,8 @@
         {% endif %}
     </section>
 
-    <!-- Detailed stats -->
-    <section class="detailed-stats">
+    <!-- ============ Detailed stats ============ -->
+    <section class="section detailed-stats">
         <h2 class="section-title">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 14v3"/><path d="M11 10v7"/><path d="M15 6v11"/><path d="M19 13v4"/></svg>
             详细数据
@@ -236,17 +271,17 @@
         </div>
     </section>
 
-    <!-- Charts -->
-    <section class="charts-section">
+    <!-- ============ Charts ============ -->
+    <section class="section charts-section">
         <h2 class="section-title">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
             数据趋势
         </h2>
         <div class="charts-grid">
-            <div class="chart-container"><div id="ratingChart" style="width: 100%; height: 280px;"></div></div>
-            <div class="chart-container"><div id="kdChart" style="width: 100%; height: 280px;"></div></div>
-            <div class="chart-container"><div id="killsChart" style="width: 100%; height: 280px;"></div></div>
-            <div class="chart-container"><div id="winRateChart" style="width: 100%; height: 280px;"></div></div>
+            <div class="chart-container"><div id="ratingChart" style="width: 100%; height: 260px;"></div></div>
+            <div class="chart-container"><div id="kdChart" style="width: 100%; height: 260px;"></div></div>
+            <div class="chart-container"><div id="killsChart" style="width: 100%; height: 260px;"></div></div>
+            <div class="chart-container"><div id="winRateChart" style="width: 100%; height: 260px;"></div></div>
         </div>
     </section>
 
@@ -269,10 +304,7 @@ const playerData = {
     kd_ratio: {{ player_data.kd_ratio or 0 }},
     avg_adpr: {{ player_data.avg_adpr or 0 }},
     win_rate: {{ (player_data.win_rate or 0) * 100 }},
-    avg_headshot_ratio: {{ player_data.avg_headshot_ratio or 0 }},
-    total_kills: {{ player_data.total_kills or 0 }},
-    total_mvp: {{ player_data.total_mvp or 0 }},
-    match_count: {{ player_data.match_count or 0 }}
+    avg_headshot_ratio: {{ player_data.avg_headshot_ratio or 0 }}
 };
 
 const chartData = {
@@ -288,11 +320,12 @@ const AXIS_LABEL = '#71717a';
 const SPLIT_LINE = '#f4f4f5';
 const TEXT = '#18181b';
 const TEXT_MUTED = '#a1a1aa';
+const ACCENT = '#10b981';
 
 const commonOptions = {
     backgroundColor: 'transparent',
     textStyle: { color: TEXT, fontFamily: 'inherit' },
-    grid: { left: '3%', right: '4%', bottom: '3%', top: '15%', containLabel: true },
+    grid: { left: '3%', right: '4%', bottom: '3%', top: '18%', containLabel: true },
     tooltip: {
         trigger: 'axis',
         backgroundColor: 'rgba(255,255,255,0.98)',
@@ -310,7 +343,7 @@ const baseAxis = {
     splitLine: { lineStyle: { color: SPLIT_LINE, type: 'dashed' } }
 };
 
-function buildLineOption(title, subtitle, data, color) {
+function buildLineOption(title, subtitle, data) {
     return {
         ...commonOptions,
         title: {
@@ -328,7 +361,7 @@ function buildLineOption(title, subtitle, data, color) {
             axisLabel: {
                 ...baseAxis.axisLabel,
                 formatter: function (v) {
-                    if (v.length >= 8) return v.substring(4, 8) + '-' + v.substring(8, 10) + '-' + v.substring(10, 12);
+                    if (v.length >= 8) return v.substring(4, 8) + '-' + v.substring(8, 10);
                     return v;
                 }
             }
@@ -346,14 +379,14 @@ function buildLineOption(title, subtitle, data, color) {
             smooth: true,
             symbol: 'circle',
             symbolSize: 5,
-            lineStyle: { color: color, width: 2 },
-            itemStyle: { color: color, borderColor: '#fff', borderWidth: 1.5 },
+            lineStyle: { color: ACCENT, width: 2 },
+            itemStyle: { color: ACCENT, borderColor: '#fff', borderWidth: 1.5 },
             areaStyle: {
                 color: {
                     type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
                     colorStops: [
-                        { offset: 0, color: color + '40' },
-                        { offset: 1, color: color + '05' }
+                        { offset: 0, color: ACCENT + '40' },
+                        { offset: 1, color: ACCENT + '05' }
                     ]
                 }
             }
@@ -362,10 +395,10 @@ function buildLineOption(title, subtitle, data, color) {
 }
 
 const ratingChart = echarts.init(document.getElementById('ratingChart'));
-ratingChart.setOption(buildLineOption('PWR Rating', '综合评分变化', chartData.rating, '#10b981'));
+ratingChart.setOption(buildLineOption('PWR Rating', '综合评分变化', chartData.rating));
 
 const kdChart = echarts.init(document.getElementById('kdChart'));
-kdChart.setOption(buildLineOption('K/D 比', '击杀死亡比', chartData.kd, '#10b981'));
+kdChart.setOption(buildLineOption('K/D 比', '击杀死亡比', chartData.kd));
 
 const killsChart = echarts.init(document.getElementById('killsChart'));
 killsChart.setOption({
@@ -384,13 +417,13 @@ killsChart.setOption({
         type: 'bar',
         data: chartData.kills,
         barWidth: '50%',
-        itemStyle: { color: '#10b981', borderRadius: [4, 4, 0, 0] },
+        itemStyle: { color: ACCENT, borderRadius: [4, 4, 0, 0] },
         emphasis: { itemStyle: { color: '#059669' } }
     }]
 });
 
 const winRateChart = echarts.init(document.getElementById('winRateChart'));
-const wrOpt = buildLineOption('胜率', '比赛胜率 (%)', chartData.winRate, '#10b981');
+const wrOpt = buildLineOption('胜率', '比赛胜率 (%)', chartData.winRate);
 wrOpt.yAxis.max = 100;
 wrOpt.yAxis.axisLabel.formatter = '{value}%';
 winRateChart.setOption(wrOpt);
@@ -410,9 +443,9 @@ hexagonChart.setOption({
     backgroundColor: 'transparent',
     radar: {
         indicator: hexagonData.map(i => ({ name: i.name, max: i.max, min: 0 })),
-        center: ['50%', '50%'],
-        radius: '70%',
-        axisName: { color: AXIS_LABEL, fontSize: 11 },
+        center: ['50%', '52%'],
+        radius: '68%',
+        axisName: { color: AXIS_LABEL, fontSize: 10 },
         splitArea: { areaStyle: { color: ['rgba(16,185,129,0.04)', 'rgba(16,185,129,0.02)'] } },
         splitLine: { lineStyle: { color: SPLIT_LINE } },
         axisLine: { lineStyle: { color: AXIS_LINE } },
@@ -423,8 +456,8 @@ hexagonChart.setOption({
         data: [{
             value: hexagonData.map(i => Math.min(i.value, i.max)),
             areaStyle: { color: 'rgba(16,185,129,0.18)' },
-            lineStyle: { color: '#10b981', width: 2 },
-            itemStyle: { color: '#10b981' },
+            lineStyle: { color: ACCENT, width: 2 },
+            itemStyle: { color: ACCENT },
             symbolSize: 4
         }]
     }]

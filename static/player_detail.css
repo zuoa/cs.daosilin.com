@@ -1,5 +1,6 @@
 /* ============================================================
-   Player detail — shares tokens with style.css
+   Player detail — refactored
+   Design principles: tight density, clear hierarchy, no redundant chrome.
    ============================================================ */
 :root {
     --bg: #ffffff;
@@ -23,14 +24,24 @@
 
     --positive: #16a34a;
     --positive-subtle: #f0fdf4;
+    --positive-border: #bbf7d0;
     --negative: #ea580c;
     --negative-subtle: #fff7ed;
+    --negative-border: #fed7aa;
 
     --radius-sm: 4px;
     --radius: 6px;
     --radius-lg: 8px;
 
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-8: 32px;
 }
 
 *,
@@ -56,47 +67,40 @@ body {
     -moz-osx-font-smoothing: grayscale;
 }
 
-a {
-    color: inherit;
-    text-decoration: none;
-}
-
-img {
-    display: block;
-    max-width: 100%;
-}
+a { color: inherit; text-decoration: none; }
+img { display: block; max-width: 100%; }
+button { font: inherit; cursor: pointer; }
 
 /* ============================================================
    Layout container
    ============================================================ */
 .player-detail-container {
-    max-width: 1280px;
+    max-width: 1200px;
     margin: 0 auto;
-    padding: 32px 40px 64px;
+    padding: 24px 32px 48px;
 }
 
 /* ============================================================
-   Player header
+   Player header — single slim row
    ============================================================ */
 .player-header {
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    padding: 28px;
-    margin-bottom: 24px;
+    padding: 18px 22px;
+    margin-bottom: 16px;
 }
 
 .player-info {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
-    gap: 20px;
+    gap: 14px;
     align-items: center;
-    margin-bottom: 24px;
 }
 
 .player-info > .player-avatar {
-    width: 72px;
-    height: 72px;
+    width: 48px;
+    height: 48px;
     border-radius: 50%;
     object-fit: cover;
     background: var(--bg-muted);
@@ -104,60 +108,98 @@ img {
 
 .player-basic-info {
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.player-basic-info .name-line {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
 }
 
 .player-basic-info h1 {
-    font-size: 1.75rem;
+    font-size: 1.25rem;
     font-weight: 700;
     letter-spacing: -0.02em;
     color: var(--text);
-    margin-bottom: 4px;
     line-height: 1.2;
 }
 
 .cup-name {
     display: inline-block;
-    font-size: 0.75rem;
+    font-size: 0.6875rem;
     font-weight: 600;
     color: var(--accent-hover);
     background: var(--accent-subtle);
-    padding: 2px 8px;
+    padding: 2px 7px;
     border-radius: 4px;
-    margin-bottom: 6px;
     text-transform: uppercase;
     letter-spacing: 0.04em;
+    line-height: 1.4;
 }
 
 .player-id {
-    font-size: 0.75rem;
+    font-size: 0.6875rem;
     color: var(--text-muted);
     font-variant-numeric: tabular-nums;
 }
 
-/* ============================================================
-   Cup days nav (right side of header)
-   ============================================================ */
+/* inline trophy badges in header */
+.header-trophies {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 8px;
+    padding-left: 8px;
+    border-left: 1px solid var(--border);
+}
+
+.header-trophies .inline-trophy {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 7px 2px 5px;
+    border-radius: 10px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.4;
+}
+
+.header-trophies .inline-trophy svg {
+    width: 11px;
+    height: 11px;
+    fill: currentColor;
+}
+
+.inline-trophy.champion { color: var(--gold); background: var(--gold-subtle); }
+.inline-trophy.runner_up { color: var(--silver); background: var(--silver-subtle); }
+
+/* day nav */
 .cup-days-nav {
     min-width: 0;
-    max-width: 480px;
+    max-width: 420px;
 }
 
 .cup-days-nav .cup-days-list {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    gap: 4px;
     justify-content: flex-end;
 }
 
 .cup-day-item {
     display: inline-flex;
     align-items: center;
-    padding: 5px 10px;
+    padding: 4px 9px;
     background: var(--bg);
     color: var(--text-secondary);
     border: 1px solid var(--border);
-    border-radius: var(--radius);
-    font-size: 0.75rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.6875rem;
     font-weight: 500;
     font-variant-numeric: tabular-nums;
     transition: background 0.15s, border-color 0.15s, color 0.15s;
@@ -182,61 +224,69 @@ img {
 }
 
 /* ============================================================
-   Stats overview — cards + hexagon chart
+   Hero stats — 6 metrics + hexagon
    ============================================================ */
-.player-stats-overview {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 280px;
-    gap: 16px;
-    align-items: stretch;
-}
-
-.stats-cards {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 10px;
-}
-
-.stat-card {
+.hero-stats {
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 14px 16px;
-    transition: border-color 0.15s;
+    border-radius: var(--radius-lg);
+    padding: 18px 22px;
+    margin-bottom: 16px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 240px;
+    gap: 22px;
+    align-items: center;
 }
 
-.stat-card:hover {
-    border-color: var(--border-strong);
+.stat-strip {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0;
 }
 
-.stat-value {
-    font-size: 1.625rem;
+.stat-strip-item {
+    padding: 0 12px;
+    border-right: 1px solid var(--border);
+    text-align: left;
+}
+
+.stat-strip-item:first-child { padding-left: 0; }
+.stat-strip-item:last-child { border-right: none; padding-right: 0; }
+
+.stat-strip-item .stat-value {
+    font-size: 1.375rem;
     font-weight: 700;
     color: var(--text);
-    line-height: 1.1;
+    line-height: 1.15;
     letter-spacing: -0.02em;
     font-variant-numeric: tabular-nums;
 }
 
-.stat-label {
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-    margin-top: 4px;
-    font-weight: 500;
-}
-
-.stat-rank {
+.stat-strip-item .stat-label {
     font-size: 0.6875rem;
-    color: var(--text-muted);
-    margin-top: 6px;
-    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+    margin-top: 3px;
+    font-weight: 500;
+    line-height: 1.3;
 }
 
-.hexagon-chart-container {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 8px;
+.stat-strip-item .stat-rank {
+    font-size: 0.625rem;
+    color: var(--text-muted);
+    margin-top: 3px;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.3;
+    min-height: 0.95em;
+}
+
+.stat-strip-item .stat-rank strong {
+    color: var(--accent-hover);
+    font-weight: 600;
+}
+
+.hexagon-wrap {
+    width: 100%;
+    height: 200px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -245,213 +295,157 @@ img {
 .hexagon-chart {
     width: 100%;
     height: 100%;
-    min-height: 240px;
 }
 
 /* ============================================================
-   Generic sections
+   Generic section
    ============================================================ */
-.trophy-section,
-.titles-section,
-.map-stats-section,
-.detailed-stats,
-.charts-section {
+.section {
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: var(--radius-lg);
-    padding: 24px 28px;
+    padding: 18px 22px;
     margin-bottom: 16px;
 }
 
 .section-title {
-    font-size: 0.875rem;
+    font-size: 0.75rem;
     font-weight: 600;
-    color: var(--text);
-    margin-bottom: 16px;
+    color: var(--text-muted);
+    margin-bottom: 14px;
     display: flex;
     align-items: center;
     gap: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
 
 .section-title svg {
-    width: 16px;
-    height: 16px;
+    width: 13px;
+    height: 13px;
     stroke: var(--accent);
     fill: none;
     stroke-width: 2;
 }
 
+.section-title .count {
+    color: var(--text-muted);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    margin-left: 2px;
+}
+
 /* ============================================================
-   Trophies
+   Titles — chip-style grouped
    ============================================================ */
-.trophy-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 10px;
-}
+.titles-section { display: none; }
+.titles-section.has-titles { display: block; }
 
-.trophy-item {
+.titles-group {
     display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 6px 0;
+}
+
+.titles-group + .titles-group {
+    border-top: 1px solid var(--bg-muted);
+    margin-top: 4px;
+    padding-top: 10px;
+}
+
+.titles-group-label {
+    flex-shrink: 0;
+    width: 60px;
+    padding-top: 4px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    display: inline-flex;
     align-items: center;
-    gap: 12px;
-    padding: 12px 14px;
-    border-radius: var(--radius);
-    border: 1px solid var(--border);
+    gap: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
 }
 
-.trophy-item.champion {
-    background: var(--gold-subtle);
-    border-color: #fcd34d;
-}
+.titles-group.positive .titles-group-label { color: var(--positive); }
+.titles-group.neutral .titles-group-label { color: var(--text-secondary); }
+.titles-group.negative .titles-group-label { color: var(--negative); }
 
-.trophy-item.runner_up {
-    background: var(--silver-subtle);
-    border-color: #cbd5e1;
-}
-
-.trophy-icon-container {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
+.titles-group-label .marker {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    font-size: 0.6875rem;
+    line-height: 1;
 }
 
-.trophy-item.champion .trophy-icon-container {
-    background: #fbbf24;
-    color: #fff;
-}
+.titles-group.positive .marker { background: var(--positive-subtle); color: var(--positive); }
+.titles-group.neutral .marker { background: var(--bg-muted); color: var(--text-secondary); }
+.titles-group.negative .marker { background: var(--negative-subtle); color: var(--negative); }
 
-.trophy-item.runner_up .trophy-icon-container {
-    background: #94a3b8;
-    color: #fff;
-}
-
-.trophy-icon-container .trophy-icon {
-    color: inherit;
-    font-size: 14px;
-    margin: 0;
-}
-
-.trophy-content {
-    min-width: 0;
+.titles-chips {
     flex: 1;
-}
-
-.trophy-day {
+    min-width: 0;
     display: flex;
-    align-items: baseline;
+    flex-wrap: wrap;
     gap: 6px;
 }
 
-.trophy-title {
-    font-weight: 600;
-    font-size: 0.875rem;
-    color: var(--text);
-}
-
-.trophy-item.champion .trophy-title {
-    color: var(--gold);
-}
-
-.trophy-item.runner_up .trophy-title {
-    color: var(--silver);
-}
-
-.trophy-date {
-    font-size: 0.6875rem;
-    color: var(--text-muted);
-    font-variant-numeric: tabular-nums;
-}
-
-.trophy-team {
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-    margin-top: 2px;
-}
-
-/* ============================================================
-   Titles grid
-   ============================================================ */
-.titles-section .titles-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 10px;
-}
-
-.titles-section .title-card {
-    background: var(--bg-subtle);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 10px 12px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.titles-section .title-card.title-positive {
-    border-left: 3px solid var(--accent);
-}
-
-.titles-section .title-card.title-negative {
-    border-left: 3px solid var(--negative);
-}
-
-.titles-section .title-card.title-neutral {
-    border-left: 3px solid var(--text-muted);
-}
-
-.titles-section .title-icon {
-    width: 24px;
-    height: 24px;
-    border-radius: 4px;
+.title-chip {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
+    padding: 4px 10px;
+    border-radius: 4px;
     font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1.4;
+    white-space: nowrap;
+    border: 1px solid transparent;
+    cursor: default;
+    transition: transform 0.1s;
 }
 
-.titles-section .title-card.title-positive .title-icon {
-    background: var(--accent-subtle);
-    color: var(--accent-hover);
+.title-chip:hover { transform: translateY(-1px); }
+
+.title-chip.title-positive {
+    background: var(--positive-subtle);
+    color: var(--positive);
+    border-color: var(--positive-border);
 }
 
-.titles-section .title-card.title-negative .title-icon {
-    background: var(--negative-subtle);
-    color: var(--negative);
-}
-
-.titles-section .title-card.title-neutral .title-icon {
+.title-chip.title-neutral {
     background: var(--bg-muted);
     color: var(--text-secondary);
+    border-color: var(--border);
 }
 
-.titles-section .title-content {
-    min-width: 0;
+.title-chip.title-negative {
+    background: var(--negative-subtle);
+    color: var(--negative);
+    border-color: var(--negative-border);
 }
 
-.titles-section .title-name {
-    font-size: 0.8125rem;
+.title-chip .chip-count {
+    margin-left: 5px;
+    padding-left: 5px;
+    border-left: 1px solid currentColor;
+    border-left-color: rgba(0, 0, 0, 0.15);
+    font-size: 0.625rem;
     font-weight: 600;
-    color: var(--text);
-}
-
-.titles-section .title-date {
-    font-size: 0.6875rem;
-    color: var(--text-muted);
-    margin-top: 2px;
+    opacity: 0.75;
     font-variant-numeric: tabular-nums;
 }
 
 /* ============================================================
-   Map stats
+   Map stats — flat cards
    ============================================================ */
 .map-stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
     gap: 12px;
 }
 
@@ -469,7 +463,7 @@ img {
 
 .map-stat-image {
     position: relative;
-    height: 100px;
+    height: 88px;
     background: var(--bg-muted);
 }
 
@@ -485,68 +479,76 @@ img {
     display: flex;
     flex-direction: column;
     justify-content: flex-end;
-    padding: 8px 12px;
-    background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
+    padding: 6px 12px;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.75), transparent 70%);
     color: #fff;
 }
 
 .map-name {
-    font-size: 0.875rem;
+    font-size: 0.8125rem;
     font-weight: 600;
+    line-height: 1.2;
 }
 
 .map-name-en {
-    font-size: 0.6875rem;
-    opacity: 0.8;
+    font-size: 0.625rem;
+    opacity: 0.75;
+    margin-top: 1px;
 }
 
-.map-stat-content {
-    padding: 12px 14px;
+.map-stat-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 8px 12px 4px;
+    border-top: 1px solid var(--border);
 }
 
-.map-stat-title {
-    font-size: 0.6875rem;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-}
-
-.map-stat-value {
-    font-size: 1.25rem;
+.map-stat-row .map-count {
+    font-size: 1rem;
     font-weight: 700;
     color: var(--text);
-    margin: 2px 0 6px;
     font-variant-numeric: tabular-nums;
 }
 
-.map-stat-rating {
+.map-stat-row .map-count-label {
+    font-size: 0.625rem;
+    color: var(--text-muted);
+    margin-left: 4px;
+    font-weight: 500;
+}
+
+.map-stat-row .map-rating {
     font-size: 0.75rem;
     color: var(--accent-hover);
     font-weight: 600;
-    margin-bottom: 8px;
     font-variant-numeric: tabular-nums;
 }
 
 .map-stat-details {
     display: flex;
-    flex-wrap: wrap;
-    gap: 4px 12px;
-    font-size: 0.75rem;
+    justify-content: space-between;
+    padding: 4px 12px 10px;
+    font-size: 0.6875rem;
 }
 
 .map-detail-item {
-    display: inline-flex;
-    gap: 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
 }
 
 .detail-label {
     color: var(--text-muted);
+    font-size: 0.625rem;
 }
 
 .detail-value {
     color: var(--text);
     font-weight: 600;
     font-variant-numeric: tabular-nums;
+    font-size: 0.75rem;
 }
 
 .no-map-data {
@@ -556,32 +558,27 @@ img {
 }
 
 .no-map-data svg {
-    width: 32px;
-    height: 32px;
-    margin: 0 auto 8px;
+    width: 28px;
+    height: 28px;
+    margin: 0 auto 6px;
     stroke: var(--text-muted);
     fill: none;
     stroke-width: 1.5;
 }
 
-.no-map-data p {
-    font-size: 0.875rem;
-}
+.no-map-data p { font-size: 0.8125rem; }
 
 /* ============================================================
-   Detailed stats grid
+   Detailed stats — flat categories
    ============================================================ */
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 18px 24px;
 }
 
 .stats-category {
-    background: var(--bg-subtle);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 14px 16px;
+    min-width: 0;
 }
 
 .category-title {
@@ -590,8 +587,8 @@ img {
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    margin-bottom: 10px;
-    padding-bottom: 8px;
+    margin-bottom: 8px;
+    padding-bottom: 6px;
     border-bottom: 1px solid var(--border);
 }
 
@@ -599,12 +596,8 @@ img {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 5px 0;
-    font-size: 0.8125rem;
-}
-
-.stat-item:not(:last-child) {
-    border-bottom: 1px solid var(--bg);
+    padding: 4px 0;
+    font-size: 0.75rem;
 }
 
 .stat-item-label {
@@ -630,16 +623,16 @@ img {
     background: var(--bg-subtle);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 8px;
-    min-height: 280px;
+    padding: 6px;
+    min-height: 260px;
 }
 
 /* ============================================================
    Footer
    ============================================================ */
 .footer {
-    margin-top: 24px;
-    padding: 20px 0 0;
+    margin-top: 16px;
+    padding: 16px 0 0;
     border-top: 1px solid var(--border);
 }
 
@@ -652,12 +645,12 @@ img {
 }
 
 .footer-note {
-    font-size: 0.75rem;
+    font-size: 0.6875rem;
     color: var(--text-muted);
 }
 
 .watermark {
-    font-size: 0.75rem;
+    font-size: 0.6875rem;
     color: var(--text-muted);
 }
 
@@ -666,38 +659,45 @@ img {
     font-weight: 500;
 }
 
-.watermark a:hover {
-    text-decoration: underline;
-}
+.watermark a:hover { text-decoration: underline; }
 
 /* ============================================================
    Responsive
    ============================================================ */
 @media (max-width: 1024px) {
-    .player-detail-container {
-        padding: 24px;
-    }
+    .player-detail-container { padding: 20px 24px 40px; }
 
-    .player-stats-overview {
+    .hero-stats {
         grid-template-columns: 1fr;
+        gap: 16px;
     }
 
-    .hexagon-chart {
-        min-height: 200px;
+    .hexagon-wrap {
+        height: 220px;
     }
+
+    .stat-strip {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px 0;
+    }
+
+    .stat-strip-item {
+        border-right: none;
+        padding: 0 8px;
+    }
+
+    .stat-strip-item:nth-child(odd) { padding-left: 0; }
+    .stat-strip-item:nth-child(3n) { border-right: none; padding-right: 0; }
 }
 
 @media (max-width: 768px) {
-    .player-detail-container {
-        padding: 16px;
-    }
+    .player-detail-container { padding: 14px; }
 
-    .player-header {
-        padding: 20px;
-    }
+    .player-header { padding: 14px 16px; }
 
     .player-info {
         grid-template-columns: auto minmax(0, 1fr);
+        row-gap: 12px;
     }
 
     .cup-days-nav {
@@ -710,58 +710,68 @@ img {
         overflow-x: auto;
         flex-wrap: nowrap;
         padding-bottom: 4px;
+        margin: 0 -14px;
+        padding-left: 14px;
+        padding-right: 14px;
+        -webkit-overflow-scrolling: touch;
     }
 
-    .player-basic-info h1 {
-        font-size: 1.375rem;
-    }
+    .cup-days-nav .cup-days-list::-webkit-scrollbar { display: none; }
 
-    .stats-cards {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
+    .player-basic-info h1 { font-size: 1.125rem; }
 
-    .stat-value {
-        font-size: 1.375rem;
-    }
-
-    .trophy-section,
-    .titles-section,
-    .map-stats-section,
-    .detailed-stats,
-    .charts-section {
-        padding: 18px 16px;
-    }
+    .section,
+    .hero-stats { padding: 14px 16px; }
 
     .footer-content {
         flex-direction: column;
         align-items: flex-start;
         gap: 6px;
     }
+
+    .titles-group {
+        flex-direction: column;
+        gap: 6px;
+    }
+
+    .titles-group-label {
+        width: auto;
+        padding-top: 0;
+    }
 }
 
 @media (max-width: 480px) {
-    .player-detail-container {
-        padding: 12px;
-    }
+    .player-detail-container { padding: 10px; }
 
-    .player-header {
-        padding: 16px;
-    }
+    .player-header { padding: 12px; }
 
     .player-info > .player-avatar {
-        width: 56px;
-        height: 56px;
+        width: 40px;
+        height: 40px;
     }
 
-    .player-basic-info h1 {
-        font-size: 1.25rem;
+    .player-basic-info h1 { font-size: 1rem; }
+
+    .stat-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px 0;
     }
 
-    .stats-cards {
-        grid-template-columns: 1fr;
+    .stat-strip-item:nth-child(3n) {
+        border-right: 1px solid var(--border);
+        padding-right: 8px;
     }
 
-    .charts-grid {
-        grid-template-columns: 1fr;
+    .stat-strip-item:nth-child(2n) {
+        border-right: none;
+        padding-right: 0;
     }
+
+    .stat-strip-item:nth-child(odd) { padding-left: 0; }
+
+    .stat-strip-item .stat-value { font-size: 1.125rem; }
+
+    .charts-grid { grid-template-columns: 1fr; }
+
+    .stats-grid { grid-template-columns: 1fr; }
 }
