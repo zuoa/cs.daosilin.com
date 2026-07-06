@@ -265,6 +265,7 @@ if __name__ == '__main__':
     create_tables()
     # calc_titles('20250923')
     # judge_champion('20250925')
+    crawl_all()
     scheduler = create_scheduler()
     try:
         scheduler.start()
