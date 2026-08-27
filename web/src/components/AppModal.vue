@@ -12,6 +12,7 @@
         >
           <header class="modal-header">
             <div>
+              <p v-if="eyebrow" class="eyebrow">{{ eyebrow }}</p>
               <h2 :id="titleId">{{ title }}</h2>
               <p v-if="description">{{ description }}</p>
             </div>

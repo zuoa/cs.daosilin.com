@@ -418,6 +418,73 @@ def _selection_payload(cup, status=None, day=None):
     return result
 
 
+_MATCH_PLAYER_DETAIL_FIELDS = (
+    'player_id', 'nickname', 'avatar', 'team', 'team_name',
+    'kill', 'death', 'assist', 'rating', 'pw_rating', 'adpr', 'kast',
+    'headshot', 'headshot_ratio', 'entry_kill', 'first_death',
+    'mvp', 'two_kill', 'three_kill', 'four_kill', 'five_kill',
+    'awp_kill', 'rws', 'damage', 'flash', 'flash_success',
+    'vs2', 'vs3', 'vs4', 'vs5', 'win',
+)
+
+
+def _iso_dt(value):
+    if isinstance(value, datetime):
+        return value.isoformat(timespec='seconds')
+    return value
+
+
+def _match_detail_payload(cup, match_id):
+    sel = MatchSelection.get_by_match(match_id, cup)
+    if not sel:
+        return None
+    match = Match.get_by_match_id(match_id) or {}
+    library_set = set(Player.get_library_ids())
+    player_rows = list(MatchPlayer.select().where(MatchPlayer.match_id == match_id))
+    player_ids = [row.player_id for row in player_rows]
+    alias_map = {}
+    if player_ids:
+        for rec in Player.select().where(Player.player_id.in_(player_ids)):
+            alias_map[rec.player_id] = rec.alias_name
+    players = []
+    for row in player_rows:
+        item = {field: getattr(row, field, None) for field in _MATCH_PLAYER_DETAIL_FIELDS}
+        item['in_library'] = row.player_id in library_set
+        item['alias_name'] = alias_map.get(row.player_id) or ''
+        players.append(item)
+    players.sort(key=lambda p: (
+        p.get('team') or 99,
+        -(p.get('pw_rating') or p.get('rating') or 0),
+    ))
+    return {
+        'match_id': match_id,
+        'play_day': sel.get('play_day') or match.get('play_day'),
+        'roster_hit_count': sel.get('roster_hit_count') or 0,
+        'status': sel.get('status'),
+        'source_type': sel.get('source_type'),
+        'start_time': _iso_dt(match.get('start_time')),
+        'end_time': _iso_dt(match.get('end_time')),
+        'duration': match.get('duration'),
+        'map_name': match.get('map_name'),
+        'map_name_en': match.get('map_name_en'),
+        'map_url': match.get('map_url'),
+        'map_logo': match.get('map_logo'),
+        'game_mode': match.get('game_mode'),
+        'win_team': match.get('win_team'),
+        'team1_name': match.get('team1_name'),
+        'team1_logo': match.get('team1_logo'),
+        'team1_score': match.get('team1_score'),
+        'team1_half_score': match.get('team1_half_score'),
+        'team1_extra_score': match.get('team1_extra_score'),
+        'team2_name': match.get('team2_name'),
+        'team2_logo': match.get('team2_logo'),
+        'team2_score': match.get('team2_score'),
+        'team2_half_score': match.get('team2_half_score'),
+        'team2_extra_score': match.get('team2_extra_score'),
+        'players': players,
+    }
+
+
 @app.route('/api/admin/season/list')
 def api_admin_season_list():
     if not _admin_authed():
@@ -590,6 +657,22 @@ def api_admin_selection_list():
     status = request.args.get('status') or 'approved'
     day = request.args.get('day')
     return success({"list": _selection_payload(cup, status=status, day=day)})
+
+
+@app.route('/api/admin/selection/detail')
+def api_admin_selection_detail():
+    if not _admin_authed():
+        return error(403, "无权限访问")
+    cup = request.args.get('cup')
+    match_id = (request.args.get('match_id') or '').strip()
+    if not cup:
+        return error(400, "参数 cup 不能为空")
+    if not match_id:
+        return error(400, "参数 match_id 不能为空")
+    payload = _match_detail_payload(cup, match_id)
+    if not payload:
+        return error(404, "未找到该比赛")
+    return success(payload)
 
 
 @app.route('/api/admin/selection/pending')

@@ -212,9 +212,18 @@
               </tr>
             </thead>
             <tbody v-if="!matchLoading && visibleMatches.length">
-              <tr v-for="m in visibleMatches" :key="m.match_id" :class="{ selected: checked.includes(m.match_id) }">
-                <td class="check-cell"><input v-model="checked" type="checkbox" :value="m.match_id" :aria-label="`选择比赛 ${m.match_id}`"></td>
-                <td><strong class="mono-data">{{ m.play_day || '—' }}</strong><code>{{ m.match_id }}</code></td>
+              <tr
+                v-for="m in visibleMatches"
+                :key="m.match_id"
+                class="match-row"
+                :class="{ selected: checked.includes(m.match_id) }"
+                title="查看比赛详情"
+                @click="openMatch(m)"
+              >
+                <td class="check-cell" @click.stop>
+                  <input v-model="checked" type="checkbox" :value="m.match_id" :aria-label="`选择比赛 ${m.match_id}`">
+                </td>
+                <td><strong class="mono-data">{{ formatPlayDay(m.play_day) }}</strong><code>{{ m.match_id }}</code></td>
                 <td><strong>{{ m.map_name || '未知地图' }}</strong><small>{{ m.game_mode || '—' }}</small></td>
                 <td>
                   <div class="score-cell">
@@ -225,14 +234,17 @@
                 </td>
                 <td><span class="hit-count"><strong>{{ m.roster_hit_count || 0 }}</strong> 人</span></td>
                 <td><div class="player-chip-list"><span v-for="p in m.players" :key="p.player_id" :class="{ in: p.in_library }">{{ p.nickname }}</span></div></td>
-                <td class="action-cell">
-                  <button
-                    class="button small"
-                    :class="matchTab === 'approved' ? 'danger-ghost' : 'text-button'"
-                    type="button"
-                    :disabled="matchBusy"
-                    @click="act(matchTab === 'approved' ? 'reject' : 'approve', [m.match_id])"
-                  >{{ matchTab === 'approved' ? '剔除' : '恢复' }}</button>
+                <td class="action-cell" @click.stop>
+                  <div class="row-actions">
+                    <button class="button text-button small" type="button" :aria-label="`查看 ${m.map_name || m.match_id} 详情`" @click="openMatch(m)">详情</button>
+                    <button
+                      class="button small"
+                      :class="matchTab === 'approved' ? 'danger-ghost' : 'text-button'"
+                      type="button"
+                      :disabled="matchBusy"
+                      @click="act(matchTab === 'approved' ? 'reject' : 'approve', [m.match_id])"
+                    >{{ matchTab === 'approved' ? '剔除' : '恢复' }}</button>
+                  </div>
                 </td>
               </tr>
             </tbody>
@@ -252,6 +264,132 @@
       <div><h2>建立第一个杯赛工作流</h2><p>创建杯赛后，即可继续配置种子名单、执行采集和审核比赛记录。</p></div>
       <button class="button primary" type="button" @click="createSeason"><AppIcon name="plus" />新建杯赛</button>
     </section>
+
+    <AppModal
+      :open="matchDetailOpen"
+      :title="matchDetailTitle"
+      eyebrow="MATCH REPORT"
+      :description="matchDetailSubtitle"
+      size="wide"
+      @close="closeMatch"
+    >
+      <div v-if="matchDetail" class="match-detail">
+        <section
+          class="match-scoreboard"
+          :style="matchDetail.map_url ? { '--map-image': `url(${matchDetail.map_url})` } : {}"
+        >
+          <div class="scoreboard-meta">
+            <span>{{ matchDetail.map_name_en || matchDetail.game_mode || 'MATCH' }}</span>
+            <span class="status-badge" :class="matchDetail.status === 'approved' ? 'success' : 'neutral'">
+              <span class="status-dot"></span>{{ matchDetail.status === 'approved' ? '已纳入' : '已剔除' }}
+            </span>
+          </div>
+          <div class="scoreboard-line">
+            <div class="scoreboard-team">
+              <span>{{ matchDetail.team1_name || '队伍 A' }}</span>
+              <small v-if="Number(matchDetail.win_team) === 1">胜方</small>
+            </div>
+            <strong class="scoreboard-score">{{ matchDetail.team1_score ?? '—' }} : {{ matchDetail.team2_score ?? '—' }}</strong>
+            <div class="scoreboard-team away">
+              <span>{{ matchDetail.team2_name || '队伍 B' }}</span>
+              <small v-if="Number(matchDetail.win_team) === 2">胜方</small>
+            </div>
+          </div>
+          <p class="scoreboard-footnote">
+            {{ matchDetail.map_name || '未知地图' }} · {{ matchDetail.game_mode || '未知模式' }}
+            <template v-if="matchDetail.team1_half_score != null || matchDetail.team2_half_score != null">
+              · 半场 {{ matchDetail.team1_half_score ?? '—' }}:{{ matchDetail.team2_half_score ?? '—' }}
+            </template>
+            <template v-if="matchDetail.team1_extra_score || matchDetail.team2_extra_score">
+              · 加时 {{ matchDetail.team1_extra_score ?? 0 }}:{{ matchDetail.team2_extra_score ?? 0 }}
+            </template>
+          </p>
+        </section>
+
+        <div class="match-detail-facts">
+          <div><span>比赛日</span><strong>{{ formatPlayDay(matchDetail.play_day) }}</strong></div>
+          <div><span>开赛时间</span><strong>{{ formatDateTime(matchDetail.start_time) }}</strong></div>
+          <div><span>时长</span><strong>{{ formatDuration(matchDetail.duration) }}</strong></div>
+          <div><span>库内命中</span><strong>{{ matchDetail.roster_hit_count || 0 }} / {{ (matchDetail.players || []).length || '—' }}</strong></div>
+        </div>
+
+        <div v-if="matchDetailLoading" class="loading-state compact"><span class="loader"></span><p>正在读取选手数据…</p></div>
+        <div v-else-if="matchDetailError" class="inline-alert error" role="alert">
+          <AppIcon name="alert" />
+          <span><strong>无法读取比赛详情</strong>{{ matchDetailError }}</span>
+        </div>
+        <template v-else>
+          <section v-for="board in matchTeamBoards" :key="board.team" class="team-board" :class="{ winner: board.winner }">
+            <div class="team-board-header">
+              <div>
+                <h3>{{ board.name }}</h3>
+                <small>{{ board.players.length }} 名选手{{ board.winner ? ' · 胜方' : '' }}</small>
+              </div>
+              <strong>{{ board.score ?? '—' }}</strong>
+            </div>
+            <div class="table-scroll">
+              <table class="data-table scoreboard-table">
+                <thead>
+                  <tr>
+                    <th>选手</th>
+                    <th class="num">K</th>
+                    <th class="num">D</th>
+                    <th class="num">A</th>
+                    <th class="num">+/-</th>
+                    <th class="num">ADR</th>
+                    <th class="num">Rating</th>
+                    <th class="num">KAST</th>
+                    <th class="num">HS%</th>
+                    <th class="num">FK</th>
+                    <th>MVP</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="p in board.players" :key="p.player_id" :class="{ mvp: p.mvp }">
+                    <td>
+                      <div class="identity-cell">
+                        <img v-if="p.avatar" class="player-monogram small match-avatar" :src="avatarUrl(p.avatar)" :alt="`${playerName(p)} 头像`">
+                        <span v-else class="player-monogram small">{{ playerName(p).slice(0, 1).toUpperCase() }}</span>
+                        <span>
+                          <strong>{{ playerName(p) }}</strong>
+                          <small>
+                            <span v-if="p.in_library" class="lib-mark">库内</span>
+                            <code>{{ p.player_id }}</code>
+                          </small>
+                        </span>
+                      </div>
+                    </td>
+                    <td class="num">{{ p.kill ?? 0 }}</td>
+                    <td class="num">{{ p.death ?? 0 }}</td>
+                    <td class="num">{{ p.assist ?? 0 }}</td>
+                    <td class="num" :class="diffClass(p)">{{ formatDiff(p) }}</td>
+                    <td class="num">{{ formatStat(p.adpr, 0) }}</td>
+                    <td class="num rating-cell">{{ formatStat(p.pw_rating || p.rating, 2) }}</td>
+                    <td class="num">{{ formatRatio(p.kast) }}</td>
+                    <td class="num">{{ formatRatio(p.headshot_ratio) }}</td>
+                    <td class="num">{{ p.entry_kill ?? 0 }}</td>
+                    <td>{{ p.mvp ? 'MVP' : '—' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </template>
+
+        <div class="form-actions match-detail-actions">
+          <button
+            class="button small"
+            :class="matchDetail.status === 'approved' ? 'danger-ghost' : 'primary'"
+            type="button"
+            :disabled="matchBusy || !matchDetail.match_id"
+            @click="actFromDetail"
+          >
+            <AppIcon :name="matchDetail.status === 'approved' ? 'archive' : 'check'" />
+            {{ matchDetail.status === 'approved' ? '剔除这场比赛' : '恢复这场比赛' }}
+          </button>
+        </div>
+      </div>
+    </AppModal>
 
     <AppModal
       :open="seasonModalOpen"
@@ -329,7 +467,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { api } from '../api'
+import { api, avatarUrl } from '../api'
 import AdminLayout from '../components/AdminLayout.vue'
 import AppIcon from '../components/AppIcon.vue'
 import AppModal from '../components/AppModal.vue'
@@ -356,6 +494,10 @@ const savingRoster = ref(false)
 const matchLoading = ref(false)
 const matchBusy = ref(false)
 const cupInput = ref(null)
+const matchDetailOpen = ref(false)
+const matchDetail = ref(null)
+const matchDetailLoading = ref(false)
+const matchDetailError = ref('')
 let crawlTimer
 let toastTimer
 
@@ -398,6 +540,31 @@ const filteredLibrary = computed(() => {
 const matchDays = computed(() => [...new Set(matches.value.map((m) => m.play_day).filter(Boolean))].sort().reverse())
 const visibleMatches = computed(() => matches.value.filter((m) => !dayFilter.value || m.play_day === dayFilter.value))
 const allMatchesSelected = computed(() => visibleMatches.value.length > 0 && visibleMatches.value.every((m) => checked.value.includes(m.match_id)))
+const matchDetailTitle = computed(() => matchDetail.value?.map_name || '比赛详情')
+const matchDetailSubtitle = computed(() => {
+  if (!matchDetail.value) return '查看双方选手的当场数据。'
+  const day = formatPlayDay(matchDetail.value.play_day)
+  return [day !== '—' ? day : '', matchDetail.value.match_id].filter(Boolean).join(' · ')
+})
+const matchTeamBoards = computed(() => {
+  const match = matchDetail.value
+  if (!match) return []
+  const grouped = { 1: [], 2: [], other: [] }
+  for (const player of match.players || []) {
+    const team = Number(player.team)
+    if (team === 1 || team === 2) grouped[team].push(player)
+    else grouped.other.push(player)
+  }
+  const sortPlayers = (list) => [...list].sort((a, b) => (Number(b.pw_rating || b.rating) || 0) - (Number(a.pw_rating || a.rating) || 0))
+  const boards = [
+    { team: 1, name: match.team1_name || '队伍 A', score: match.team1_score, winner: Number(match.win_team) === 1, players: sortPlayers(grouped[1]) },
+    { team: 2, name: match.team2_name || '队伍 B', score: match.team2_score, winner: Number(match.win_team) === 2, players: sortPlayers(grouped[2]) },
+  ]
+  if (grouped.other.length) {
+    boards.push({ team: 0, name: '未分队', score: null, winner: false, players: sortPlayers(grouped.other) })
+  }
+  return boards.filter((board) => board.players.length)
+})
 
 function displaySeason(s) { return s.cup_alias || s.name || s.cup_name }
 function displayPlayer(p) { return p.alias_name || p.nickname || p.player_id }
@@ -417,6 +584,45 @@ function formatDateTime(value) {
 function formatRange(season) {
   if (!season || (!season.start_date && !season.end_date)) return '未设置时间段'
   return `${formatDateTime(season.start_date)} — ${formatDateTime(season.end_date)}`
+}
+function formatPlayDay(value) {
+  const raw = String(value || '').replace(/\D/g, '')
+  if (raw.length === 8) return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`
+  return value || '—'
+}
+function formatDuration(value) {
+  const number = Number(value)
+  if (!Number.isFinite(number) || number <= 0) return '—'
+  if (number < 180) return `${Math.round(number)} 分钟`
+  const total = Math.round(number)
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  if (hours) return `${hours} 小时 ${minutes} 分钟`
+  return `${minutes} 分钟`
+}
+function playerName(player) {
+  return player?.alias_name || player?.nickname || player?.player_id || '未知选手'
+}
+function formatStat(value, digits = 0) {
+  const number = Number(value)
+  if (!Number.isFinite(number)) return '—'
+  return number.toFixed(digits)
+}
+function formatRatio(value) {
+  const number = Number(value)
+  if (!Number.isFinite(number)) return '—'
+  const percent = number <= 1 ? number * 100 : number
+  return `${Math.round(percent)}%`
+}
+function formatDiff(player) {
+  const diff = Number(player?.kill || 0) - Number(player?.death || 0)
+  return diff > 0 ? `+${diff}` : String(diff)
+}
+function diffClass(player) {
+  const diff = Number(player?.kill || 0) - Number(player?.death || 0)
+  if (diff > 0) return 'positive'
+  if (diff < 0) return 'negative'
+  return ''
 }
 function show(message, type = 'success') {
   clearTimeout(toastTimer)
@@ -463,6 +669,7 @@ async function selectCup(cup) {
   currentCup.value = cup
   checked.value = []
   dayFilter.value = ''
+  closeMatch()
   await Promise.all([loadRoster(), loadLibrary(), loadMatches(), refreshCrawl()])
 }
 async function saveSeason() {
@@ -554,7 +761,34 @@ function switchTab(tab) {
   matchTab.value = tab
   checked.value = []
   dayFilter.value = ''
+  closeMatch()
   loadMatches()
+}
+async function openMatch(match) {
+  if (!match?.match_id || !currentCup.value) return
+  matchDetailOpen.value = true
+  matchDetail.value = match
+  matchDetailLoading.value = true
+  matchDetailError.value = ''
+  try {
+    matchDetail.value = await api.get(`/api/admin/selection/detail?cup=${encodeURIComponent(currentCup.value)}&match_id=${encodeURIComponent(match.match_id)}`)
+  } catch (e) {
+    matchDetailError.value = e.message
+  } finally {
+    matchDetailLoading.value = false
+  }
+}
+function closeMatch() {
+  matchDetailOpen.value = false
+  matchDetail.value = null
+  matchDetailError.value = ''
+  matchDetailLoading.value = false
+}
+async function actFromDetail() {
+  const match = matchDetail.value
+  if (!match?.match_id) return
+  const ok = await act(match.status === 'approved' ? 'reject' : 'approve', [match.match_id])
+  if (ok) closeMatch()
 }
 async function loadMatches() {
   if (!currentCup.value) return
@@ -581,8 +815,10 @@ async function act(type, ids) {
     const data = await api.send(`/api/admin/selection/${type}`, { cup: currentCup.value, match_ids: ids.join(',') })
     show(typeof data === 'string' ? data : '比赛状态已更新')
     await Promise.all([loadMatches(), loadSeasons()])
+    return true
   } catch (e) {
     show(e.message, 'error')
+    return false
   } finally {
     matchBusy.value = false
   }
