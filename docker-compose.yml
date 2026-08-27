@@ -37,7 +37,7 @@ services:
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin1005}
-      SITE_NAME: ${SITE_NAME:-CS 数据}
+      SITE_NAME: ${SITE_NAME:-熊掌CS Major}
 
 volumes:
   pgdata:

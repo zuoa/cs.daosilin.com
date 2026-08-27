@@ -5,7 +5,7 @@ from peewee import *
 from playhouse.db_url import connect
 
 from ajlog import logger
-from config import DB_PATH, DATABASE_URL
+from config import DB_PATH, DATABASE_URL, HISTORY_SQL_PATH
 
 
 def _open_database():
@@ -183,6 +183,7 @@ class Player(BaseModel, CRUDMixin):
     avatar = CharField(max_length=255, null=True)  # 头像URL
     alias_name = CharField(max_length=255, null=True)  # 别名，多个别名用逗号分隔
     steam_id = CharField(max_length=64, null=True)  # Steam ID
+    live_url = CharField(max_length=500, null=True)  # 直播间 URL
     in_library = BooleanField(default=False)  # 是否计入玩家库（占比门槛只认库内）
 
     @classmethod
@@ -730,8 +731,8 @@ class Season(BaseModel, CRUDMixin):
     cup_alias = CharField(max_length=128, null=True)  # 页面展示名
     name = CharField(max_length=128, null=True)  # 兼容旧字段，等同展示名
     match_type = CharField(max_length=32, default='custom')  # 'official' | 'custom'
-    start_date = CharField(max_length=8, null=True)  # YYYYMMDD
-    end_date = CharField(max_length=8, null=True)  # YYYYMMDD
+    start_date = DateTimeField()  # 赛季统计起点，精确到秒
+    end_date = DateTimeField()  # 赛季统计终点，精确到秒
     status = CharField(max_length=16, default='active')  # 'active' | 'archived'
     hit_ratio = FloatField(default=0.6)  # 场内库内人数占比门槛，默认 60%
 
@@ -977,6 +978,65 @@ def migrate_schema():
     """版本化迁移：启动时自动补齐未应用的变更。"""
     from migrations import run_migrations
     run_migrations()
+
+
+HISTORY_IMPORT_VERSION = 'data_001_cs_history'
+HISTORY_IMPORT_TABLES = (
+    'config', 'match', 'match_player', 'player', 'cup_day_champion',
+    'player_title', 'season', 'match_selection',
+)
+
+
+def import_history_sql(sql_path: str = None) -> Dict[str, Any]:
+    """Import the legacy data seed into a fresh PostgreSQL database once."""
+    if not is_postgres():
+        logger.info('历史 SQL 仅用于 PostgreSQL 部署，SQLite 环境跳过导入')
+        return {'status': 'skipped_sqlite'}
+
+    if SchemaMigration.select().where(
+        SchemaMigration.version == HISTORY_IMPORT_VERSION
+    ).exists():
+        logger.info('历史 SQL 已导入，跳过')
+        return {'status': 'already_imported'}
+
+    existing_counts = {}
+    for table_name in HISTORY_IMPORT_TABLES:
+        cursor = db.execute_sql(f'SELECT COUNT(*) FROM "{table_name}"')
+        existing_counts[table_name] = cursor.fetchone()[0]
+    nonempty = {table: count for table, count in existing_counts.items() if count}
+    if nonempty:
+        logger.warning(f'目标库已有业务数据，为避免覆盖已跳过历史 SQL 导入: {nonempty}')
+        return {'status': 'skipped_nonempty', 'counts': nonempty}
+
+    source_path = sql_path or HISTORY_SQL_PATH
+    try:
+        with open(source_path, 'r', encoding='utf-8') as sql_file:
+            sql = sql_file.read()
+    except OSError as exc:
+        raise RuntimeError(f'无法读取历史 SQL: {source_path}') from exc
+    if not sql.strip():
+        raise RuntimeError(f'历史 SQL 为空: {source_path}')
+
+    with db.atomic():
+        # The dump contains literal percent signs. Execute without an empty params
+        # tuple so psycopg2 does not interpret them as placeholder syntax.
+        cursor = db.connection().cursor()
+        try:
+            cursor.execute(sql)
+        finally:
+            cursor.close()
+        imported = SchemaMigration.select().where(
+            SchemaMigration.version == HISTORY_IMPORT_VERSION
+        ).exists()
+        if not imported:
+            raise RuntimeError(f'历史 SQL 缺少导入标记: {HISTORY_IMPORT_VERSION}')
+
+    imported_counts = {}
+    for table_name in HISTORY_IMPORT_TABLES:
+        cursor = db.execute_sql(f'SELECT COUNT(*) FROM "{table_name}"')
+        imported_counts[table_name] = cursor.fetchone()[0]
+    logger.info(f'历史 SQL 导入完成: {imported_counts}')
+    return {'status': 'imported', 'counts': imported_counts}
 
 
 def create_tables():

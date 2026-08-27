@@ -1,21 +1,15 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import Home from './views/Home.vue'
-import Season from './views/Season.vue'
-import Player from './views/Player.vue'
-import Login from './views/Login.vue'
-import AdminSeason from './views/AdminSeason.vue'
-import AdminPlayers from './views/AdminPlayers.vue'
 import { api } from './api'
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/', component: Home },
-    { path: '/admin/login', component: Login },
-    { path: '/admin/season', component: AdminSeason, meta: { admin: true } },
-    { path: '/admin/players', component: AdminPlayers, meta: { admin: true } },
-    { path: '/player/:id/:cup?/:day?', component: Player },
-    { path: '/:cup/:day?', component: Season },
+    { path: '/', component: () => import('./views/Home.vue') },
+    { path: '/admin/login', component: () => import('./views/Login.vue'), meta: { title: '管理登录' } },
+    { path: '/admin/season', component: () => import('./views/AdminSeason.vue'), meta: { admin: true, title: '杯赛与采集' } },
+    { path: '/admin/players', component: () => import('./views/AdminPlayers.vue'), meta: { admin: true, title: '玩家库' } },
+    { path: '/player/:id/:cup?/:day?', component: () => import('./views/Player.vue') },
+    { path: '/:cup/:day?', component: () => import('./views/Season.vue') },
   ],
   scrollBehavior() {
     return { top: 0 }
@@ -30,6 +24,10 @@ router.beforeEach(async (to) => {
   } catch {
     return { path: '/admin/login', query: { next: to.fullPath } }
   }
+})
+
+router.afterEach((to) => {
+  document.title = to.meta.title ? `${to.meta.title} · 熊掌CS Major` : '熊掌CS Major'
 })
 
 export default router

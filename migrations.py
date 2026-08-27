@@ -56,12 +56,19 @@ def _m005_bootstrap_admin():
     logger.info(f'已创建初始管理员账号 {ADMIN_USERNAME or "admin"}，请登录后尽快改密')
 
 
+def _m006_player_live_url():
+    if _table_exists('player') and not _column_exists('player', 'live_url'):
+        _add_column('player', 'live_url', 'VARCHAR(500)')
+        logger.info('player.live_url 已补列')
+
+
 MIGRATIONS = [
     ('001_player_in_library', _m001_player_in_library),
     ('002_season_hit_ratio', _m002_season_hit_ratio),
     ('003_selection_pending', _m003_selection_pending),
     ('004_season_cup_alias', _m004_season_cup_alias),
     ('005_bootstrap_admin', _m005_bootstrap_admin),
+    ('006_player_live_url', _m006_player_live_url),
 ]
 
 

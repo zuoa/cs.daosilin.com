@@ -1,89 +1,159 @@
 <template>
-  <div class="player-detail-container">
-    <p v-if="error" class="empty-home">{{ error }}</p>
-    <template v-else-if="player">
-      <header class="player-header">
-        <div class="player-info">
-          <img v-if="player.avatar" :src="avatarUrl(player.avatar)" alt="" class="player-avatar">
-          <div class="player-basic-info">
-            <div class="name-line">
-              <h1>{{ player.alias_name || player.nickname }}</h1>
-              <router-link class="cup-name" :to="`/${cup}/`">{{ cupAlias }}</router-link>
+  <div class="public-site player-page">
+    <header class="public-nav compact-nav">
+      <router-link class="public-brand" to="/" aria-label="返回数据首页">
+        <span class="brand-mark"><AppIcon name="target" :size="22" /></span>
+        <span><strong>熊掌CS Major</strong><small>PLAYER INTELLIGENCE</small></span>
+      </router-link>
+      <nav aria-label="选手详情导航">
+        <router-link v-if="cup" :to="`/${cup}/${day || ''}`"><AppIcon name="arrowLeft" />返回榜单</router-link>
+      </nav>
+    </header>
+
+    <main class="player-detail-container">
+      <div v-if="loading" class="loading-state player-loading" aria-live="polite"><span class="loader"></span><p>正在建立选手数据档案…</p></div>
+      <div v-else-if="error" class="empty-state public-empty player-error" role="alert">
+        <span><AppIcon name="alert" :size="26" /></span><h2>无法读取选手档案</h2><p>{{ error }}</p>
+        <router-link class="button subtle" :to="cup ? `/${cup}/` : '/'">返回榜单</router-link>
+      </div>
+
+      <template v-else-if="player && stats">
+        <section class="player-profile-hero">
+          <div class="player-profile-main">
+            <img v-if="player.avatar" :src="avatarUrl(player.avatar)" :alt="`${playerName} 头像`" class="profile-avatar">
+            <span v-else class="profile-avatar fallback">{{ playerName.slice(0, 1).toUpperCase() }}</span>
+            <div class="profile-copy">
+              <div class="profile-name-line">
+                <h1>{{ playerName }}</h1>
+                <span v-if="day" class="status-badge neutral">{{ day }}</span>
+                <a
+                  v-if="player.live_url"
+                  class="button primary small profile-live-link"
+                  :href="player.live_url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                ><AppIcon name="external" />进入直播间</a>
+              </div>
+              <p><code>{{ player.player_id }}</code><span>{{ cupAlias }}</span></p>
             </div>
-            <div class="player-id">ID · {{ player.player_id }}</div>
           </div>
-          <nav class="cup-days-nav">
-            <div class="cup-days-list">
-              <router-link :to="`/player/${id}/${cup}/`" class="cup-day-item" :class="{ active: !day }">全部</router-link>
-              <router-link
-                v-for="d in cupDays"
-                :key="d"
-                :to="`/player/${id}/${cup}/${d}/`"
-                class="cup-day-item"
-                :class="{ active: d === day }"
-              >{{ d }}</router-link>
+          <div class="player-profile-proof">
+            <div v-if="heroStats.length" class="player-lead-stat">
+              <strong>{{ heroStats[0].value }}</strong>
+              <span>PWR Rating · {{ day || '赛季总览' }}</span>
+              <small v-if="heroStats[0].rank">赛季排名 #{{ heroStats[0].rank }}</small>
             </div>
-          </nav>
-        </div>
-      </header>
+            <div v-if="trophies.length" class="profile-honours">
+              <span v-for="(trophy, index) in trophies" :key="index" :class="trophy.trophy">
+                <AppIcon name="trophy" /><strong>{{ trophy.trophy === 'champion' ? '冠军' : '亚军' }}</strong><small>{{ trophy.day }} · {{ trophy.team_name || '—' }}</small>
+              </span>
+            </div>
+          </div>
+        </section>
 
-      <section class="hero-stats" v-if="stats">
-        <div class="stat-strip">
-          <div class="stat-strip-item">
-            <div class="stat-value">{{ n2(stats.avg_pw_rating) }}</div>
-            <div class="stat-label">PWR Rating</div>
-            <div class="stat-rank" v-if="ranks.avg_pw_rating"><strong>#{{ ranks.avg_pw_rating }}</strong></div>
+        <nav class="day-navigation player-day-nav" aria-label="选手比赛日筛选">
+          <span class="day-nav-label">统计范围</span>
+          <div class="day-scroll">
+            <router-link :to="`/player/${id}/${cup}/`" class="day-chip" :class="{ active: !day }"><span>ALL</span>赛季总览</router-link>
+            <router-link v-for="(d, index) in cupDays" :key="d" :to="`/player/${id}/${cup}/${d}/`" class="day-chip" :class="{ active: d === day }">
+              <span>{{ pad(index + 1) }}</span>{{ d }}
+            </router-link>
           </div>
-          <div class="stat-strip-item">
-            <div class="stat-value">{{ stats.match_count }}</div>
-            <div class="stat-label">比赛场次</div>
-          </div>
-          <div class="stat-strip-item">
-            <div class="stat-value">{{ pct(stats.win_rate) }}</div>
-            <div class="stat-label">胜率</div>
-          </div>
-          <div class="stat-strip-item">
-            <div class="stat-value">{{ n2(stats.kd_ratio) }}</div>
-            <div class="stat-label">K/D</div>
-          </div>
-          <div class="stat-strip-item">
-            <div class="stat-value">{{ stats.total_kills }}</div>
-            <div class="stat-label">总击杀</div>
-          </div>
-          <div class="stat-strip-item">
-            <div class="stat-value">{{ stats.total_mvp }}</div>
-            <div class="stat-label">MVP</div>
-          </div>
-        </div>
-        <div class="hexagon-wrap"><div ref="radarEl" class="hexagon-chart"></div></div>
-      </section>
+        </nav>
 
-      <section class="section" v-if="titles.length">
-        <h2 class="section-title">选手称号</h2>
-        <div class="titles-chips">
-          <span v-for="t in titles" :key="t.title_name" class="title-chip" :class="'title-' + t.title_type" :title="t.title_description">
-            {{ t.title_name }}
-          </span>
-        </div>
-      </section>
+        <section class="player-kpi-grid" aria-label="选手核心数据">
+          <article v-for="item in heroStats.slice(1)" :key="item.label">
+            <span>{{ item.label }}</span><strong>{{ item.value }}</strong>
+            <small v-if="item.rank">赛季排名 <b>#{{ item.rank }}</b></small><small v-else>{{ item.note }}</small>
+          </article>
+        </section>
 
-      <section class="section" v-if="history.length">
-        <h2 class="section-title">Rating 走势</h2>
-        <div ref="lineEl" style="height:260px"></div>
-      </section>
-    </template>
+        <div class="analysis-grid">
+          <section class="panel chart-panel radar-panel">
+            <div class="panel-header">
+              <h2>能力雷达</h2>
+              <span class="result-count">6 项指标</span>
+            </div>
+            <div ref="radarEl" class="player-chart radar-chart" role="img" :aria-label="`${playerName} 的六维能力雷达图`"></div>
+          </section>
+          <section class="panel chart-panel trend-panel">
+            <div class="panel-header">
+              <h2>Rating 走势</h2>
+              <span class="result-count">{{ history.length }} 个比赛日</span>
+            </div>
+            <div v-if="history.length" ref="lineEl" class="player-chart line-chart" role="img" :aria-label="`${playerName} 的 Rating 走势折线图`"></div>
+            <div v-else class="empty-state compact chart-empty"><span><AppIcon name="activity" /></span><h3>暂无趋势数据</h3><p>有多个比赛日后会生成走势。</p></div>
+          </section>
+        </div>
+
+        <section v-if="titles.length" class="panel player-section">
+          <div class="panel-header">
+            <h2>选手称号</h2>
+            <span class="result-count">{{ titles.length }} 项</span>
+          </div>
+          <div class="achievement-grid">
+            <article v-for="title in titles" :key="title.title_name" :class="`title-${title.title_type}`">
+              <span class="achievement-marker"><AppIcon :name="title.title_type === 'positive' ? 'trophy' : title.title_type === 'negative' ? 'alert' : 'activity'" /></span>
+              <div><strong>{{ title.title_name }}</strong><p>{{ title.title_description || '暂无称号说明' }}</p></div>
+              <small>{{ title.title_category || '综合' }}</small>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel player-section">
+          <div class="panel-header">
+            <h2>地图表现</h2>
+            <span class="result-count">{{ mapStats.length }} 张地图</span>
+          </div>
+          <div v-if="mapStats.length" class="map-stats-grid">
+            <article v-for="map in mapStats.slice(0, 6)" :key="map.map_name_en || map.map_name" class="map-stat-card">
+              <div class="map-card-visual" :style="map.map_url ? { '--map-image': `url(${map.map_url})` } : {}">
+                <span>{{ map.map_name_en || 'MAP' }}</span><h3>{{ map.map_name || map.map_name_en || '未知地图' }}</h3>
+              </div>
+              <div class="map-card-metrics">
+                <div><strong>{{ map.match_count }}</strong><span>场次</span></div>
+                <div><strong>{{ n2(map.avg_rating) }}</strong><span>Rating</span></div>
+                <div><strong>{{ Number(map.win_rate || 0).toFixed(0) }}%</strong><span>胜率</span></div>
+                <div><strong>{{ n2(map.kd_ratio) }}</strong><span>K/D</span></div>
+              </div>
+            </article>
+          </div>
+          <div v-else class="empty-state compact"><span><AppIcon name="layers" /></span><h3>暂无地图数据</h3><p>比赛完成地图关联后会显示在这里。</p></div>
+        </section>
+
+        <section class="panel player-section detailed-stats-panel">
+          <div class="panel-header">
+            <h2>详细数据</h2>
+            <span class="result-count">{{ day || '赛季总计' }}</span>
+          </div>
+          <div class="detail-stat-groups">
+            <article v-for="group in statGroups" :key="group.title">
+              <div class="stat-group-title"><AppIcon :name="group.icon" /><h3>{{ group.title }}</h3></div>
+              <dl>
+                <div v-for="item in group.items" :key="item.label"><dt>{{ item.label }}</dt><dd>{{ item.value }}</dd></div>
+              </dl>
+            </article>
+          </div>
+        </section>
+
+        <p v-if="lastCrawl" class="player-update-note"><AppIcon name="activity" />数据更新于 {{ formatTime(lastCrawl) }}</p>
+      </template>
+    </main>
+    <footer class="public-footer"><router-link :to="cup ? `/${cup}/` : '/'">返回 {{ cupAlias || '赛季榜单' }}</router-link><span>PLAYER INTELLIGENCE · 熊掌CS Major</span></footer>
   </div>
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import * as echarts from 'echarts/core'
 import { LineChart, RadarChart } from 'echarts/charts'
-import { GridComponent, RadarComponent } from 'echarts/components'
+import { GridComponent, RadarComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
-echarts.use([LineChart, RadarChart, GridComponent, RadarComponent, CanvasRenderer])
 import { api, avatarUrl } from '../api'
+import AppIcon from '../components/AppIcon.vue'
+
+echarts.use([LineChart, RadarChart, GridComponent, RadarComponent, TooltipComponent, CanvasRenderer])
 
 const route = useRoute()
 const id = computed(() => route.params.id)
@@ -92,86 +162,155 @@ const day = computed(() => route.params.day || '')
 const player = ref(null)
 const stats = ref(null)
 const titles = ref([])
+const trophies = ref([])
 const ranks = ref({})
 const cupDays = ref([])
 const cupAlias = ref('')
 const history = ref([])
+const mapStats = ref([])
+const lastCrawl = ref('')
 const error = ref('')
+const loading = ref(true)
 const radarEl = ref(null)
 const lineEl = ref(null)
 let radarChart
 let lineChart
 
-function n2(v) { return Number(v || 0).toFixed(2) }
-function pct(v) { return (Number(v || 0) * 100).toFixed(1) + '%' }
+const playerName = computed(() => player.value?.alias_name || player.value?.nickname || player.value?.player_id || '选手')
+const heroStats = computed(() => !stats.value ? [] : [
+  { label: 'PWR RATING', value: n2(stats.value.avg_pw_rating), rank: ranks.value.avg_pw_rating, featured: true },
+  { label: '比赛场次', value: stats.value.match_count || 0, note: `${stats.value.win_count || 0} 场胜利` },
+  { label: '胜率', value: pct(stats.value.win_rate), rank: ranks.value.win_rate },
+  { label: 'K / D', value: n2(stats.value.kd_ratio), rank: ranks.value.kd_ratio },
+  { label: '总击杀', value: stats.value.total_kills || 0, rank: ranks.value.total_kills },
+  { label: 'MVP', value: stats.value.total_mvp || 0, rank: ranks.value.total_mvp },
+])
+const statGroups = computed(() => {
+  const s = stats.value || {}
+  return [
+    { title: '基础数据', icon: 'activity', items: [
+      { label: '比赛场次', value: s.match_count || 0 }, { label: '胜场', value: s.win_count || 0 }, { label: '胜率', value: pct(s.win_rate) },
+      { label: '总击杀', value: s.total_kills || 0 }, { label: '总死亡', value: s.total_deaths || 0 }, { label: '总助攻', value: s.total_assists || 0 },
+    ] },
+    { title: '击杀效率', icon: 'target', items: [
+      { label: '首杀 / 首死', value: `${s.total_first_kills || 0} / ${s.total_first_deaths || 0}` }, { label: 'FK / FD', value: n2(s.fk_fd_ratio) },
+      { label: '爆头数', value: s.total_headshots || 0 }, { label: '爆头率', value: pct(s.avg_headshot_ratio) }, { label: 'K / D', value: n2(s.kd_ratio) },
+    ] },
+    { title: '多杀与残局', icon: 'trophy', items: [
+      { label: '2K / 3K', value: `${s.total_2k || 0} / ${s.total_3k || 0}` }, { label: '4K / 5K', value: `${s.total_4k || 0} / ${s.total_5k || 0}` },
+      { label: '多杀总数', value: s.total_multi_kills || 0 }, { label: '1V2 / 1V3', value: `${s.total_1v2 || 0} / ${s.total_1v3 || 0}` },
+      { label: '1V4 / 1V5', value: `${s.total_1v4 || 0} / ${s.total_1v5 || 0}` },
+    ] },
+    { title: '高级数据', icon: 'database', items: [
+      { label: 'PWR Rating', value: n2(s.avg_pw_rating) }, { label: 'RWS', value: n2(s.avg_rws) }, { label: 'WE', value: n2(s.avg_we) },
+      { label: 'ADPR', value: n2(s.avg_adpr) }, { label: 'KAST', value: ratioDisplay(s.avg_kast) }, { label: '比赛 MVP', value: s.match_mvp_count || 0 },
+    ] },
+    { title: '投掷物', icon: 'layers', items: [
+      { label: '闪光弹', value: s.total_flashes || 0 }, { label: '成功闪光', value: s.total_flash_success || 0 }, { label: '队友闪光', value: s.total_flash_teammate || 0 },
+      { label: '闪光成功率', value: ratioDisplay(s.flash_success_ratio) }, { label: '投掷物总数', value: s.total_throws_count || 0 }, { label: '狙击击杀', value: s.total_snipe_num || 0 },
+    ] },
+  ]
+})
 
+function n2(value) { return Number(value || 0).toFixed(2) }
+function pct(value) { return `${(Number(value || 0) * 100).toFixed(1)}%` }
+function normalizeRatio(value) { const number = Number(value || 0); return number > 1 ? number : number * 100 }
+function ratioDisplay(value) { return `${normalizeRatio(value).toFixed(1)}%` }
+function pad(value) { return String(value || 0).padStart(2, '0') }
+function formatTime(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '' }
 function uniqueTitles(list) {
   const seen = new Set()
-  return (list || []).filter((t) => {
-    if (seen.has(t.title_name)) return false
-    seen.add(t.title_name)
+  return (list || []).filter((title) => {
+    if (seen.has(title.title_name)) return false
+    seen.add(title.title_name)
     return true
   })
 }
-
-function draw() {
+function chartTokens() {
+  const styles = getComputedStyle(document.documentElement)
+  const read = (name) => styles.getPropertyValue(name).trim()
+  return {
+    ink: read('--color-accent-ink'),
+    tooltip: read('--color-ink'),
+    text: read('--color-muted'),
+    paper: read('--color-paper'),
+    paper2: read('--color-paper-2'),
+    paper3: read('--color-paper-3'),
+    rule: read('--color-rule'),
+    accent: read('--color-accent'),
+    fill: read('--color-chart-fill'),
+    fade: read('--color-chart-fade'),
+    font: read('--font-body'),
+  }
+}
+function chartTextStyle(size = 11, colors = chartTokens()) { return { color: colors.text, fontSize: size, fontFamily: colors.font } }
+function drawCharts() {
+  const colors = chartTokens()
   if (radarEl.value && stats.value) {
     radarChart = radarChart || echarts.init(radarEl.value)
     radarChart.setOption({
+      animationDuration: 500,
+      tooltip: { trigger: 'item', backgroundColor: colors.tooltip, borderWidth: 0, textStyle: { color: colors.ink } },
       radar: {
+        radius: '66%', center: ['50%', '53%'], splitNumber: 4,
         indicator: [
-          { name: 'Rating', max: 2 },
-          { name: 'K/D', max: 2 },
-          { name: 'ADPR', max: 150 },
-          { name: 'KAST', max: 100 },
-          { name: 'HS%', max: 100 },
-          { name: '胜率', max: 100 },
+          { name: 'Rating', max: 2 }, { name: 'K/D', max: 2 }, { name: 'ADPR', max: 150 },
+          { name: 'KAST', max: 100 }, { name: 'HS%', max: 100 }, { name: '胜率', max: 100 },
         ],
+        axisName: chartTextStyle(11, colors), splitArea: { areaStyle: { color: [colors.paper2, colors.paper] } },
+        splitLine: { lineStyle: { color: colors.rule } }, axisLine: { lineStyle: { color: colors.rule } },
       },
-      series: [{
-        type: 'radar',
-        data: [{
-          value: [
-            stats.value.avg_pw_rating || 0,
-            stats.value.kd_ratio || 0,
-            stats.value.avg_adpr || 0,
-            (stats.value.avg_kast || 0) * (stats.value.avg_kast > 1 ? 1 : 100),
-            (stats.value.avg_headshot_ratio || 0) * 100,
-            (stats.value.win_rate || 0) * 100,
-          ],
-        }],
-      }],
+      series: [{ type: 'radar', symbol: 'circle', symbolSize: 5, lineStyle: { color: colors.accent, width: 2 }, itemStyle: { color: colors.accent }, areaStyle: { color: colors.fill }, data: [{ name: playerName.value, value: [stats.value.avg_pw_rating || 0, stats.value.kd_ratio || 0, stats.value.avg_adpr || 0, normalizeRatio(stats.value.avg_kast), normalizeRatio(stats.value.avg_headshot_ratio), normalizeRatio(stats.value.win_rate)] }] }],
     })
   }
   if (lineEl.value && history.value.length) {
     lineChart = lineChart || echarts.init(lineEl.value)
     lineChart.setOption({
-      xAxis: { type: 'category', data: history.value.map((h) => h.day) },
-      yAxis: { type: 'value' },
-      series: [{ type: 'line', data: history.value.map((h) => h.data.avg_pw_rating), smooth: true }],
+      animationDuration: 500,
+      grid: { left: 42, right: 18, top: 28, bottom: 34 },
+      tooltip: { trigger: 'axis', backgroundColor: colors.tooltip, borderWidth: 0, textStyle: { color: colors.ink } },
+      xAxis: { type: 'category', boundaryGap: false, data: history.value.map((item) => item.day), axisLabel: chartTextStyle(10, colors), axisLine: { lineStyle: { color: colors.rule } }, axisTick: { show: false } },
+      yAxis: { type: 'value', scale: true, splitNumber: 4, axisLabel: chartTextStyle(10, colors), splitLine: { lineStyle: { color: colors.paper3 } } },
+      series: [{ type: 'line', data: history.value.map((item) => Number(item.data.avg_pw_rating || 0).toFixed(2)), smooth: 0.28, showSymbol: true, symbolSize: 6, lineStyle: { color: colors.accent, width: 2.5 }, itemStyle: { color: colors.accent, borderColor: colors.paper2, borderWidth: 2 }, areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: colors.fill }, { offset: 1, color: colors.fade }] } } }],
     })
   }
 }
-
+function resizeCharts() { radarChart?.resize(); lineChart?.resize() }
 async function load() {
+  radarChart?.dispose()
+  lineChart?.dispose()
+  radarChart = null
+  lineChart = null
   error.value = ''
+  loading.value = true
   try {
     const data = await api.player(id.value, cup.value, day.value || null)
     player.value = data.player
     stats.value = data.player_data
     titles.value = uniqueTitles(data.titles)
+    trophies.value = data.trophy_history || []
     ranks.value = data.player_rankings || {}
     cupDays.value = data.cup_days || []
     cupAlias.value = data.cup_alias || data.cup
     history.value = data.historical_data || []
-    document.title = `${player.value.alias_name || player.value.nickname} · ${cupAlias.value}`
+    mapStats.value = data.map_stats || []
+    lastCrawl.value = data.last_crawl_time || ''
+    document.title = `${playerName.value} · ${cupAlias.value} · 熊掌CS Major`
+    loading.value = false
     await nextTick()
-    draw()
+    drawCharts()
   } catch (e) {
     error.value = e.message
+  } finally {
+    loading.value = false
   }
 }
 
-onMounted(load)
+onMounted(() => { load(); window.addEventListener('resize', resizeCharts) })
 watch(() => [route.params.id, route.params.cup, route.params.day], load)
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', resizeCharts)
+  radarChart?.dispose()
+  lineChart?.dispose()
+})
 </script>

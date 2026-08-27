@@ -1,5 +1,7 @@
 import os
 import threading
+from datetime import datetime
+from urllib.parse import urlsplit
 
 from flask import Flask, request, send_from_directory
 from flask_caching import Cache
@@ -11,8 +13,10 @@ from auth import (captcha_ok, captcha_response, clear_login_fail, current_admin,
 from champion_service import judge_champion
 from config import ADMIN_PASSWORD, ADMIN_USERNAME, REDIS_URL, SECRET_KEY, SITE_NAME
 from database import (AdminUser, MatchPlayer, Player, CupDayChampion, create_tables, Config, PlayerTitle,
-                      Match, Season, SeasonRoster, MatchSelection)
-from scheduler import crawl_season_with_status, get_crawl_status
+                      Match, Season, SeasonRoster, MatchSelection, import_history_sql)
+from scheduler import (crawl_season_with_status, get_crawl_status,
+                       is_auto_crawl_enabled, season_crawl_phase,
+                       set_auto_crawl_enabled, set_crawl_status)
 from title_service import title_service
 from utils import success, error
 
@@ -56,10 +60,10 @@ def _season_list_payload():
         cup = s.get('cup_name')
         s['match_count'] = Match.select().where(Match.cup_name == cup).count() if cup else 0
         s['day_count'] = len(MatchPlayer.get_cup_day_set(cup) or [])
-        for key in ('created_at', 'updated_at'):
+        for key in ('created_at', 'updated_at', 'start_date', 'end_date'):
             val = s.get(key)
-            if hasattr(val, 'isoformat'):
-                s[key] = val.isoformat()
+            if isinstance(val, datetime):
+                s[key] = val.isoformat(timespec='seconds')
     seasons.sort(key=lambda x: (
         0 if x.get('status') == 'active' else 1,
         x.get('start_date') or '',
@@ -323,6 +327,16 @@ def _parse_ids(raw):
     return [p.strip() for p in (raw or '').replace(';', ',').replace('\n', ',').split(',') if p.strip()]
 
 
+def _parse_optional_http_url(raw, max_length=500):
+    value = (raw or '').strip()
+    if not value:
+        return None
+    parsed = urlsplit(value)
+    if len(value) > max_length or parsed.scheme.lower() not in ('http', 'https') or not parsed.netloc:
+        raise ValueError
+    return value
+
+
 def _parse_hit_ratio():
     raw = request.args.get('hit_ratio')
     if raw in (None, ''):
@@ -340,6 +354,17 @@ def _parse_hit_ratio():
     if value > 1:
         value = value / 100.0
     return max(0.0, min(1.0, value))
+
+
+def _parse_season_datetime(raw):
+    """解析 datetime-local 值，数据库使用 DateTimeField 保存。"""
+    value = (raw or '').strip()
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, '%Y-%m-%dT%H:%M:%S')
+    except ValueError as exc:
+        raise ValueError('时间格式应为 YYYY-MM-DDTHH:MM:SS') from exc
 
 
 def _selection_payload(cup, status=None, day=None):
@@ -384,6 +409,10 @@ def api_admin_season_list():
         return error(403, "无权限访问")
     seasons = Season.get_all()
     for s in seasons:
+        for key in ('created_at', 'updated_at', 'start_date', 'end_date'):
+            val = s.get(key)
+            if isinstance(val, datetime):
+                s[key] = val.isoformat(timespec='seconds')
         s['roster_count'] = len(SeasonRoster.get_player_ids(s['cup_name']))
         s['approved_count'] = (MatchSelection
                                .select()
@@ -396,6 +425,9 @@ def api_admin_season_list():
                                       MatchSelection.status == 'rejected')
                                .count())
         s['pending_count'] = s['approved_count']
+        if is_auto_crawl_enabled(s['cup_name']) and season_crawl_phase(s) == 'expired':
+            set_auto_crawl_enabled(s['cup_name'], False)
+            set_crawl_status(s['cup_name'], state='expired', message='赛季已截止，自动采集已停止')
         s['crawl'] = get_crawl_status(s['cup_name'])
     return success({"seasons": seasons})
 
@@ -407,12 +439,21 @@ def api_admin_season_save():
     cup = request.args.get('cup')
     if not cup:
         return error(400, "参数 cup 不能为空")
+    try:
+        start_date = _parse_season_datetime(request.args.get('start_date'))
+        end_date = _parse_season_datetime(request.args.get('end_date'))
+    except ValueError:
+        return error(400, "时间格式无效，请选择精确到秒的日期时间")
+    if not start_date or not end_date:
+        return error(400, "开始时间和结束时间不能为空")
+    if start_date and end_date and start_date > end_date:
+        return error(400, "结束时间不能早于开始时间")
     fields = {
         'name': request.args.get('cup_alias') or request.args.get('name'),
         'cup_alias': request.args.get('cup_alias') or request.args.get('name'),
         'match_type': request.args.get('match_type') or 'custom',
-        'start_date': request.args.get('start_date'),
-        'end_date': request.args.get('end_date'),
+        'start_date': start_date,
+        'end_date': end_date,
         'status': request.args.get('status') or 'active',
         'hit_ratio': _parse_hit_ratio(),
     }
@@ -421,6 +462,13 @@ def api_admin_season_save():
         Season.update(**fields).where(Season.cup_name == cup).execute()
     else:
         Season.create(cup_name=cup, **fields)
+    saved_season = Season.get_by_cup(cup)
+    if fields['status'] != 'active':
+        set_auto_crawl_enabled(cup, False)
+        set_crawl_status(cup, state='stopped', message='赛季已归档，自动采集已停止')
+    elif season_crawl_phase(saved_season) == 'expired':
+        set_auto_crawl_enabled(cup, False)
+        set_crawl_status(cup, state='expired', message='赛季已截止，自动采集已停止')
     try:
         cache.clear()
     except Exception:
@@ -466,27 +514,38 @@ def api_admin_season_crawl():
     cup = request.args.get('cup')
     if not cup:
         return error(400, "参数 cup 不能为空")
-    if not Season.get_by_cup(cup):
+    season = Season.get_by_cup(cup)
+    if not season:
         return error(404, "赛季不存在")
+    if season.get('status') != 'active':
+        return error(409, "已归档赛季不能启动采集")
+    if season_crawl_phase(season) == 'expired':
+        set_auto_crawl_enabled(cup, False)
+        set_crawl_status(cup, state='expired', message='赛季已截止，不能再启动采集')
+        return error(409, "赛季已截止，不能再启动采集")
+    if is_auto_crawl_enabled(cup):
+        return success("自动采集已在运行，将每 10 分钟获取一次")
     existing_status = get_crawl_status(cup)
     if existing_status.get('state') == 'running':
         return error(409, "该赛季正在采集")
+    set_auto_crawl_enabled(cup, True)
+    set_crawl_status(cup, state='scheduled', message='自动采集已启动，将每 10 分钟获取一次')
     with _crawl_lock:
         if cup in _crawl_running:
-            return error(409, "该赛季正在采集")
+            return success("自动采集已启动，将每 10 分钟获取一次")
         _crawl_running.add(cup)
 
     def _run():
         try:
             crawl_season_with_status(cup)
         except Exception as e:
-            logger.error(f"手动采集 {cup} 失败: {e}")
+            logger.error(f"启动自动采集 {cup} 失败: {e}")
         finally:
             with _crawl_lock:
                 _crawl_running.discard(cup)
 
     threading.Thread(target=_run, daemon=True, name=f'crawl-{cup}').start()
-    return success("采集已开始")
+    return success("自动采集已启动，将每 10 分钟获取一次，赛季截止后自动停止")
 
 
 @app.route('/api/admin/season/crawl/status')
@@ -496,8 +555,13 @@ def api_admin_season_crawl_status():
     cup = request.args.get('cup')
     if not cup:
         return error(400, "参数 cup 不能为空")
+    season = Season.get_by_cup(cup)
+    if season and is_auto_crawl_enabled(cup) and season_crawl_phase(season) == 'expired':
+        set_auto_crawl_enabled(cup, False)
+        set_crawl_status(cup, state='expired', message='赛季已截止，自动采集已停止')
     status = get_crawl_status(cup)
     status['running'] = cup in _crawl_running or status.get('state') == 'running'
+    status['auto_enabled'] = is_auto_crawl_enabled(cup)
     return success(status)
 
 
@@ -609,12 +673,17 @@ def api_admin_player_save():
     player_id = (request.args.get('player_id') or '').strip()
     if not player_id:
         return error(400, "参数 player_id 不能为空")
+    try:
+        live_url = _parse_optional_http_url(request.args.get('live_url'))
+    except ValueError:
+        return error(400, "直播间地址必须是有效的 http(s) URL")
     in_library = request.args.get('in_library', '1') not in ('0', 'false', 'no')
     fields = {
         'nickname': request.args.get('nickname') or player_id,
         'alias_name': request.args.get('alias_name') or None,
         'steam_id': request.args.get('steam_id') or None,
         'avatar': request.args.get('avatar') or None,
+        'live_url': live_url,
         'in_library': in_library,
     }
     existing = Player.get_or_none(Player.player_id == player_id)
@@ -690,6 +759,13 @@ def init_db():
         logger.info("数据库初始化完成")
     except Exception as e:
         logger.error(f"数据库初始化失败: {str(e)}")
+
+
+@app.cli.command("import-history")
+def import_history():
+    """Import the bundled cs.db history into a fresh PostgreSQL database."""
+    result = import_history_sql()
+    print(result)
 
 
 @app.cli.command("reset-admin")

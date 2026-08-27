@@ -1,288 +1,612 @@
 <template>
-  <div class="admin-shell">
-    <h1>杯赛采集管理</h1>
-    <div class="admin-nav">
-      <router-link class="on" to="/admin/season">杯赛 / 采集</router-link>
-      <router-link to="/admin/players">玩家库</router-link>
-      <span class="spacer"></span>
-      <router-link to="/">公开首页</router-link>
-      <a href="#" @click.prevent="logout">退出</a>
-    </div>
-    <p class="muted">cup_name 用于 URL（建议英文）；cup_alias 是页面展示名。自定义局需达到库内占比门槛。</p>
+  <AdminLayout
+    eyebrow="TOURNAMENT OPS"
+    title="杯赛与采集"
+    description="配置统计范围、维护种子名单，并审核进入公开数据的每一场比赛。"
+  >
+    <template #actions>
+      <router-link v-if="currentCup" class="button subtle" :to="`/${currentCup}/`">
+        <AppIcon name="external" />公开统计页
+      </router-link>
+      <button class="button primary" type="button" @click="createSeason">
+        <AppIcon name="plus" />新建杯赛
+      </button>
+    </template>
 
-    <h2>① 杯赛</h2>
-    <div class="card">
-      <table class="admin-table">
-        <thead>
-          <tr>
-            <th></th><th>cup_name</th><th>展示名</th><th>类型</th><th>时间段</th><th>门槛</th><th>状态</th><th>种子</th><th>纳入/剔除</th><th></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="s in seasons" :key="s.cup_name" :class="{ current: s.cup_name === currentCup }">
-            <td>{{ s.cup_name === currentCup ? '▶' : '' }}</td>
-            <td>{{ s.cup_name }}</td>
-            <td>{{ s.cup_alias || s.name || '' }}</td>
-            <td><span class="tag" :class="s.match_type">{{ s.match_type }}</span></td>
-            <td>{{ s.start_date || '' }} ~ {{ s.end_date || '' }}</td>
-            <td>{{ pct(s.hit_ratio) }}%</td>
-            <td><span class="tag" :class="s.status">{{ s.status }}</span></td>
-            <td>{{ s.roster_count }}</td>
-            <td>{{ s.approved_count || 0 }} / {{ s.rejected_count || 0 }}</td>
-            <td>
-              <button class="ghost sm" @click="selectCup(s.cup_name)">选为当前</button>
-              <button class="ghost sm" @click="editSeason(s)">编辑</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-    <div class="card">
-      <div class="row">
-        <label>cup_name*</label><input v-model="form.cup" placeholder="英文 slug，如 shark-s2">
-        <label>cup_alias</label><input v-model="form.alias" placeholder="页面展示名">
-        <label>类型</label>
-        <select v-model="form.type"><option value="custom">custom</option><option value="official">official</option></select>
-        <label>起</label><input v-model="form.start" placeholder="YYYYMMDD">
-        <label>止</label><input v-model="form.end" placeholder="YYYYMMDD">
-        <label>库内占比%</label><input v-model.number="form.hit" type="number" min="0" max="100" step="5">
-        <label>状态</label>
-        <select v-model="form.status"><option value="active">active</option><option value="archived">archived</option></select>
-        <button class="btn" @click="saveSeason">保存杯赛</button>
-      </div>
-    </div>
+    <section class="metric-grid season-metrics" aria-label="杯赛管理概览">
+      <article class="metric-card">
+        <span class="metric-icon green"><AppIcon name="layers" /></span>
+        <div><strong>{{ activeSeasons }}</strong><span>进行中杯赛</span></div>
+        <small>共 {{ seasons.length }} 个杯赛</small>
+      </article>
+      <article class="metric-card">
+        <span class="metric-icon blue"><AppIcon name="database" /></span>
+        <div><strong>{{ totalApproved }}</strong><span>已纳入比赛</span></div>
+        <small>{{ totalRejected }} 场已剔除</small>
+      </article>
+      <article class="metric-card">
+        <span class="metric-icon amber"><AppIcon name="users" /></span>
+        <div><strong>{{ currentSeason?.roster_count || 0 }}</strong><span>当前种子</span></div>
+        <small>{{ currentSeason ? displaySeason(currentSeason) : '尚未选择杯赛' }}</small>
+      </article>
+      <article class="metric-card">
+        <span class="metric-icon" :class="autoEnabled ? 'pulse green' : 'slate'"><AppIcon name="activity" /></span>
+        <div><strong class="metric-status">{{ crawlStateLabel }}</strong><span>自动采集</span></div>
+        <small>{{ currentCup || '选择杯赛后启动' }}</small>
+      </article>
+    </section>
 
-    <h2>② 种子玩家 · {{ currentCup || '' }}</h2>
-    <div class="card">
-      <div class="muted">{{ rosterText }}</div>
-      <div class="row" style="margin-top:12px">
-        <label>搜索</label>
-        <input v-model="seedQ" placeholder="ID / 昵称 / 别名">
-      </div>
-      <div class="picker">
-        <label v-for="p in filteredLibrary" :key="p.player_id">
-          <input type="checkbox" :value="p.player_id" v-model="seedChecked">
-          <span>{{ p.alias_name || p.nickname }}</span>
-          <span class="muted">({{ p.player_id }})</span>
-        </label>
-        <div v-if="!filteredLibrary.length" class="muted">玩家库为空，可直接粘贴 ID</div>
-      </div>
-      <div class="row" style="margin-top:12px;align-items:flex-start">
-        <label>player_ids</label>
-        <textarea v-model="rosterRaw"></textarea>
-      </div>
-      <div class="row" style="margin-top:10px">
-        <button class="btn" @click="saveRoster">保存种子</button>
-      </div>
-    </div>
+    <section class="panel season-directory season-directory-wide" aria-labelledby="season-list-title">
+        <div class="panel-header">
+          <div>
+            <h2 id="season-list-title">杯赛目录</h2>
+          </div>
+          <span class="result-count">{{ seasons.length }} 个</span>
+        </div>
 
-    <h2>③ 采集</h2>
-    <div class="card row">
-      <button class="btn" :disabled="!currentCup || crawling" @click="startCrawl">立即采集</button>
-      <span class="muted">{{ crawlMsg }}</span>
-      <span class="spacer"></span>
-      <router-link v-if="currentCup" class="ghost-link" :to="`/${currentCup}/`">公开统计页</router-link>
-    </div>
+        <div v-if="seasonLoading" class="loading-state compact"><span class="loader"></span><p>读取杯赛…</p></div>
+        <div v-else-if="seasons.length" class="season-list">
+          <article
+            v-for="s in seasons"
+            :key="s.cup_name"
+            class="season-list-item"
+            :class="{ current: s.cup_name === currentCup }"
+          >
+            <button class="season-select" type="button" @click="selectCup(s.cup_name)">
+              <span class="season-index">{{ padIndex(seasons.indexOf(s) + 1) }}</span>
+              <span class="season-list-copy">
+                <span class="season-name-line">
+                  <strong>{{ displaySeason(s) }}</strong>
+                  <span class="status-badge" :class="s.status === 'active' ? 'success' : 'neutral'">
+                    <span class="status-dot"></span>{{ s.status === 'active' ? '进行中' : '已归档' }}
+                  </span>
+                </span>
+                <code>/{{ s.cup_name }}</code>
+                <span class="season-list-meta">
+                  {{ s.roster_count }} 名种子 · {{ s.approved_count || 0 }} 场比赛 · 门槛 {{ pct(s.hit_ratio) }}%
+                </span>
+              </span>
+              <AppIcon name="chevronRight" />
+            </button>
+            <button class="icon-button edit-season" type="button" :aria-label="`编辑 ${displaySeason(s)}`" title="编辑杯赛" @click="editSeason(s)">
+              <AppIcon name="edit" />
+            </button>
+          </article>
+        </div>
+        <div v-else class="empty-state compact">
+          <span><AppIcon name="layers" :size="24" /></span>
+          <h3>还没有杯赛</h3>
+          <p>先建立杯赛，再配置种子并采集比赛。</p>
+          <button class="button subtle" type="button" @click="createSeason">新建杯赛</button>
+        </div>
+    </section>
 
-    <h2>④ 比赛记录</h2>
-    <div class="card">
-      <div class="row" style="margin-bottom:10px">
-        <button class="btn sm" :class="{ ghost: matchTab !== 'approved' }" @click="switchTab('approved')">已纳入</button>
-        <button class="btn sm" :class="{ ghost: matchTab !== 'rejected' }" @click="switchTab('rejected')">已剔除</button>
-        <select v-model="dayFilter">
-          <option value="">全部比赛日</option>
-          <option v-for="d in matchDays" :key="d" :value="d">{{ d }}</option>
-        </select>
-        <button class="ghost" @click="loadMatches">刷新</button>
-        <span class="spacer"></span>
-        <button :class="matchTab === 'approved' ? 'danger' : 'btn'" @click="bulk">{{ matchTab === 'approved' ? '剔除选中' : '恢复选中' }}</button>
+    <template v-if="currentCup">
+      <div class="current-context">
+        <div>
+          <span class="live-indicator" :class="{ idle: currentSeason?.status !== 'active' }"></span>
+          <p><small>CURRENT TOURNAMENT</small><strong>{{ currentSeason ? displaySeason(currentSeason) : currentCup }}</strong></p>
+        </div>
+        <code>/{{ currentCup }}</code>
       </div>
-      <table class="admin-table">
-        <thead>
-          <tr>
-            <th><input type="checkbox" @change="toggleAll($event)"></th>
-            <th>比赛日</th><th>地图</th><th>对阵</th><th>库内</th><th>玩家</th><th></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="m in visibleMatches" :key="m.match_id">
-            <td><input type="checkbox" :value="m.match_id" v-model="checked"></td>
-            <td>{{ m.play_day }}</td>
-            <td>{{ m.map_name }}<br><span class="muted">{{ m.game_mode }}</span></td>
-            <td>{{ m.team1_name }} {{ m.team1_score }} : {{ m.team2_score }} {{ m.team2_name }}</td>
-            <td>{{ m.roster_hit_count }}</td>
-            <td>
-              <span v-for="p in m.players" :key="p.player_id" class="player" :class="{ in: p.in_library }">{{ p.nickname }}</span>
-            </td>
-            <td>
-              <button v-if="matchTab === 'approved'" class="danger sm" @click="act('reject', [m.match_id])">剔除</button>
-              <button v-else class="btn sm" @click="act('approve', [m.match_id])">恢复</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <div v-if="!visibleMatches.length" class="muted" style="padding:16px;text-align:center">暂无比赛</div>
+
+      <div class="workflow-grid">
+        <section class="panel roster-panel" aria-labelledby="roster-title">
+          <div class="panel-header">
+            <div>
+              <h2 id="roster-title">种子玩家</h2>
+            </div>
+            <span class="result-count">{{ seedChecked.length }} 人</span>
+          </div>
+          <p class="panel-intro">为自定义比赛建立可信名单。采集时会按上方设置的占比门槛判断是否纳入。</p>
+          <label class="search-field full" for="seed-search">
+            <AppIcon name="search" />
+            <input id="seed-search" v-model="seedQ" type="search" placeholder="搜索库内玩家">
+          </label>
+          <div class="picker modern-picker">
+            <label v-for="p in filteredLibrary" :key="p.player_id" class="picker-option">
+              <input v-model="seedChecked" type="checkbox" :value="p.player_id">
+              <span class="player-monogram small">{{ displayPlayer(p).slice(0, 1).toUpperCase() }}</span>
+              <span><strong>{{ displayPlayer(p) }}</strong><code>{{ p.player_id }}</code></span>
+              <AppIcon name="check" class="picker-check" />
+            </label>
+            <div v-if="!filteredLibrary.length" class="picker-empty">玩家库中没有匹配结果，可在下方直接粘贴 ID。</div>
+          </div>
+          <details class="manual-entry">
+            <summary>手动录入 Player ID</summary>
+            <div class="field-group">
+              <label for="roster-raw">Player IDs</label>
+              <textarea id="roster-raw" v-model="rosterRaw" placeholder="多个 ID 用逗号、空格或换行分隔"></textarea>
+            </div>
+          </details>
+          <div class="form-actions">
+            <button class="button primary" type="button" :disabled="savingRoster" @click="saveRoster">
+              <span v-if="savingRoster" class="button-spinner"></span>
+              <AppIcon v-else name="save" />{{ savingRoster ? '保存中…' : '保存种子名单' }}
+            </button>
+          </div>
+        </section>
+
+        <section class="panel crawl-panel" aria-labelledby="crawl-title">
+          <div class="panel-header">
+            <div>
+              <h2 id="crawl-title">数据采集</h2>
+            </div>
+            <span class="status-badge" :class="crawling ? 'running' : autoEnabled ? 'success' : 'neutral'">
+              <span class="status-dot"></span>{{ crawlStateLabel }}
+            </span>
+          </div>
+          <div class="crawl-visual" :class="{ active: crawling }" aria-hidden="true">
+            <div class="radar-ring ring-one"></div>
+            <div class="radar-ring ring-two"></div>
+            <div class="radar-sweep"></div>
+            <AppIcon name="target" :size="40" />
+          </div>
+          <div class="crawl-copy">
+            <strong>{{ crawlHeadline }}</strong>
+            <p>{{ crawlMsg }}</p>
+          </div>
+          <div class="crawl-details">
+            <div><span>统计范围</span><strong>{{ formatRange(currentSeason) }}</strong></div>
+            <div><span>获取频率</span><strong>每 10 分钟</strong></div>
+            <div><span>比赛类型</span><strong>{{ currentSeason?.match_type === 'official' ? '官方比赛' : '自定义比赛' }}</strong></div>
+            <div><span>纳入规则</span><strong>库内占比 ≥ {{ pct(currentSeason?.hit_ratio) }}%</strong></div>
+          </div>
+          <button class="button primary crawl-button" type="button" :disabled="crawlButtonDisabled" @click="startCrawl">
+            <AppIcon :name="autoEnabled ? 'activity' : 'refresh'" :class="{ spinning: crawling }" />
+            {{ crawlButtonLabel }}
+          </button>
+        </section>
+      </div>
+
+      <section class="panel matches-panel" aria-labelledby="matches-title">
+        <div class="panel-header matches-heading">
+          <div>
+            <h2 id="matches-title">比赛记录</h2>
+          </div>
+          <div class="segmented-control" aria-label="比赛记录状态">
+            <button type="button" :class="{ active: matchTab === 'approved' }" @click="switchTab('approved')">
+              已纳入 <span>{{ currentSeason?.approved_count || 0 }}</span>
+            </button>
+            <button type="button" :class="{ active: matchTab === 'rejected' }" @click="switchTab('rejected')">
+              已剔除 <span>{{ currentSeason?.rejected_count || 0 }}</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="data-toolbar match-toolbar">
+          <label class="select-field compact" for="match-day-filter">
+            <AppIcon name="calendar" />
+            <select id="match-day-filter" v-model="dayFilter">
+              <option value="">全部比赛日</option>
+              <option v-for="d in matchDays" :key="d" :value="d">{{ d }}</option>
+            </select>
+          </label>
+          <span class="toolbar-summary">显示 {{ visibleMatches.length }} / {{ matches.length }} 场</span>
+          <span class="toolbar-spacer"></span>
+          <button class="icon-button" type="button" aria-label="刷新比赛记录" title="刷新" :disabled="matchLoading" @click="loadMatches">
+            <AppIcon name="refresh" :class="{ spinning: matchLoading }" />
+          </button>
+        </div>
+
+        <div v-if="checked.length" class="selection-bar" role="status">
+          <span><strong>{{ checked.length }}</strong> 场比赛已选中</span>
+          <button
+            class="button small"
+            :class="matchTab === 'approved' ? 'danger' : 'primary'"
+            type="button"
+            :disabled="matchBusy"
+            @click="bulk"
+          >
+            <AppIcon :name="matchTab === 'approved' ? 'archive' : 'check'" />
+            {{ matchTab === 'approved' ? '剔除选中比赛' : '恢复选中比赛' }}
+          </button>
+        </div>
+
+        <div class="table-scroll">
+          <table class="data-table match-table">
+            <thead>
+              <tr>
+                <th class="check-cell"><input type="checkbox" :checked="allMatchesSelected" aria-label="选择当前筛选的全部比赛" @change="toggleAll"></th>
+                <th>比赛日</th><th>地图</th><th>比分 / 对阵</th><th>名单命中</th><th>玩家</th><th class="action-cell"><span class="sr-only">操作</span></th>
+              </tr>
+            </thead>
+            <tbody v-if="!matchLoading && visibleMatches.length">
+              <tr v-for="m in visibleMatches" :key="m.match_id" :class="{ selected: checked.includes(m.match_id) }">
+                <td class="check-cell"><input v-model="checked" type="checkbox" :value="m.match_id" :aria-label="`选择比赛 ${m.match_id}`"></td>
+                <td><strong class="mono-data">{{ m.play_day || '—' }}</strong><code>{{ m.match_id }}</code></td>
+                <td><strong>{{ m.map_name || '未知地图' }}</strong><small>{{ m.game_mode || '—' }}</small></td>
+                <td>
+                  <div class="score-cell">
+                    <span>{{ m.team1_name || '队伍 A' }}</span>
+                    <strong>{{ m.team1_score ?? '—' }} : {{ m.team2_score ?? '—' }}</strong>
+                    <span>{{ m.team2_name || '队伍 B' }}</span>
+                  </div>
+                </td>
+                <td><span class="hit-count"><strong>{{ m.roster_hit_count || 0 }}</strong> 人</span></td>
+                <td><div class="player-chip-list"><span v-for="p in m.players" :key="p.player_id" :class="{ in: p.in_library }">{{ p.nickname }}</span></div></td>
+                <td class="action-cell">
+                  <button
+                    class="button small"
+                    :class="matchTab === 'approved' ? 'danger-ghost' : 'text-button'"
+                    type="button"
+                    :disabled="matchBusy"
+                    @click="act(matchTab === 'approved' ? 'reject' : 'approve', [m.match_id])"
+                  >{{ matchTab === 'approved' ? '剔除' : '恢复' }}</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-if="matchLoading" class="loading-state"><span class="loader"></span><p>正在加载比赛记录…</p></div>
+        <div v-else-if="!visibleMatches.length" class="empty-state compact">
+          <span><AppIcon name="database" :size="24" /></span>
+          <h3>{{ matchTab === 'approved' ? '暂无已纳入比赛' : '暂无已剔除比赛' }}</h3>
+          <p>{{ matchTab === 'approved' ? '完成采集后，符合条件的比赛会显示在这里。' : '被人工剔除的比赛会保留在这里，可随时恢复。' }}</p>
+        </div>
+      </section>
+    </template>
+
+    <section v-else-if="!seasonLoading" class="panel onboarding-panel">
+      <div class="onboarding-mark"><AppIcon name="target" :size="42" /></div>
+      <div><h2>建立第一个杯赛工作流</h2><p>创建杯赛后，即可继续配置种子名单、执行采集和审核比赛记录。</p></div>
+      <button class="button primary" type="button" @click="createSeason"><AppIcon name="plus" />新建杯赛</button>
+    </section>
+
+    <AppModal
+      :open="seasonModalOpen"
+      :title="editingExisting ? '编辑杯赛' : '新建杯赛'"
+      :eyebrow="editingExisting ? 'EDIT TOURNAMENT' : 'NEW TOURNAMENT'"
+      description="设置公开标识、统计时间范围与比赛纳入规则。"
+      size="large"
+      :persistent="savingSeason"
+      @close="closeSeasonModal"
+    >
+      <form class="stack-form" @submit.prevent="saveSeason">
+        <div class="field-grid two">
+          <div class="field-group">
+            <label for="season-cup">URL 标识 <span aria-hidden="true">*</span></label>
+            <input id="season-cup" ref="cupInput" v-model.trim="form.cup" required autofocus placeholder="如 shark-s2" :disabled="editingExisting">
+            <small>推荐英文 slug，用于公开页 URL。</small>
+          </div>
+          <div class="field-group">
+            <label for="season-alias">展示名称</label>
+            <input id="season-alias" v-model.trim="form.alias" placeholder="如 鲨鱼杯 S2">
+          </div>
+        </div>
+        <div class="field-grid two">
+          <div class="field-group">
+            <label for="season-type">比赛类型</label>
+            <select id="season-type" v-model="form.type">
+              <option value="custom">自定义比赛</option>
+              <option value="official">官方比赛</option>
+            </select>
+          </div>
+          <div class="field-group">
+            <label for="season-status">公开状态</label>
+            <select id="season-status" v-model="form.status">
+              <option value="active">进行中</option>
+              <option value="archived">已归档</option>
+            </select>
+          </div>
+        </div>
+        <div class="field-grid two">
+          <div class="field-group">
+            <label for="season-start">开始时间</label>
+            <input id="season-start" v-model="form.start" type="datetime-local" step="1" required>
+            <small>Asia/Shanghai · 精确到秒</small>
+          </div>
+          <div class="field-group">
+            <label for="season-end">结束时间</label>
+            <input id="season-end" v-model="form.end" type="datetime-local" step="1" required>
+            <small>结束时间包含该秒</small>
+          </div>
+        </div>
+        <div class="field-group threshold-field">
+          <div class="label-line">
+            <label for="season-hit">库内占比门槛</label>
+            <output for="season-hit">{{ form.hit }}%</output>
+          </div>
+          <input id="season-hit" v-model.number="form.hit" type="range" min="0" max="100" step="5">
+          <div class="range-labels"><span>宽松 0%</span><span>严格 100%</span></div>
+        </div>
+        <div class="form-actions">
+          <button class="button subtle" type="button" :disabled="savingSeason" @click="closeSeasonModal">取消</button>
+          <button class="button primary" type="submit" :disabled="savingSeason">
+            <span v-if="savingSeason" class="button-spinner"></span>
+            <AppIcon v-else name="save" />
+            {{ savingSeason ? '保存中…' : '保存杯赛' }}
+          </button>
+        </div>
+      </form>
+    </AppModal>
+
+    <div v-if="toast.message" class="toast" :class="toast.type" :role="toast.type === 'error' ? 'alert' : 'status'">
+      <AppIcon :name="toast.type === 'error' ? 'alert' : 'check'" />{{ toast.message }}
     </div>
-    <div v-if="toast" class="toast">{{ toast }}</div>
-  </div>
+  </AdminLayout>
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { api } from '../api'
+import AdminLayout from '../components/AdminLayout.vue'
+import AppIcon from '../components/AppIcon.vue'
+import AppModal from '../components/AppModal.vue'
 
-const router = useRouter()
 const seasons = ref([])
 const currentCup = ref('')
 const library = ref([])
 const seedQ = ref('')
 const seedChecked = ref([])
 const rosterRaw = ref('')
-const rosterText = ref('请先选择杯赛')
-const form = ref({ cup: '', alias: '', type: 'custom', start: '', end: '', hit: 60, status: 'active' })
-const crawlMsg = ref('选择杯赛后可采集')
+const form = ref(defaultForm())
+const crawlMsg = ref('选择杯赛后可执行采集')
 const crawling = ref(false)
+const autoEnabled = ref(false)
 const matchTab = ref('approved')
 const matches = ref([])
 const dayFilter = ref('')
 const checked = ref([])
-const toast = ref('')
-let timer = null
+const toast = ref({ message: '', type: 'success' })
+const seasonLoading = ref(false)
+const savingSeason = ref(false)
+const seasonModalOpen = ref(false)
+const savingRoster = ref(false)
+const matchLoading = ref(false)
+const matchBusy = ref(false)
+const cupInput = ref(null)
+let crawlTimer
+let toastTimer
 
-function pct(r) {
-  const n = Number(r)
-  if (!n && n !== 0) return 60
-  return n <= 1 ? Math.round(n * 100) : Math.round(n)
-}
-function show(msg) {
-  toast.value = msg
-  setTimeout(() => { toast.value = '' }, 2000)
-}
+function defaultForm() { return { cup: '', alias: '', type: 'custom', start: '', end: '', hit: 60, status: 'active' } }
+const currentSeason = computed(() => seasons.value.find((s) => s.cup_name === currentCup.value))
+const seasonExpired = computed(() => {
+  const end = currentSeason.value?.end_date
+  return Boolean(end && Date.now() > new Date(end).getTime())
+})
+const crawlStateLabel = computed(() => {
+  if (!currentCup.value) return '未选择'
+  if (seasonExpired.value) return '已截止'
+  if (crawling.value) return '本轮运行中'
+  return autoEnabled.value ? '已启动' : '未启动'
+})
+const crawlHeadline = computed(() => {
+  if (seasonExpired.value) return '赛季采集已截止'
+  if (crawling.value) return '正在扫描比赛数据'
+  if (autoEnabled.value) return '自动采集正在运行'
+  return '等待启动自动采集'
+})
+const crawlButtonDisabled = computed(() => (
+  crawling.value || autoEnabled.value || seasonExpired.value || currentSeason.value?.status !== 'active'
+))
+const crawlButtonLabel = computed(() => {
+  if (seasonExpired.value) return '赛季已截止'
+  if (crawling.value) return '本轮采集中'
+  if (autoEnabled.value) return '自动采集已启动'
+  if (currentSeason.value?.status !== 'active') return '赛季已归档'
+  return '启动自动采集'
+})
+const editingExisting = computed(() => seasons.value.some((s) => s.cup_name === form.value.cup))
+const activeSeasons = computed(() => seasons.value.filter((s) => s.status === 'active').length)
+const totalApproved = computed(() => seasons.value.reduce((sum, s) => sum + Number(s.approved_count || 0), 0))
+const totalRejected = computed(() => seasons.value.reduce((sum, s) => sum + Number(s.rejected_count || 0), 0))
 const filteredLibrary = computed(() => {
-  const q = seedQ.value.toLowerCase()
-  return library.value.filter((p) => {
-    const blob = `${p.player_id}${p.nickname || ''}${p.alias_name || ''}`.toLowerCase()
-    return !q || blob.includes(q)
-  })
+  const query = seedQ.value.toLowerCase().trim()
+  return library.value.filter((p) => !query || `${p.player_id}${p.nickname || ''}${p.alias_name || ''}`.toLowerCase().includes(query))
 })
 const matchDays = computed(() => [...new Set(matches.value.map((m) => m.play_day).filter(Boolean))].sort().reverse())
 const visibleMatches = computed(() => matches.value.filter((m) => !dayFilter.value || m.play_day === dayFilter.value))
+const allMatchesSelected = computed(() => visibleMatches.value.length > 0 && visibleMatches.value.every((m) => checked.value.includes(m.match_id)))
 
-watch(seedChecked, (ids) => {
-  const extra = rosterRaw.value.split(/[,;\s]+/).map((s) => s.trim()).filter(Boolean).filter((id) => !library.value.some((p) => p.player_id === id))
-  rosterRaw.value = [...new Set([...extra, ...ids])].join(', ')
-})
-
-async function loadSeasons() {
-  const data = await api.get('/api/admin/season/list')
-  seasons.value = data.seasons || []
-  const cur = seasons.value.find((s) => s.cup_name === currentCup.value)
-  if (cur) applyCrawl(cur.crawl || {})
+function displaySeason(s) { return s.cup_alias || s.name || s.cup_name }
+function displayPlayer(p) { return p.alias_name || p.nickname || p.player_id }
+function padIndex(index) { return String(index).padStart(2, '0') }
+function pct(value) {
+  const number = Number(value)
+  if (Number.isNaN(number)) return 60
+  return number <= 1 ? Math.round(number * 100) : Math.round(number)
 }
-async function selectCup(cup) {
-  currentCup.value = cup
-  await Promise.all([loadSeasons(), loadRoster(), loadLibrary(), loadMatches(), refreshCrawl()])
+function toDateTimeInput(value) {
+  if (!value) return ''
+  return String(value).replace(' ', 'T').slice(0, 19)
+}
+function formatDateTime(value) {
+  return value ? String(value).replace('T', ' ').slice(0, 19) : '…'
+}
+function formatRange(season) {
+  if (!season || (!season.start_date && !season.end_date)) return '未设置时间段'
+  return `${formatDateTime(season.start_date)} — ${formatDateTime(season.end_date)}`
+}
+function show(message, type = 'success') {
+  clearTimeout(toastTimer)
+  toast.value = { message, type }
+  toastTimer = setTimeout(() => { toast.value.message = '' }, 3200)
+}
+function resetForm() { form.value = defaultForm() }
+function closeSeasonModal() {
+  if (savingSeason.value) return
+  seasonModalOpen.value = false
+  resetForm()
+}
+async function createSeason() {
+  resetForm()
+  seasonModalOpen.value = true
+  await nextTick()
+  cupInput.value?.focus()
 }
 function editSeason(s) {
   form.value = {
     cup: s.cup_name,
     alias: s.cup_alias || s.name || '',
-    type: s.match_type,
-    start: s.start_date || '',
-    end: s.end_date || '',
+    type: s.match_type || 'custom',
+    start: toDateTimeInput(s.start_date),
+    end: toDateTimeInput(s.end_date),
     hit: pct(s.hit_ratio),
-    status: s.status,
+    status: s.status || 'active',
+  }
+  seasonModalOpen.value = true
+}
+async function loadSeasons() {
+  seasonLoading.value = true
+  try {
+    const data = await api.get('/api/admin/season/list')
+    seasons.value = data.seasons || []
+    if (currentSeason.value) applyCrawl(currentSeason.value.crawl || {})
+  } catch (e) {
+    show(e.message, 'error')
+  } finally {
+    seasonLoading.value = false
   }
 }
+async function selectCup(cup) {
+  currentCup.value = cup
+  checked.value = []
+  dayFilter.value = ''
+  await Promise.all([loadRoster(), loadLibrary(), loadMatches(), refreshCrawl()])
+}
 async function saveSeason() {
-  if (!form.value.cup.trim()) return show('cup_name 不能为空')
-  const data = await api.send('/api/admin/season/save', {
-    cup: form.value.cup.trim(),
-    cup_alias: form.value.alias,
-    match_type: form.value.type,
-    start_date: form.value.start,
-    end_date: form.value.end,
-    status: form.value.status,
-    hit_percent: String(form.value.hit || 60),
-  })
-  show(typeof data === 'string' ? data : '已保存')
-  await selectCup(form.value.cup.trim())
+  if (!form.value.cup.trim()) return show('请填写 URL 标识', 'error')
+  savingSeason.value = true
+  try {
+    const data = await api.send('/api/admin/season/save', {
+      cup: form.value.cup.trim(),
+      cup_alias: form.value.alias,
+      match_type: form.value.type,
+      start_date: form.value.start,
+      end_date: form.value.end,
+      status: form.value.status,
+      hit_percent: String(form.value.hit ?? 60),
+    })
+    show(typeof data === 'string' ? data : '杯赛已保存')
+    const cup = form.value.cup.trim()
+    await loadSeasons()
+    await selectCup(cup)
+    seasonModalOpen.value = false
+    resetForm()
+  } catch (e) {
+    show(e.message, 'error')
+  } finally {
+    savingSeason.value = false
+  }
 }
 async function loadLibrary() {
-  const data = await api.get('/api/admin/players?in_library=1')
-  library.value = data.players || []
+  try {
+    const data = await api.get('/api/admin/players?in_library=1')
+    library.value = data.players || []
+  } catch (e) { show(e.message, 'error') }
 }
 async function loadRoster() {
   if (!currentCup.value) return
-  const data = await api.get('/api/admin/season/roster/get?cup=' + encodeURIComponent(currentCup.value))
-  const roster = data.roster || []
-  rosterText.value = roster.length
-    ? roster.map((r) => `${r.alias_name || r.nickname || r.player_id}`).join(' · ')
-    : '种子为空'
-  seedChecked.value = roster.map((r) => r.player_id)
-  rosterRaw.value = roster.map((r) => r.player_id).join(', ')
+  try {
+    const data = await api.get('/api/admin/season/roster/get?cup=' + encodeURIComponent(currentCup.value))
+    const roster = data.roster || []
+    seedChecked.value = roster.map((r) => r.player_id)
+    rosterRaw.value = roster.map((r) => r.player_id).join(', ')
+  } catch (e) { show(e.message, 'error') }
 }
 async function saveRoster() {
-  if (!currentCup.value) return show('请先选择杯赛')
-  const data = await api.send('/api/admin/season/roster/save', { cup: currentCup.value, player_ids: rosterRaw.value })
-  show(typeof data === 'string' ? data : '已保存')
-  await loadRoster()
-  await loadSeasons()
+  if (!currentCup.value) return show('请先选择杯赛', 'error')
+  savingRoster.value = true
+  try {
+    const data = await api.send('/api/admin/season/roster/save', { cup: currentCup.value, player_ids: rosterRaw.value })
+    show(typeof data === 'string' ? data : '种子名单已保存')
+    await Promise.all([loadRoster(), loadSeasons()])
+  } catch (e) {
+    show(e.message, 'error')
+  } finally {
+    savingRoster.value = false
+  }
 }
-function applyCrawl(st) {
-  crawling.value = !!(st.running || st.state === 'running')
-  crawlMsg.value = crawling.value ? (st.message || '采集中…') : (st.message || '就绪')
+function applyCrawl(status) {
+  crawling.value = Boolean(status.running || status.state === 'running')
+  autoEnabled.value = Boolean(status.auto_enabled)
+  crawlMsg.value = status.message || (autoEnabled.value
+    ? '已启动，每 10 分钟自动获取一次，赛季截止后停止。'
+    : '点击一次启动，之后无需手动重复采集。')
 }
 async function refreshCrawl() {
   if (!currentCup.value) return
-  const st = await api.get('/api/admin/season/crawl/status?cup=' + encodeURIComponent(currentCup.value))
-  applyCrawl(st)
-  if (crawling.value) {
-    if (!timer) timer = setInterval(refreshCrawl, 4000)
-  } else if (timer) {
-    clearInterval(timer)
-    timer = null
-    loadMatches()
-    loadSeasons()
-  }
+  try {
+    const wasRunning = crawling.value
+    const wasEnabled = autoEnabled.value
+    const status = await api.get('/api/admin/season/crawl/status?cup=' + encodeURIComponent(currentCup.value))
+    applyCrawl(status)
+    if ((crawling.value || autoEnabled.value) && !crawlTimer) crawlTimer = setInterval(refreshCrawl, 15000)
+    if (!crawling.value && !autoEnabled.value && crawlTimer) {
+      clearInterval(crawlTimer)
+      crawlTimer = null
+    }
+    if ((wasRunning && !crawling.value) || (wasEnabled && !autoEnabled.value)) {
+      await Promise.all([loadMatches(), loadSeasons()])
+    }
+  } catch (e) { show(e.message, 'error') }
 }
 async function startCrawl() {
-  const data = await api.get('/api/admin/season/crawl?cup=' + encodeURIComponent(currentCup.value))
-  show(typeof data === 'string' ? data : '已开始')
-  refreshCrawl()
+  if (!currentCup.value || crawlButtonDisabled.value) return
+  try {
+    const data = await api.get('/api/admin/season/crawl?cup=' + encodeURIComponent(currentCup.value))
+    show(typeof data === 'string' ? data : '自动采集已启动')
+    await refreshCrawl()
+  } catch (e) { show(e.message, 'error') }
 }
 function switchTab(tab) {
   matchTab.value = tab
   checked.value = []
+  dayFilter.value = ''
   loadMatches()
 }
 async function loadMatches() {
   if (!currentCup.value) return
-  const data = await api.get(`/api/admin/selection/list?cup=${encodeURIComponent(currentCup.value)}&status=${matchTab.value}`)
-  matches.value = data.list || []
+  matchLoading.value = true
+  try {
+    const data = await api.get(`/api/admin/selection/list?cup=${encodeURIComponent(currentCup.value)}&status=${matchTab.value}`)
+    matches.value = data.list || []
+    checked.value = []
+  } catch (e) {
+    show(e.message, 'error')
+  } finally {
+    matchLoading.value = false
+  }
 }
-function toggleAll(e) {
-  checked.value = e.target.checked ? visibleMatches.value.map((m) => m.match_id) : []
+function toggleAll(event) {
+  const visibleIds = visibleMatches.value.map((m) => m.match_id)
+  checked.value = event.target.checked
+    ? [...new Set([...checked.value, ...visibleIds])]
+    : checked.value.filter((id) => !visibleIds.includes(id))
 }
 async function act(type, ids) {
-  const data = await api.send(`/api/admin/selection/${type}`, { cup: currentCup.value, match_ids: ids.join(',') })
-  show(typeof data === 'string' ? data : '完成')
-  loadMatches()
-  loadSeasons()
+  matchBusy.value = true
+  try {
+    const data = await api.send(`/api/admin/selection/${type}`, { cup: currentCup.value, match_ids: ids.join(',') })
+    show(typeof data === 'string' ? data : '比赛状态已更新')
+    await Promise.all([loadMatches(), loadSeasons()])
+  } catch (e) {
+    show(e.message, 'error')
+  } finally {
+    matchBusy.value = false
+  }
 }
 function bulk() {
-  if (!checked.value.length) return show('未勾选')
-  act(matchTab.value === 'approved' ? 'reject' : 'approve', checked.value)
-}
-async function logout() {
-  await api.logout()
-  router.replace('/admin/login')
+  if (!checked.value.length) return show('请先选择比赛', 'error')
+  return act(matchTab.value === 'approved' ? 'reject' : 'approve', checked.value)
 }
 
-onMounted(async () => {
-  await loadSeasons()
-  await loadLibrary()
+watch(seedChecked, (ids) => {
+  const extras = rosterRaw.value
+    .split(/[,;\s]+/)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .filter((id) => !library.value.some((p) => p.player_id === id))
+  rosterRaw.value = [...new Set([...extras, ...ids])].join(', ')
 })
-onUnmounted(() => { if (timer) clearInterval(timer) })
+
+onMounted(async () => {
+  await Promise.all([loadSeasons(), loadLibrary()])
+  if (seasons.value.length) await selectCup(seasons.value[0].cup_name)
+})
+onBeforeUnmount(() => {
+  if (crawlTimer) clearInterval(crawlTimer)
+  clearTimeout(toastTimer)
+})
 </script>

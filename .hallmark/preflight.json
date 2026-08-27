@@ -1,0 +1,10 @@
+{
+  "date": "2026-08-27",
+  "package_mtime": 1787814802,
+  "framework": "Vue 3.5 with Vite 6",
+  "font_stack": "Inter body, DIN Alternate display, SFMono data",
+  "palette": "Tactical Data Terminal: cool paper, ink, signal green; blue/amber/red semantic only",
+  "motion": "motion-cut; no animation library installed",
+  "spacing": "4-point scale documented in docs/UI_UX_GUIDELINES.md",
+  "preserve": ["routes", "copy intent", "API and auth logic", "radar/crosshair motif", "status semantics"]
+}

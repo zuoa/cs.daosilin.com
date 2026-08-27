@@ -21,6 +21,9 @@ PY
 echo "Initializing database..."
 flask init-db
 
+echo "Importing historical data when database is empty..."
+flask import-history
+
 echo "Starting scheduler..."
 python scheduler.py &
 

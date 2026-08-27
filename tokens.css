@@ -1,0 +1,114 @@
+/* Hallmark · genre: modern-minimal · design-system: design.md · theme: Tactical Signal
+ * pre-emit critique: P5 H5 E4 S5 R5 V4
+ */
+:root {
+  --color-paper: oklch(96.5% 0.009 178);
+  --color-paper-2: oklch(98.2% 0.006 178);
+  --color-paper-3: oklch(93.5% 0.012 178);
+  --color-surface: oklch(99.2% 0.004 178);
+  --color-rule: oklch(88.5% 0.014 188);
+  --color-rule-2: oklch(80% 0.018 198);
+  --color-muted: oklch(43% 0.025 235);
+  --color-neutral: oklch(34% 0.026 238);
+  --color-ink-3: oklch(31% 0.029 240);
+  --color-ink-2: oklch(23% 0.029 242);
+  --color-ink: oklch(17% 0.027 244);
+  --color-ink-strong: oklch(12.5% 0.025 246);
+
+  --color-accent: oklch(59% 0.132 163);
+  --color-accent-strong: oklch(48% 0.118 163);
+  --color-accent-soft: oklch(94% 0.035 163);
+  --color-accent-faint: oklch(97.2% 0.016 163);
+  --color-accent-line: oklch(84% 0.052 163);
+  --color-accent-ink: oklch(98.2% 0.008 178);
+  --color-focus: oklch(49% 0.15 163);
+
+  --color-info: oklch(55% 0.1 242);
+  --color-info-soft: oklch(94% 0.025 242);
+  --color-warning: oklch(62% 0.12 75);
+  --color-warning-soft: oklch(95% 0.035 75);
+  --color-danger: oklch(54% 0.17 25);
+  --color-danger-strong: oklch(45% 0.15 25);
+  --color-danger-soft: oklch(95% 0.035 25);
+  --color-danger-line: oklch(83% 0.06 25);
+  --color-gold: oklch(64% 0.12 78);
+  --color-gold-soft: oklch(95% 0.035 78);
+  --color-silver: oklch(53% 0.025 240);
+  --color-silver-soft: oklch(94% 0.014 240);
+
+  --color-dark-text: oklch(88% 0.017 205);
+  --color-dark-muted: oklch(62% 0.028 224);
+  --color-dark-faint: oklch(46% 0.028 226);
+  --color-dark-rule: oklch(100% 0 0 / 0.09);
+  --color-dark-surface: oklch(100% 0 0 / 0.055);
+  --color-dark-overlay: oklch(10% 0.02 244 / 0.74);
+  --color-backdrop: oklch(10% 0.02 244 / 0.58);
+  --color-accent-a08: oklch(59% 0.132 163 / 0.08);
+  --color-accent-a12: oklch(59% 0.132 163 / 0.12);
+  --color-accent-a17: oklch(59% 0.132 163 / 0.17);
+  --color-accent-a20: oklch(59% 0.132 163 / 0.20);
+  --color-chart-fill: oklch(59% 0.132 163 / 0.18);
+  --color-chart-fade: oklch(59% 0.132 163 / 0);
+  --color-grid-line: oklch(68% 0.035 220 / 0.075);
+  --color-white-a45: oklch(99.2% 0.004 178 / 0.45);
+  --color-white-a75: oklch(99.2% 0.004 178 / 0.75);
+
+  --font-display: "DIN Alternate", "Arial Narrow", "SF Pro Display", "PingFang SC", ui-sans-serif, system-ui, sans-serif;
+  --font-body: Inter, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", ui-sans-serif, system-ui, sans-serif;
+  --font-outlier: "SFMono-Regular", Menlo, "Liberation Mono", ui-monospace, monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.25rem;
+  --text-xl: 1.563rem;
+  --text-2xl: 1.953rem;
+  --text-3xl: 2.441rem;
+  --text-4xl: 3.052rem;
+  --text-display-s: clamp(3rem, 7vw, 5.25rem);
+  --text-display: clamp(3.6rem, 10vw, 7rem);
+
+  --space-3xs: 0.25rem;
+  --space-2xs: 0.5rem;
+  --space-xs: 0.75rem;
+  --space-sm: 1rem;
+  --space-md: 1.5rem;
+  --space-lg: 2rem;
+  --space-xl: 3rem;
+  --space-2xl: 4rem;
+  --space-3xl: 6rem;
+  --space-4xl: 9rem;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-micro: 120ms;
+  --dur-short: 220ms;
+  --dur-long: 420ms;
+
+  --rule-hair: 1px;
+  --rule-fine: 2px;
+  --rule-thick: 4px;
+  --radius-input: 8px;
+  --radius-card: 12px;
+  --radius-panel: 16px;
+  --radius-brand: 22px;
+  --radius-pill: 999px;
+
+  --shadow-card: 0 1px 2px oklch(17% 0.027 244 / 0.05);
+  --shadow-float: 0 18px 54px oklch(12.5% 0.025 246 / 0.14);
+  --shadow-inset-accent: inset 0 var(--rule-fine) var(--color-accent);
+
+  --z-base: 1;
+  --z-raised: 10;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-modal: 400;
+  --z-toast: 500;
+  --z-tooltip: 600;
+
+  --gradient-radar: radial-gradient(circle, var(--color-surface) 0 22%, var(--color-accent-soft) 23% 24%, var(--color-paper-2) 25% 47%, var(--color-accent-line) 48% 49%, var(--color-accent-faint) 50%);
+  --gradient-context: linear-gradient(90deg, var(--color-accent-soft), var(--color-accent-faint));
+  --gradient-skeleton: linear-gradient(90deg, var(--color-paper-3) 25%, var(--color-paper-2) 50%, var(--color-paper-3) 75%);
+  --gradient-map-overlay: linear-gradient(180deg, oklch(12.5% 0.025 246 / 0.12), oklch(12.5% 0.025 246 / 0.92));
+}

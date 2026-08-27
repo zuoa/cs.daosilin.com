@@ -1,92 +1,266 @@
 <template>
-  <div class="admin-shell">
-    <h1>玩家库</h1>
-    <div class="admin-nav">
-      <router-link to="/admin/season">杯赛 / 采集</router-link>
-      <router-link class="on" to="/admin/players">玩家库</router-link>
-      <span class="spacer"></span>
-      <router-link to="/">公开首页</router-link>
-      <a href="#" @click.prevent="logout">退出</a>
-    </div>
-    <p class="muted">库内玩家会计入杯赛「库内占比」门槛。比赛里新出现的路人默认不进库。</p>
+  <AdminLayout
+    eyebrow="PLAYER LIBRARY"
+    title="玩家库"
+    description="维护可信玩家身份，并控制哪些玩家参与自定义比赛的名单命中计算。"
+  >
+    <template #actions>
+      <button class="button primary" type="button" @click="startCreate">
+        <AppIcon name="userPlus" />
+        新增玩家
+      </button>
+    </template>
 
-    <h2>编辑 / 新增</h2>
-    <div class="card">
-      <div class="row">
-        <label>player_id*</label><input v-model="form.id" placeholder="SteamID64">
-        <label>昵称</label><input v-model="form.nick">
-        <label>别名</label><input v-model="form.alias" placeholder="首页展示优先用别名">
-        <label>Steam ID</label><input v-model="form.steam">
-        <label>库内</label>
-        <select v-model="form.lib"><option value="1">是</option><option value="0">否</option></select>
-        <button class="btn" @click="save">保存</button>
-      </div>
-    </div>
+    <section class="metric-grid" aria-label="玩家库概览">
+      <article class="metric-card">
+        <span class="metric-icon green"><AppIcon name="shield" /></span>
+        <div><strong>{{ libraryCount }}</strong><span>库内玩家</span></div>
+        <small>参与名单命中</small>
+      </article>
+      <article class="metric-card">
+        <span class="metric-icon blue"><AppIcon name="users" /></span>
+        <div><strong>{{ players.length }}</strong><span>当前结果</span></div>
+        <small>{{ filterLabel }}</small>
+      </article>
+      <article class="metric-card">
+        <span class="metric-icon amber"><AppIcon name="activity" /></span>
+        <div><strong>{{ outsiderCount }}</strong><span>非库内玩家</span></div>
+        <small>不参与名单命中</small>
+      </article>
+    </section>
 
-    <h2>列表</h2>
-    <div class="card">
-      <div class="row" style="margin-bottom:10px">
-        <input v-model="q" placeholder="搜索 ID / 昵称 / 别名" @keydown.enter="load">
-        <select v-model="filterLib" @change="load">
-          <option value="">全部</option>
-          <option value="1">仅库内</option>
-          <option value="0">仅非库内</option>
-        </select>
-        <button class="ghost" @click="load">搜索</button>
-        <span class="spacer"></span>
-        <button class="btn" @click="bulk(true)">选中标为库内</button>
-        <button class="danger" @click="bulk(false)">选中移出库内</button>
-      </div>
-      <table class="admin-table">
-        <thead>
-          <tr>
-            <th><input type="checkbox" @change="toggleAll($event)"></th>
-            <th>玩家</th><th>player_id</th><th>别名</th><th>Steam ID</th><th>库内</th><th></th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="p in players" :key="p.player_id">
-            <td><input type="checkbox" :value="p.player_id" v-model="checked"></td>
-            <td>{{ p.nickname }}</td>
-            <td class="muted">{{ p.player_id }}</td>
-            <td>{{ p.alias_name }}</td>
-            <td class="muted">{{ p.steam_id }}</td>
-            <td><span class="tag" :class="p.in_library ? 'active' : 'archived'">{{ p.in_library ? '库内' : '路人' }}</span></td>
-            <td>
-              <button class="ghost sm" @click="fill(p)">编辑</button>
-              <button class="btn sm" @click="setLib([p.player_id], !p.in_library)">{{ p.in_library ? '移出' : '标入库内' }}</button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+    <section class="panel data-panel" aria-labelledby="player-list-title">
+        <div class="panel-header">
+          <div>
+            <h2 id="player-list-title">玩家目录</h2>
+          </div>
+          <span class="result-count">{{ players.length }} 条记录</span>
+        </div>
+
+        <div class="data-toolbar">
+          <label class="search-field" for="player-search">
+            <AppIcon name="search" />
+            <input
+              id="player-search"
+              v-model="q"
+              type="search"
+              placeholder="搜索 ID、昵称或别名"
+              autocomplete="off"
+            >
+          </label>
+          <label class="select-field compact" for="library-filter">
+            <AppIcon name="filter" />
+            <select id="library-filter" v-model="filterLib">
+              <option value="">全部状态</option>
+              <option value="1">仅库内</option>
+              <option value="0">仅非库内</option>
+            </select>
+          </label>
+          <button class="icon-button" type="button" aria-label="刷新玩家列表" title="刷新" :disabled="loading" @click="load">
+            <AppIcon name="refresh" :class="{ spinning: loading }" />
+          </button>
+        </div>
+
+        <div v-if="checked.length" class="selection-bar" role="status">
+          <span><strong>{{ checked.length }}</strong> 名玩家已选中</span>
+          <div>
+            <button class="button subtle small" type="button" :disabled="busy" @click="bulk(true)">
+              <AppIcon name="check" />标为库内
+            </button>
+            <button class="button danger-ghost small" type="button" :disabled="busy" @click="bulk(false)">
+              <AppIcon name="archive" />移出库内
+            </button>
+          </div>
+        </div>
+
+        <div class="table-scroll">
+          <table class="data-table admin-player-table">
+            <thead>
+              <tr>
+                <th class="check-cell">
+                  <input
+                    type="checkbox"
+                    :checked="allSelected"
+                    aria-label="选择当前页全部玩家"
+                    @change="toggleAll"
+                  >
+                </th>
+                <th>玩家</th>
+                <th>PLAYER ID</th>
+                <th>Steam ID</th>
+                <th>直播间</th>
+                <th>状态</th>
+                <th class="action-cell"><span class="sr-only">操作</span></th>
+              </tr>
+            </thead>
+            <tbody v-if="!loading && players.length">
+              <tr v-for="p in players" :key="p.player_id" :class="{ selected: checked.includes(p.player_id) }">
+                <td class="check-cell">
+                  <input v-model="checked" type="checkbox" :value="p.player_id" :aria-label="`选择 ${displayName(p)}`">
+                </td>
+                <td>
+                  <div class="identity-cell">
+                    <span class="player-monogram">{{ displayName(p).slice(0, 1).toUpperCase() }}</span>
+                    <span><strong>{{ displayName(p) }}</strong><small>{{ p.alias_name ? p.nickname : '未设置别名' }}</small></span>
+                  </div>
+                </td>
+                <td><code>{{ p.player_id }}</code></td>
+                <td class="muted-cell">{{ p.steam_id || '—' }}</td>
+                <td>
+                  <a v-if="p.live_url" class="table-link" :href="p.live_url" target="_blank" rel="noopener noreferrer">
+                    访问<AppIcon name="external" />
+                  </a>
+                  <span v-else class="muted-cell">—</span>
+                </td>
+                <td>
+                  <span class="status-badge" :class="p.in_library ? 'success' : 'neutral'">
+                    <span class="status-dot"></span>{{ p.in_library ? '库内' : '非库内' }}
+                  </span>
+                </td>
+                <td class="action-cell">
+                  <div class="row-actions">
+                    <button class="icon-button" type="button" :aria-label="`编辑 ${displayName(p)}`" title="编辑" @click="fill(p)">
+                      <AppIcon name="edit" />
+                    </button>
+                    <button
+                      class="button text-button small"
+                      type="button"
+                      :disabled="busy"
+                      @click="setLib([p.player_id], !p.in_library)"
+                    >{{ p.in_library ? '移出' : '加入' }}</button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div v-if="loading" class="loading-state" aria-live="polite">
+          <span class="loader"></span><p>正在加载玩家目录…</p>
+        </div>
+        <div v-else-if="!players.length" class="empty-state">
+          <span><AppIcon name="users" :size="24" /></span>
+          <h3>没有找到玩家</h3>
+          <p>调整搜索条件，或新增第一名玩家。</p>
+          <button class="button subtle" type="button" @click="startCreate">新增玩家</button>
+        </div>
+    </section>
+
+    <AppModal
+      :open="editorOpen"
+      :title="isEditing ? '编辑玩家' : '新增玩家'"
+      :eyebrow="isEditing ? 'EDIT PROFILE' : 'NEW PROFILE'"
+      description="维护公开展示身份与玩家库状态。"
+      :persistent="saving"
+      @close="closeEditor"
+    >
+        <form class="stack-form" @submit.prevent="save">
+          <div class="field-group">
+            <label for="player-id">Player ID <span aria-hidden="true">*</span></label>
+            <input id="player-id" ref="idInput" v-model.trim="form.id" required autofocus placeholder="SteamID64 或平台玩家 ID" :disabled="isEditing">
+            <small>保存后作为唯一标识，不建议修改。</small>
+          </div>
+          <div class="field-grid two">
+            <div class="field-group">
+              <label for="player-nick">原始昵称</label>
+              <input id="player-nick" v-model.trim="form.nick" placeholder="比赛数据中的昵称">
+            </div>
+            <div class="field-group">
+              <label for="player-alias">展示别名</label>
+              <input id="player-alias" v-model.trim="form.alias" placeholder="公开页优先展示">
+            </div>
+          </div>
+          <div class="field-group">
+            <label for="player-steam">Steam ID</label>
+            <input id="player-steam" v-model.trim="form.steam" placeholder="可选">
+          </div>
+          <div class="field-group">
+            <label for="player-avatar">头像地址</label>
+            <input id="player-avatar" v-model.trim="form.avatar" type="url" placeholder="https://…">
+          </div>
+          <div class="field-group">
+            <label for="player-live-url">直播间地址</label>
+            <input id="player-live-url" v-model.trim="form.liveUrl" type="url" placeholder="https://…">
+            <small>设置后会在选手公开详情页显示直播间入口。</small>
+          </div>
+          <label class="switch-row" for="player-library">
+            <span>
+              <strong>加入玩家库</strong>
+              <small>计入自定义比赛的名单命中率</small>
+            </span>
+            <input id="player-library" v-model="form.lib" type="checkbox" true-value="1" false-value="0">
+            <span class="switch-control" aria-hidden="true"></span>
+          </label>
+          <div class="form-actions">
+            <button class="button subtle" type="button" :disabled="saving" @click="closeEditor">取消</button>
+            <button class="button primary" type="submit" :disabled="saving">
+              <span v-if="saving" class="button-spinner"></span>
+              <AppIcon v-else name="save" />
+              {{ saving ? '保存中…' : '保存玩家' }}
+            </button>
+          </div>
+        </form>
+
+        <div class="context-note">
+          <AppIcon name="shield" />
+          <p><strong>名单命中规则</strong><span>只有库内玩家会参与杯赛的库内占比计算，新出现的路人默认保持非库内状态。</span></p>
+        </div>
+    </AppModal>
+
+    <div v-if="toast.message" class="toast" :class="toast.type" :role="toast.type === 'error' ? 'alert' : 'status'">
+      <AppIcon :name="toast.type === 'error' ? 'alert' : 'check'" />
+      {{ toast.message }}
     </div>
-    <div v-if="toast" class="toast">{{ toast }}</div>
-  </div>
+  </AdminLayout>
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { api } from '../api'
+import AdminLayout from '../components/AdminLayout.vue'
+import AppIcon from '../components/AppIcon.vue'
+import AppModal from '../components/AppModal.vue'
 
-const router = useRouter()
 const players = ref([])
 const q = ref('')
 const filterLib = ref('')
 const checked = ref([])
-const toast = ref('')
-const form = ref({ id: '', nick: '', alias: '', steam: '', lib: '1' })
+const toast = ref({ message: '', type: 'success' })
+const loading = ref(false)
+const saving = ref(false)
+const busy = ref(false)
+const editorOpen = ref(false)
+const idInput = ref(null)
+const form = ref({ id: '', nick: '', alias: '', steam: '', avatar: '', liveUrl: '', lib: '1' })
+let searchTimer
+let toastTimer
 
-function show(msg) {
-  toast.value = msg
-  setTimeout(() => { toast.value = '' }, 2000)
+const isEditing = computed(() => players.value.some((p) => p.player_id === form.value.id))
+const libraryCount = computed(() => players.value.filter((p) => p.in_library).length)
+const outsiderCount = computed(() => players.value.length - libraryCount.value)
+const allSelected = computed(() => players.value.length > 0 && checked.value.length === players.value.length)
+const filterLabel = computed(() => ({ '': '全部状态', 1: '仅库内', 0: '仅非库内' }[filterLib.value]))
+
+function displayName(p) { return p.alias_name || p.nickname || p.player_id }
+function show(message, type = 'success') {
+  clearTimeout(toastTimer)
+  toast.value = { message, type }
+  toastTimer = setTimeout(() => { toast.value.message = '' }, 3000)
 }
 async function load() {
-  const params = new URLSearchParams({ q: q.value })
-  if (filterLib.value !== '') params.set('in_library', filterLib.value)
-  const data = await api.get('/api/admin/players?' + params)
-  players.value = data.players || []
-  checked.value = []
+  loading.value = true
+  try {
+    const params = new URLSearchParams()
+    if (q.value.trim()) params.set('q', q.value.trim())
+    if (filterLib.value !== '') params.set('in_library', filterLib.value)
+    const data = await api.get('/api/admin/players?' + params)
+    players.value = data.players || []
+    checked.value = []
+  } catch (e) {
+    show(e.message, 'error')
+  } finally {
+    loading.value = false
+  }
 }
 function fill(p) {
   form.value = {
@@ -94,36 +268,76 @@ function fill(p) {
     nick: p.nickname || '',
     alias: p.alias_name || '',
     steam: p.steam_id || '',
+    avatar: p.avatar || '',
+    liveUrl: p.live_url || '',
     lib: p.in_library ? '1' : '0',
   }
+  editorOpen.value = true
+}
+function clearForm() {
+  form.value = { id: '', nick: '', alias: '', steam: '', avatar: '', liveUrl: '', lib: '1' }
+}
+function closeEditor() {
+  if (saving.value) return
+  editorOpen.value = false
+  clearForm()
+}
+async function startCreate() {
+  clearForm()
+  editorOpen.value = true
+  await nextTick()
+  idInput.value?.focus()
 }
 async function save() {
-  if (!form.value.id.trim()) return show('player_id 不能为空')
-  const data = await api.send('/api/admin/player/save', {
-    player_id: form.value.id.trim(),
-    nickname: form.value.nick,
-    alias_name: form.value.alias,
-    steam_id: form.value.steam,
-    in_library: form.value.lib,
-  })
-  show(typeof data === 'string' ? data : '已保存')
-  load()
+  if (!form.value.id.trim()) return show('请填写 Player ID', 'error')
+  saving.value = true
+  try {
+    const data = await api.send('/api/admin/player/save', {
+      player_id: form.value.id.trim(),
+      nickname: form.value.nick,
+      alias_name: form.value.alias,
+      steam_id: form.value.steam,
+      avatar: form.value.avatar,
+      live_url: form.value.liveUrl,
+      in_library: form.value.lib,
+    })
+    show(typeof data === 'string' ? data : '玩家已保存')
+    editorOpen.value = false
+    clearForm()
+    await load()
+  } catch (e) {
+    show(e.message, 'error')
+  } finally {
+    saving.value = false
+  }
 }
 async function setLib(ids, on) {
-  const data = await api.send('/api/admin/player/library', { player_ids: ids.join(','), in_library: on ? '1' : '0' })
-  show(typeof data === 'string' ? data : '已更新')
-  load()
+  busy.value = true
+  try {
+    const data = await api.send('/api/admin/player/library', { player_ids: ids.join(','), in_library: on ? '1' : '0' })
+    show(typeof data === 'string' ? data : '玩家状态已更新')
+    await load()
+  } catch (e) {
+    show(e.message, 'error')
+  } finally {
+    busy.value = false
+  }
 }
 function bulk(on) {
-  if (!checked.value.length) return show('未勾选')
-  setLib(checked.value, on)
+  if (!checked.value.length) return show('请先选择玩家', 'error')
+  return setLib(checked.value, on)
 }
-function toggleAll(e) {
-  checked.value = e.target.checked ? players.value.map((p) => p.player_id) : []
+function toggleAll(event) {
+  checked.value = event.target.checked ? players.value.map((p) => p.player_id) : []
 }
-async function logout() {
-  await api.logout()
-  router.replace('/admin/login')
-}
+
+watch([q, filterLib], () => {
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(load, 260)
+})
 onMounted(load)
+onBeforeUnmount(() => {
+  clearTimeout(searchTimer)
+  clearTimeout(toastTimer)
+})
 </script>
