@@ -4,6 +4,7 @@ import time
 import requests
 
 from ajlog import logger
+from utils import get_play_day
 
 
 class WMAPI:
@@ -40,7 +41,7 @@ class WMAPI:
             logger.warning(f"WMAPI: 请求异常 {e}")
             return None
 
-    def get_match_list(self, player_steam_id, total=10):
+    def get_match_list(self, player_steam_id, total=10, older_than_day=None):
         headers = {
             "t": str(math.floor(time.time() / 1000)),
             "gameType": "2",
@@ -60,10 +61,16 @@ class WMAPI:
                 "dataSource": 3
             }, headers=headers)
 
+            if not match_list_data:
+                break
             match_list = match_list_data.get('matchList', [])
             if not match_list:
                 break
             all_matches.extend(match_list)
+            if older_than_day:
+                last_day = get_play_day(match_list[-1].get('endTime'), 3)
+                if last_day and last_day < older_than_day:
+                    break
             if len(all_matches) >= total:
                 break
 

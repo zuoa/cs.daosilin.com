@@ -1,82 +1,81 @@
-from flask import Flask, render_template, request
+import os
+import threading
+
+from flask import Flask, request, send_from_directory
 from flask_caching import Cache
 
 import title_service
 from ajlog import logger
+from auth import (captcha_ok, captcha_response, clear_login_fail, current_admin, login_admin,
+                  login_locked, logout_admin, record_login_fail, verify_password)
 from champion_service import judge_champion
-from config import CUP_NAME, AUTH_CODE
-from database import MatchPlayer, Player, CupDayChampion, create_tables, Config, PlayerTitle
+from config import ADMIN_PASSWORD, ADMIN_USERNAME, REDIS_URL, SECRET_KEY, SITE_NAME
+from database import (AdminUser, MatchPlayer, Player, CupDayChampion, create_tables, Config, PlayerTitle,
+                      Match, Season, SeasonRoster, MatchSelection)
+from scheduler import crawl_season_with_status, get_crawl_status
 from title_service import title_service
 from utils import success, error
 
 app = Flask(__name__)
+app.secret_key = SECRET_KEY
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
-cache = Cache(config={'CACHE_TYPE': 'SimpleCache'})
+if REDIS_URL:
+    cache = Cache(config={
+        'CACHE_TYPE': 'RedisCache',
+        'CACHE_REDIS_URL': REDIS_URL,
+        'CACHE_DEFAULT_TIMEOUT': 60,
+        'CACHE_KEY_PREFIX': 'cs:',
+    })
+else:
+    cache = Cache(config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 60})
 cache.init_app(app)
 
-
-@app.route('/')
-def index_redirect():
-    return index_cup_day(CUP_NAME, None)
-
-
-@app.route('/api/v1/players')
-@cache.cached(timeout=120)
-def api_players():
-    cup = request.args.get('cup')
-    if cup is None:
-        cup = CUP_NAME
-
-    auth = request.args.get('auth')
-    if auth != AUTH_CODE:
-        return error(403, "无权限访问")
-
-    day = request.args.get('day')
-
-    all_champions = CupDayChampion.filter_records(**{'cup_name': cup})
-    all_champions.sort(key=lambda champion: champion.get('day', ''))
-
-    all_players = Player.get_all()
-    for i in range(len(all_players)):
-        player = all_players[i]
-        player_id = player.get('player_id')
-        d = MatchPlayer.get_match_exploit(cup, player_id, day)
-        player.update(d)
-
-        for champion in all_champions:
-            if player_id in champion.get("champion_team_player_ids", '').split(','):
-                player.setdefault('trophy_history', []).append({
-                    'day': champion.get('day'),
-                    'team_name': champion.get('champion_team_name'),
-                    'trophy': 'champion',
-                })
-            if player_id in champion.get("runner_up_team_player_ids", '').split(','):
-                player.setdefault('trophy_history', []).append({
-                    'day': champion.get('day'),
-                    'team_name': champion.get('runner_up_team_name'),
-                    'trophy': 'runner_up',
-                })
-    last_crawl_time = Config.get_value("last_crawl_time")
-    return success({"players": all_players, "cache_time": last_crawl_time})
+try:
+    create_tables()
+except Exception as e:
+    logger.error(f"启动时初始化数据库失败: {e}")
 
 
-@app.route('/<string:cup>/')
-@app.route('/<string:cup>/<string:day>/')
-@cache.cached(timeout=60)
-def index_cup_day(cup, day=None):
-    if cup is None:
-        cup = CUP_NAME
+@app.before_request
+def protect_admin():
+    path = request.path
+    public_api = {'/api/admin/login', '/api/admin/captcha', '/api/admin/logout'}
+    if path in public_api:
+        return None
+    if path.startswith('/api/admin') and not current_admin():
+        return error(401, "未登录"), 401
+    return None
 
+
+def _season_list_payload():
+    seasons = Season.get_all() or []
+    for s in seasons:
+        Season.annotate(s)
+        cup = s.get('cup_name')
+        s['match_count'] = Match.select().where(Match.cup_name == cup).count() if cup else 0
+        s['day_count'] = len(MatchPlayer.get_cup_day_set(cup) or [])
+        for key in ('created_at', 'updated_at'):
+            val = s.get(key)
+            if hasattr(val, 'isoformat'):
+                s[key] = val.isoformat()
+    seasons.sort(key=lambda x: (
+        0 if x.get('status') == 'active' else 1,
+        x.get('start_date') or '',
+        x.get('cup_name') or '',
+    ), reverse=True)
+    return seasons
+
+
+def _build_cup_players(cup, day=None):
     all_players = Player.get_all()
     all_players_map = {player["player_id"]: player for player in all_players}
-
     day_champion = CupDayChampion.get_champion_by_cup_and_day(cup, day)
     all_champions = CupDayChampion.filter_records(**{'cup_name': cup})
     all_champions.sort(key=lambda champion: champion.get('day', ''))
 
-    filter_params = {
-        'cup_name': cup,
-    }
+    filter_params = {'cup_name': cup}
     if day is not None:
         filter_params['play_day'] = day
     players = MatchPlayer.filter_records(**filter_params)
@@ -97,7 +96,6 @@ def index_cup_day(cup, day=None):
         d = MatchPlayer.get_match_exploit(cup, player_id, day)
         if d:
             player.update(d)
-
         for champion in all_champions:
             if player_id in champion.get("champion_team_player_ids", '').split(','):
                 player.setdefault('trophy_history', []).append({
@@ -111,50 +109,26 @@ def index_cup_day(cup, day=None):
                     'team_name': champion.get('runner_up_team_name'),
                     'trophy': 'runner_up',
                 })
-
-        # 获取玩家称号
-        titles = PlayerTitle.get_player_titles(player_id, cup, day)
-        player['titles'] = titles
-
+        player['titles'] = PlayerTitle.get_player_titles(player_id, cup, day)
         player_data.append(player)
-
-    # 根据rating排序
     player_data.sort(key=lambda x: x.get('avg_pw_rating', 0), reverse=True)
-
-    cup_days = MatchPlayer.get_cup_day_set()
-
-    last_crawl_time = Config.get_value("last_crawl_time")
-
-    return render_template('index.html', players=player_data, cup=cup, day=day, cup_days=cup_days, current_day=day,
-                           last_crawl_time=last_crawl_time)
+    return player_data, MatchPlayer.get_cup_day_set(cup)
 
 
-@app.route('/player/<string:player_id>/')
-@app.route('/player/<string:player_id>/<string:cup>/')
-@app.route('/player/<string:player_id>/<string:cup>/<string:day>/')
-@cache.cached(timeout=60)
-def player_detail(player_id, cup=None, day=None):
-    """选手详情页"""
-    if cup is None:
-        cup = CUP_NAME
-
-    # 获取选手基本信息
-    player = Player.get_by_id(player_id)
-    if not player:
-        return error(404, "选手不存在")
-
-    # 获取选手比赛数据
+def _player_detail_payload(player_id, cup, day=None):
+    rec = Player.get_or_none(Player.player_id == player_id)
+    if not rec:
+        return None, "选手不存在"
+    player = rec.to_dict()
+    for key in ('created_at', 'updated_at'):
+        if hasattr(player.get(key), 'isoformat'):
+            player[key] = player[key].isoformat()
     player_data = MatchPlayer.get_match_exploit(cup, player_id, day)
     if not player_data:
-        return error(404, "该选手在此杯赛/日期下无数据")
-
-    # 获取选手称号
+        return None, "该选手在此杯赛/日期下无数据"
     titles = PlayerTitle.get_player_titles(player_id, cup, day)
-
-    # 获取选手历史奖杯
     all_champions = CupDayChampion.filter_records(**{'cup_name': cup})
     all_champions.sort(key=lambda champion: champion.get('day', ''))
-
     trophy_history = []
     for champion in all_champions:
         if player_id in champion.get("champion_team_player_ids", '').split(','):
@@ -169,76 +143,136 @@ def player_detail(player_id, cup=None, day=None):
                 'team_name': champion.get('runner_up_team_name'),
                 'trophy': 'runner_up',
             })
-
-    # 获取选手历史数据（用于图表展示）
+    cup_days = MatchPlayer.get_cup_day_set(cup)
     historical_data = []
-    cup_days = MatchPlayer.get_cup_day_set()
-
     for historical_day in cup_days:
         day_data = MatchPlayer.get_match_exploit(cup, player_id, historical_day)
         if day_data:
-            historical_data.append({
-                'day': historical_day,
-                'data': day_data
-            })
-
-    # 获取所有选手数据用于排名比较
-    all_players = Player.get_all()
+            historical_data.append({'day': historical_day, 'data': day_data})
     all_players_data = []
-    for p in all_players:
+    for p in Player.get_all():
         p_data = MatchPlayer.get_match_exploit(cup, p["player_id"], day)
         if p_data:
             p_data['player_id'] = p["player_id"]
             p_data['nickname'] = p["nickname"]
             all_players_data.append(p_data)
-
-    # 计算排名
     player_rankings = {}
-    ranking_fields = ['avg_pw_rating', 'total_kills', 'kd_ratio', 'win_rate', 'avg_adpr', 'total_mvp']
-
-    for field in ranking_fields:
+    for field in ['avg_pw_rating', 'total_kills', 'kd_ratio', 'win_rate', 'avg_adpr', 'total_mvp']:
         if field in player_data:
             sorted_players = sorted(all_players_data, key=lambda x: x.get(field, 0), reverse=True)
             try:
-                rank = next(i for i, p in enumerate(sorted_players) if p['player_id'] == player_id) + 1
-                player_rankings[field] = rank
+                player_rankings[field] = next(
+                    i for i, p in enumerate(sorted_players) if p['player_id'] == player_id) + 1
             except StopIteration:
                 player_rankings[field] = len(all_players_data)
+    return {
+        'player': player,
+        'player_data': player_data,
+        'titles': titles,
+        'trophy_history': trophy_history,
+        'historical_data': historical_data,
+        'player_rankings': player_rankings,
+        'map_stats': MatchPlayer.get_player_map_stats(cup, player_id, day),
+        'cup': cup,
+        'cup_alias': Season.display_name(cup),
+        'day': day,
+        'cup_days': cup_days,
+        'last_crawl_time': Config.get_value("last_crawl_time"),
+    }, None
 
-    # 获取选手地图统计数据
-    map_stats = MatchPlayer.get_player_map_stats(cup, player_id, day)
 
-    # 获取杯赛信息
-    cup_days = MatchPlayer.get_cup_day_set()
+@app.route('/api/v1/meta')
+def api_meta():
+    return success({'site_name': SITE_NAME, 'admin_user': current_admin()})
+
+
+@app.route('/api/v1/seasons')
+@cache.cached(timeout=60)
+def api_seasons():
+    return success({
+        'seasons': _season_list_payload(),
+        'last_crawl_time': Config.get_value("last_crawl_time"),
+        'site_name': SITE_NAME,
+    })
+
+
+@app.route('/api/v1/cup/<string:cup>')
+@cache.cached(timeout=60, query_string=True)
+def api_cup(cup):
+    day = request.args.get('day') or None
+    players, cup_days = _build_cup_players(cup, day)
+    return success({
+        'cup': cup,
+        'cup_alias': Season.display_name(cup),
+        'day': day,
+        'cup_days': cup_days,
+        'players': players,
+        'last_crawl_time': Config.get_value("last_crawl_time"),
+    })
+
+
+@app.route('/api/v1/player/<string:player_id>')
+@cache.cached(timeout=60, query_string=True)
+def api_player_detail(player_id):
+    cup = request.args.get('cup')
+    if not cup:
+        return error(400, "参数 cup 不能为空")
+    day = request.args.get('day') or None
+    payload, err = _player_detail_payload(player_id, cup, day)
+    if err:
+        return error(404, err)
+    return success(payload)
+
+
+@app.route('/api/v1/players')
+@cache.cached(timeout=120, query_string=True)
+def api_players():
+    cup = request.args.get('cup')
+    if not cup:
+        return error(400, "参数 cup 不能为空")
+
+    day = request.args.get('day')
+
+    all_champions = CupDayChampion.filter_records(**{'cup_name': cup})
+    all_champions.sort(key=lambda champion: champion.get('day', ''))
+
+    all_players = Player.get_all()
+    for i in range(len(all_players)):
+        player = all_players[i]
+        player_id = player.get('player_id')
+        d = MatchPlayer.get_match_exploit(cup, player_id, day)
+        if d:
+            player.update(d)
+
+        for champion in all_champions:
+            if player_id in champion.get("champion_team_player_ids", '').split(','):
+                player.setdefault('trophy_history', []).append({
+                    'day': champion.get('day'),
+                    'team_name': champion.get('champion_team_name'),
+                    'trophy': 'champion',
+                })
+            if player_id in champion.get("runner_up_team_player_ids", '').split(','):
+                player.setdefault('trophy_history', []).append({
+                    'day': champion.get('day'),
+                    'team_name': champion.get('runner_up_team_name'),
+                    'trophy': 'runner_up',
+                })
     last_crawl_time = Config.get_value("last_crawl_time")
+    return success({"players": all_players, "cache_time": last_crawl_time})
 
-    return render_template('player_detail.html',
-                           player=player,
-                           player_data=player_data,
-                           titles=titles,
-                           trophy_history=trophy_history,
-                           historical_data=historical_data,
-                           player_rankings=player_rankings,
-                           map_stats=map_stats,
-                           cup=cup,
-                           day=day,
-                           cup_days=cup_days,
-                           last_crawl_time=last_crawl_time)
+
+
 
 
 @app.route('/api/admin/champion/judge')
 def api_admin_champion_judge():
-    auth = request.args.get('auth')
-    if auth != AUTH_CODE:
-        return error(403, "无权限访问")
-
     day = request.args.get('day')
     if day is None:
         return error(400, "参数 day 不能为空")
 
     cup_name = request.args.get('cup')
-    if cup_name is None:
-        cup_name = CUP_NAME
+    if not cup_name:
+        return error(400, "参数 cup 不能为空")
 
     try:
         judge_champion(day, cup_name)
@@ -250,14 +284,10 @@ def api_admin_champion_judge():
 
 @app.route('/api/admin/title/refresh')
 def api_admin_title_refresh():
-    auth = request.args.get('auth')
-    if auth != AUTH_CODE:
-        return error(403, "无权限访问")
-
     day = request.args.get('day')
     cup_name = request.args.get('cup')
-    if cup_name is None:
-        cup_name = CUP_NAME
+    if not cup_name:
+        return error(400, "参数 cup 不能为空")
 
     try:
         # 计算整个杯赛的称号
@@ -279,6 +309,379 @@ def api_admin_title_refresh():
     return success("计算称号任务已触发")
 
 
+# ==================== 赛季采集 / 玩家库 / 比赛纳入剔除 ====================
+
+_crawl_lock = threading.Lock()
+_crawl_running = set()
+
+
+def _admin_authed():
+    return bool(current_admin())
+
+
+def _parse_ids(raw):
+    return [p.strip() for p in (raw or '').replace(';', ',').replace('\n', ',').split(',') if p.strip()]
+
+
+def _parse_hit_ratio():
+    raw = request.args.get('hit_ratio')
+    if raw in (None, ''):
+        raw = request.args.get('hit_percent')
+        if raw in (None, ''):
+            return 0.6
+        try:
+            return max(0.0, min(1.0, float(raw) / 100.0))
+        except ValueError:
+            return 0.6
+    try:
+        value = float(raw)
+    except ValueError:
+        return 0.6
+    if value > 1:
+        value = value / 100.0
+    return max(0.0, min(1.0, value))
+
+
+def _selection_payload(cup, status=None, day=None):
+    selections = MatchSelection.list_by_season(cup, status=status, play_day=day)
+    match_ids = [s['match_id'] for s in selections]
+    match_map = {m.match_id: m.to_dict()
+                 for m in Match.select().where(Match.match_id.in_(match_ids))} if match_ids else {}
+    library_set = set(Player.get_library_ids())
+    players_by_match = {}
+    if match_ids:
+        for mp in MatchPlayer.select().where(MatchPlayer.match_id.in_(match_ids)):
+            players_by_match.setdefault(mp.match_id, []).append({
+                'player_id': mp.player_id,
+                'nickname': mp.nickname,
+                'team': mp.team,
+                'in_library': mp.player_id in library_set,
+            })
+    result = []
+    for s in selections:
+        m = match_map.get(s['match_id'], {})
+        result.append({
+            'match_id': s['match_id'],
+            'play_day': s['play_day'],
+            'roster_hit_count': s['roster_hit_count'],
+            'status': s['status'],
+            'start_time': m.get('start_time'),
+            'end_time': m.get('end_time'),
+            'map_name': m.get('map_name'),
+            'game_mode': m.get('game_mode'),
+            'team1_name': m.get('team1_name'),
+            'team2_name': m.get('team2_name'),
+            'team1_score': m.get('team1_score'),
+            'team2_score': m.get('team2_score'),
+            'players': players_by_match.get(s['match_id'], []),
+        })
+    return result
+
+
+@app.route('/api/admin/season/list')
+def api_admin_season_list():
+    if not _admin_authed():
+        return error(403, "无权限访问")
+    seasons = Season.get_all()
+    for s in seasons:
+        s['roster_count'] = len(SeasonRoster.get_player_ids(s['cup_name']))
+        s['approved_count'] = (MatchSelection
+                               .select()
+                               .where(MatchSelection.season_cup_name == s['cup_name'],
+                                      MatchSelection.status == 'approved')
+                               .count())
+        s['rejected_count'] = (MatchSelection
+                               .select()
+                               .where(MatchSelection.season_cup_name == s['cup_name'],
+                                      MatchSelection.status == 'rejected')
+                               .count())
+        s['pending_count'] = s['approved_count']
+        s['crawl'] = get_crawl_status(s['cup_name'])
+    return success({"seasons": seasons})
+
+
+@app.route('/api/admin/season/save')
+def api_admin_season_save():
+    if not _admin_authed():
+        return error(403, "无权限访问")
+    cup = request.args.get('cup')
+    if not cup:
+        return error(400, "参数 cup 不能为空")
+    fields = {
+        'name': request.args.get('cup_alias') or request.args.get('name'),
+        'cup_alias': request.args.get('cup_alias') or request.args.get('name'),
+        'match_type': request.args.get('match_type') or 'custom',
+        'start_date': request.args.get('start_date'),
+        'end_date': request.args.get('end_date'),
+        'status': request.args.get('status') or 'active',
+        'hit_ratio': _parse_hit_ratio(),
+    }
+    existing = Season.get_or_none(Season.cup_name == cup)
+    if existing:
+        Season.update(**fields).where(Season.cup_name == cup).execute()
+    else:
+        Season.create(cup_name=cup, **fields)
+    try:
+        cache.clear()
+    except Exception:
+        pass
+    return success("赛季已保存")
+
+
+@app.route('/api/admin/season/roster/get')
+def api_admin_season_roster_get():
+    if not _admin_authed():
+        return error(403, "无权限访问")
+    cup = request.args.get('cup')
+    if not cup:
+        return error(400, "参数 cup 不能为空")
+    roster = []
+    for pid in SeasonRoster.get_player_ids(cup):
+        p = Player.get_or_none(Player.player_id == pid)
+        roster.append({
+            'player_id': pid,
+            'nickname': p.nickname if p else '',
+            'alias_name': p.alias_name if p else '',
+            'in_library': bool(p.in_library) if p else False,
+        })
+    return success({"roster": roster})
+
+
+@app.route('/api/admin/season/roster/save')
+def api_admin_season_roster_save():
+    if not _admin_authed():
+        return error(403, "无权限访问")
+    cup = request.args.get('cup')
+    if not cup:
+        return error(400, "参数 cup 不能为空")
+    pids = _parse_ids(request.args.get('player_ids', ''))
+    SeasonRoster.set_roster(cup, pids)
+    return success(f"种子已保存（{len(pids)} 人）")
+
+
+@app.route('/api/admin/season/crawl')
+def api_admin_season_crawl():
+    if not _admin_authed():
+        return error(403, "无权限访问")
+    cup = request.args.get('cup')
+    if not cup:
+        return error(400, "参数 cup 不能为空")
+    if not Season.get_by_cup(cup):
+        return error(404, "赛季不存在")
+    existing_status = get_crawl_status(cup)
+    if existing_status.get('state') == 'running':
+        return error(409, "该赛季正在采集")
+    with _crawl_lock:
+        if cup in _crawl_running:
+            return error(409, "该赛季正在采集")
+        _crawl_running.add(cup)
+
+    def _run():
+        try:
+            crawl_season_with_status(cup)
+        except Exception as e:
+            logger.error(f"手动采集 {cup} 失败: {e}")
+        finally:
+            with _crawl_lock:
+                _crawl_running.discard(cup)
+
+    threading.Thread(target=_run, daemon=True, name=f'crawl-{cup}').start()
+    return success("采集已开始")
+
+
+@app.route('/api/admin/season/crawl/status')
+def api_admin_season_crawl_status():
+    if not _admin_authed():
+        return error(403, "无权限访问")
+    cup = request.args.get('cup')
+    if not cup:
+        return error(400, "参数 cup 不能为空")
+    status = get_crawl_status(cup)
+    status['running'] = cup in _crawl_running or status.get('state') == 'running'
+    return success(status)
+
+
+@app.route('/api/admin/selection/list')
+def api_admin_selection_list():
+    if not _admin_authed():
+        return error(403, "无权限访问")
+    cup = request.args.get('cup')
+    if not cup:
+        return error(400, "参数 cup 不能为空")
+    status = request.args.get('status') or 'approved'
+    day = request.args.get('day')
+    return success({"list": _selection_payload(cup, status=status, day=day)})
+
+
+@app.route('/api/admin/selection/pending')
+def api_admin_selection_pending():
+    """兼容旧入口：返回已纳入比赛。"""
+    if not _admin_authed():
+        return error(403, "无权限访问")
+    cup = request.args.get('cup')
+    if not cup:
+        return error(400, "参数 cup 不能为空")
+    return success({"list": _selection_payload(cup, status='approved', day=request.args.get('day'))})
+
+
+def _parse_match_ids():
+    return _parse_ids(request.args.get('match_ids', ''))
+
+
+def _set_selection_status(cup, match_ids, status):
+    n = 0
+    for mid in match_ids:
+        sel = MatchSelection.get_or_none((MatchSelection.match_id == mid) &
+                                         (MatchSelection.season_cup_name == cup))
+        if not sel:
+            continue
+        if status == 'approved':
+            Match.update(cup_name=cup).where(Match.match_id == mid).execute()
+            MatchPlayer.update(cup_name=cup).where(MatchPlayer.match_id == mid).execute()
+        else:
+            current = Match.get_by_match_id(mid)
+            if current and current.get('cup_name') == cup:
+                Match.update(cup_name=None).where(Match.match_id == mid).execute()
+                MatchPlayer.update(cup_name=None).where(MatchPlayer.match_id == mid).execute()
+        sel.status = status
+        sel.save()
+        n += 1
+    return n
+
+
+@app.route('/api/admin/selection/approve')
+def api_admin_selection_approve():
+    """恢复纳入：写回 cup_name，进入统计。"""
+    if not _admin_authed():
+        return error(403, "无权限访问")
+    cup = request.args.get('cup')
+    if not cup:
+        return error(400, "参数 cup 不能为空")
+    match_ids = _parse_match_ids()
+    if not match_ids:
+        return error(400, "参数 match_ids 不能为空")
+    n = _set_selection_status(cup, match_ids, 'approved')
+    try:
+        cache.clear()
+    except Exception:
+        pass
+    return success(f"已恢复纳入 {n} 场比赛")
+
+
+@app.route('/api/admin/selection/reject')
+def api_admin_selection_reject():
+    """剔除比赛：清空 cup_name，不进入统计。"""
+    if not _admin_authed():
+        return error(403, "无权限访问")
+    cup = request.args.get('cup')
+    if not cup:
+        return error(400, "参数 cup 不能为空")
+    match_ids = _parse_match_ids()
+    if not match_ids:
+        return error(400, "参数 match_ids 不能为空")
+    n = _set_selection_status(cup, match_ids, 'rejected')
+    try:
+        cache.clear()
+    except Exception:
+        pass
+    return success(f"已剔除 {n} 场比赛")
+
+
+@app.route('/api/admin/players')
+def api_admin_players():
+    if not _admin_authed():
+        return error(403, "无权限访问")
+    q = request.args.get('q')
+    in_lib = request.args.get('in_library')
+    flag = None
+    if in_lib in ('1', 'true', 'yes'):
+        flag = True
+    elif in_lib in ('0', 'false', 'no'):
+        flag = False
+    players = Player.search_players(q=q, in_library=flag)
+    return success({"players": players})
+
+
+@app.route('/api/admin/player/save')
+def api_admin_player_save():
+    if not _admin_authed():
+        return error(403, "无权限访问")
+    player_id = (request.args.get('player_id') or '').strip()
+    if not player_id:
+        return error(400, "参数 player_id 不能为空")
+    in_library = request.args.get('in_library', '1') not in ('0', 'false', 'no')
+    fields = {
+        'nickname': request.args.get('nickname') or player_id,
+        'alias_name': request.args.get('alias_name') or None,
+        'steam_id': request.args.get('steam_id') or None,
+        'avatar': request.args.get('avatar') or None,
+        'in_library': in_library,
+    }
+    existing = Player.get_or_none(Player.player_id == player_id)
+    if existing:
+        Player.update(**fields).where(Player.player_id == player_id).execute()
+    else:
+        Player.create(player_id=player_id, **fields)
+    return success("玩家已保存")
+
+
+@app.route('/api/admin/player/library')
+def api_admin_player_library():
+    if not _admin_authed():
+        return error(403, "无权限访问")
+    pids = _parse_ids(request.args.get('player_ids', ''))
+    if not pids:
+        return error(400, "参数 player_ids 不能为空")
+    in_library = request.args.get('in_library', '1') not in ('0', 'false', 'no')
+    n = 0
+    for pid in pids:
+        existing = Player.get_or_none(Player.player_id == pid)
+        if existing:
+            existing.in_library = in_library
+            existing.save()
+            n += 1
+        elif in_library:
+            Player.create(player_id=pid, nickname=pid, in_library=True)
+            n += 1
+    return success(f"已更新 {n} 名玩家的库内状态")
+
+
+@app.route('/api/admin/login', methods=['POST'])
+def api_admin_login():
+    data = request.get_json(silent=True) or {}
+    locked, remain = login_locked()
+    if locked:
+        return error(429, f'尝试过多，请 {remain} 秒后再试'), 429
+    if not captcha_ok(data.get('captcha')):
+        record_login_fail()
+        return error(400, '验证码错误')
+    user = verify_password(data.get('username'), data.get('password'))
+    if not user:
+        record_login_fail()
+        locked, remain = login_locked()
+        msg = '账号或密码错误' + (f'，已锁定 {remain} 秒' if locked else '')
+        return error(401, msg), 401
+    clear_login_fail()
+    login_admin(user)
+    return success({'username': user.username})
+
+
+@app.route('/api/admin/captcha')
+def api_admin_captcha():
+    return captcha_response()
+
+
+@app.route('/api/admin/logout', methods=['POST', 'GET'])
+def api_admin_logout():
+    logout_admin()
+    return success('已退出')
+
+
+@app.route('/api/admin/me')
+def api_admin_me():
+    return success({'username': current_admin()})
+
+
 @app.cli.command("init-db")
 def init_db():
     """Initialize the database tables"""
@@ -287,6 +690,43 @@ def init_db():
         logger.info("数据库初始化完成")
     except Exception as e:
         logger.error(f"数据库初始化失败: {str(e)}")
+
+
+@app.cli.command("reset-admin")
+def reset_admin():
+    """按环境变量 ADMIN_USERNAME / ADMIN_PASSWORD 重置管理员密码。"""
+    from werkzeug.security import generate_password_hash
+    username = ADMIN_USERNAME or 'admin'
+    password = ADMIN_PASSWORD or 'admin1005'
+    user = AdminUser.get_or_none(AdminUser.username == username)
+    if user is None:
+        AdminUser.create(username=username, password_hash=generate_password_hash(password))
+        logger.info(f"已创建管理员 {username}")
+    else:
+        user.password_hash = generate_password_hash(password)
+        user.save()
+        logger.info(f"已重置管理员 {username} 的密码")
+    print(f"管理员 {username} 已就绪，请用当前 ADMIN_PASSWORD 登录")
+
+
+def _web_dist():
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), 'web', 'dist')
+
+
+@app.route('/', defaults={'spa_path': ''})
+@app.route('/<path:spa_path>')
+def spa(spa_path):
+    if spa_path.startswith('api/'):
+        return error(404, 'not found'), 404
+    dist = _web_dist()
+    if spa_path:
+        candidate = os.path.join(dist, spa_path)
+        if os.path.isfile(candidate):
+            return send_from_directory(dist, spa_path)
+    index = os.path.join(dist, 'index.html')
+    if os.path.isfile(index):
+        return send_from_directory(dist, 'index.html')
+    return error(503, '前端未构建：请在 web/ 目录执行 npm install && npm run build'), 503
 
 
 if __name__ == '__main__':

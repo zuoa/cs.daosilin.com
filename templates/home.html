@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ site_name }} · 赛季</title>
+    <link href="/static/style.css" rel="stylesheet">
+</head>
+<body>
+<div class="container home-page">
+    <header class="header home-header">
+        <div class="header-title">
+            <p class="eyebrow">Competitive Stats</p>
+            <h1 class="title">{{ site_name }}</h1>
+            <p class="subtitle">选择一个赛季查看战绩、称号与冠军</p>
+        </div>
+        <div class="header-meta home-actions">
+            {% if last_crawl_time %}
+            <span>数据更新 · {{ last_crawl_time }}</span>
+            {% endif %}
+            {% if admin_user %}
+            <a class="ghost-link" href="/admin/season">管理后台</a>
+            {% else %}
+            <a class="ghost-link" href="/admin/login">管理登录</a>
+            {% endif %}
+        </div>
+    </header>
+
+    {% if seasons %}
+    <section class="season-grid" aria-label="赛季列表">
+        {% for s in seasons %}
+        <a class="season-card {% if s.status != 'active' %}is-archived{% endif %}" href="/{{ s.cup_name }}/">
+            <div class="season-card-top">
+                <span class="tag {{ s.match_type }}">{{ '官方' if s.match_type == 'official' else '自定义' }}</span>
+                <span class="tag {{ s.status }}">{{ '进行中' if s.status == 'active' else '已归档' }}</span>
+            </div>
+            <h2>{{ s.display_name }}</h2>
+            <p class="season-slug">/{{ s.cup_name }}/</p>
+            <dl class="season-meta">
+                <div>
+                    <dt>时间</dt>
+                    <dd>{% if s.start_date or s.end_date %}{{ s.start_date or '…' }} — {{ s.end_date or '…' }}{% else %}未设时间段{% endif %}</dd>
+                </div>
+                <div>
+                    <dt>场次</dt>
+                    <dd>{{ s.match_count }} 场 · {{ s.day_count }} 个比赛日</dd>
+                </div>
+            </dl>
+            <span class="season-go">进入数据</span>
+        </a>
+        {% endfor %}
+    </section>
+    {% else %}
+    <div class="empty-home">
+        <p>还没有赛季。管理员登录后在后台创建杯赛并采集数据。</p>
+        <a class="ghost-link" href="/admin/login">去登录</a>
+    </div>
+    {% endif %}
+
+    <footer class="footer">
+        <div class="footer-content">
+            <div class="footer-note">URL 使用 cup_name（英文标识），页面展示 cup_alias。</div>
+            <div class="watermark">
+                Made with ❤️ by <a href="https://space.bilibili.com/3493076609796324" target="_blank" rel="noopener">AJ</a>
+            </div>
+        </div>
+    </footer>
+</div>
+</body>
+</html>

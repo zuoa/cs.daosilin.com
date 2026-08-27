@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>玩家库</title>
+    <link href="/static/style.css" rel="stylesheet">
+    <style>
+        body { background: #0f1419; color: #e6e6e6; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; }
+        .wrap { max-width: 1140px; margin: 0 auto; padding: 24px 16px 80px; }
+        h1 { font-size: 22px; margin: 0 0 4px; }
+        h2 { font-size: 16px; margin: 28px 0 12px; padding-bottom: 8px; border-bottom: 1px solid #2a323d; color: #9fb3c8; }
+        .muted { color: #7a8693; font-size: 13px; }
+        .card { background: #161d26; border: 1px solid #232c38; border-radius: 10px; padding: 16px; margin-bottom: 14px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #232c38; vertical-align: middle; }
+        th { color: #9fb3c8; font-weight: 600; }
+        input[type=text], select {
+            background: #0f1419; border: 1px solid #2a323d; color: #e6e6e6;
+            border-radius: 6px; padding: 7px 9px; font-size: 13px; outline: none;
+        }
+        input:focus, select:focus { border-color: #3b6ea8; }
+        .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+        .row > label { min-width: 70px; color: #9fb3c8; font-size: 13px; }
+        .row > input[type=text], .row > select { flex: 1; min-width: 120px; }
+        button {
+            background: #2b6cb0; color: #fff; border: none; border-radius: 6px;
+            padding: 7px 14px; font-size: 13px; cursor: pointer;
+        }
+        button:hover { background: #357ac4; }
+        button.ghost { background: #2a323d; }
+        button.ghost:hover { background: #36424f; }
+        button.danger { background: #8a3535; }
+        button.sm { padding: 4px 10px; font-size: 12px; }
+        .tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; }
+        .tag.in { background: #1f3a26; color: #6bd896; }
+        .tag.out { background: #3a2626; color: #d89696; }
+        .actions { display: flex; gap: 6px; }
+        .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+        .empty { color: #7a8693; padding: 20px; text-align: center; }
+        .nav { display: flex; gap: 16px; margin: 8px 0 18px; font-size: 13px; }
+        .nav a { color: #9fb3c8; text-decoration: none; }
+        .nav a.on { color: #e6e6e6; font-weight: 600; }
+        .avatar { width: 28px; height: 28px; border-radius: 50%; background: #232c38; object-fit: cover; vertical-align: middle; margin-right: 8px; }
+        #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+            background: #1e2a36; border: 1px solid #2a323d; padding: 10px 18px; border-radius: 8px;
+            display: none; font-size: 13px; }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <h1>玩家库</h1>
+    <div class="nav">
+        <a href="/admin/season?auth={{ auth }}">杯赛 / 采集</a>
+        <a class="on" href="/admin/players?auth={{ auth }}">玩家库</a>
+    </div>
+    <p class="muted">库内玩家会计入杯赛「库内占比」门槛。比赛里新出现的路人默认不进库，需要时在这里标进来。</p>
+
+    <h2>编辑 / 新增</h2>
+    <div class="card">
+        <div class="row">
+            <label>player_id*</label><input type="text" id="f_id" placeholder="SteamID64">
+            <label>昵称</label><input type="text" id="f_nick">
+            <label>别名</label><input type="text" id="f_alias" placeholder="首页展示优先用别名">
+            <label>Steam ID</label><input type="text" id="f_steam">
+            <label>库内</label>
+            <select id="f_lib"><option value="1">是</option><option value="0">否</option></select>
+            <button onclick="savePlayer()">保存</button>
+            <button class="ghost" onclick="clearForm()">清空</button>
+        </div>
+    </div>
+
+    <h2>列表</h2>
+    <div class="card">
+        <div class="toolbar">
+            <input type="text" id="q" placeholder="搜索 ID / 昵称 / 别名" onkeydown="if(event.key==='Enter')load()">
+            <select id="filterLib" onchange="load()">
+                <option value="">全部</option>
+                <option value="1">仅库内</option>
+                <option value="0">仅非库内</option>
+            </select>
+            <button class="ghost" onclick="load()">搜索</button>
+            <span class="muted" style="flex:1"></span>
+            <button onclick="bulk(true)">选中标为库内</button>
+            <button class="danger" onclick="bulk(false)">选中移出库内</button>
+        </div>
+        <table>
+            <thead>
+            <tr>
+                <th><input type="checkbox" onchange="document.querySelectorAll('.chk').forEach(c=>c.checked=this.checked)"></th>
+                <th>玩家</th>
+                <th>player_id</th>
+                <th>别名</th>
+                <th>Steam ID</th>
+                <th>库内</th>
+                <th>操作</th>
+            </tr>
+            </thead>
+            <tbody id="tb"></tbody>
+        </table>
+        <div id="empty" class="empty">暂无玩家</div>
+    </div>
+</div>
+<div id="toast"></div>
+<script>
+    const AUTH = "{{ auth }}";
+    function api(path) {
+        return fetch(path + (path.includes('?') ? '&' : '?') + 'auth=' + AUTH).then(r => r.json());
+    }
+    function toast(msg, ok) {
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.style.color = ok === false ? '#d89696' : '#6bd896';
+        t.style.display = 'block';
+        setTimeout(() => t.style.display = 'none', 2200);
+    }
+    function load() {
+        const q = document.getElementById('q').value.trim();
+        const lib = document.getElementById('filterLib').value;
+        let url = '/api/admin/players?q=' + encodeURIComponent(q);
+        if (lib !== '') url += '&in_library=' + lib;
+        api(url).then(j => {
+            const list = (j.data && j.data.players) || [];
+            const tb = document.getElementById('tb');
+            tb.innerHTML = '';
+            document.getElementById('empty').style.display = list.length ? 'none' : 'block';
+            list.forEach(p => {
+                const tr = document.createElement('tr');
+                const av = p.avatar
+                    ? `<img class="avatar" src="https://wsrv.nl/?url=${encodeURIComponent(p.avatar)}" alt="">`
+                    : `<span class="avatar"></span>`;
+                tr.innerHTML = `
+                    <td><input type="checkbox" class="chk" data-pid="${p.player_id}"></td>
+                    <td>${av}${p.nickname || ''}</td>
+                    <td class="muted">${p.player_id}</td>
+                    <td>${p.alias_name || ''}</td>
+                    <td class="muted">${p.steam_id || ''}</td>
+                    <td><span class="tag ${p.in_library ? 'in' : 'out'}">${p.in_library ? '库内' : '路人'}</span></td>
+                    <td class="actions">
+                        <button class="ghost sm" onclick='fill(${JSON.stringify(p)})'>编辑</button>
+                        <button class="sm" onclick="setLib(['${p.player_id}'], ${p.in_library ? 'false' : 'true'})">${p.in_library ? '移出' : '标入库内'}</button>
+                    </td>`;
+                tb.appendChild(tr);
+            });
+        });
+    }
+    function fill(p) {
+        document.getElementById('f_id').value = p.player_id || '';
+        document.getElementById('f_nick').value = p.nickname || '';
+        document.getElementById('f_alias').value = p.alias_name || '';
+        document.getElementById('f_steam').value = p.steam_id || '';
+        document.getElementById('f_lib').value = p.in_library ? '1' : '0';
+        window.scrollTo(0, 0);
+    }
+    function clearForm() {
+        ['f_id','f_nick','f_alias','f_steam'].forEach(id => document.getElementById(id).value = '');
+        document.getElementById('f_lib').value = '1';
+    }
+    function savePlayer() {
+        const id = document.getElementById('f_id').value.trim();
+        if (!id) return toast('player_id 不能为空', false);
+        const p = new URLSearchParams({
+            auth: AUTH,
+            player_id: id,
+            nickname: document.getElementById('f_nick').value.trim(),
+            alias_name: document.getElementById('f_alias').value.trim(),
+            steam_id: document.getElementById('f_steam').value.trim(),
+            in_library: document.getElementById('f_lib').value
+        });
+        fetch('/api/admin/player/save?' + p).then(r => r.json()).then(j => {
+            toast((typeof j.data === 'string' && j.data) || j.message || '已保存', j.success !== false);
+            if (j.success) load();
+        });
+    }
+    function setLib(ids, on) {
+        const p = new URLSearchParams({ auth: AUTH, player_ids: ids.join(','), in_library: on ? '1' : '0' });
+        fetch('/api/admin/player/library?' + p).then(r => r.json()).then(j => {
+            toast((typeof j.data === 'string' && j.data) || j.message || '已更新', j.success !== false);
+            if (j.success) load();
+        });
+    }
+    function bulk(on) {
+        const ids = [...document.querySelectorAll('.chk:checked')].map(c => c.dataset.pid);
+        if (!ids.length) return toast('未勾选', false);
+        setLib(ids, on);
+    }
+    load();
+</script>
+</body>
+</html>

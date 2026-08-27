@@ -2,25 +2,23 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 from peewee import *
+from playhouse.db_url import connect
 
 from ajlog import logger
-from config import DB_PATH
+from config import DB_PATH, DATABASE_URL
 
 
-class DatabaseConfig:
-    """数据库配置类"""
-
-    def __init__(self, db_path: str = 'app.db'):
-        self.db_path = db_path
-        self.database = SqliteDatabase(db_path)
-
-    def get_database(self):
-        return self.database
+def _open_database():
+    if DATABASE_URL:
+        return connect(DATABASE_URL)
+    return SqliteDatabase(DB_PATH)
 
 
-# 全局数据库实例
-db_config = DatabaseConfig(DB_PATH)
-db = db_config.get_database()
+db = _open_database()
+
+
+def is_postgres() -> bool:
+    return isinstance(db, PostgresqlDatabase)
 
 
 class BaseModel(Model):
@@ -185,6 +183,7 @@ class Player(BaseModel, CRUDMixin):
     avatar = CharField(max_length=255, null=True)  # 头像URL
     alias_name = CharField(max_length=255, null=True)  # 别名，多个别名用逗号分隔
     steam_id = CharField(max_length=64, null=True)  # Steam ID
+    in_library = BooleanField(default=False)  # 是否计入玩家库（占比门槛只认库内）
 
     @classmethod
     def is_exist(cls, player_id: str) -> Optional[bool]:
@@ -203,6 +202,55 @@ class Player(BaseModel, CRUDMixin):
 
     class Meta:
         table_name = 'player'
+
+    @classmethod
+    def get_library_ids(cls) -> List[str]:
+        """库内玩家 player_id 列表"""
+        try:
+            query = cls.select(cls.player_id).where(cls.in_library == True)
+            return [r.player_id for r in query]
+        except Exception as e:
+            logger.error(f"获取玩家库失败: {str(e)}")
+            return []
+
+    @classmethod
+    def search_players(cls, q: str = None, in_library: Optional[bool] = None,
+                       limit: int = 300) -> List[Dict[str, Any]]:
+        """搜索玩家（ID / 昵称 / 别名）"""
+        try:
+            query = cls.select()
+            if q:
+                q = q.strip()
+                if q:
+                    query = query.where(
+                        (cls.player_id.contains(q)) |
+                        (cls.nickname.contains(q)) |
+                        (cls.alias_name.contains(q))
+                    )
+            if in_library is not None:
+                query = query.where(cls.in_library == bool(in_library))
+            query = query.order_by(cls.in_library.desc(), cls.nickname.asc()).limit(limit)
+            return list(query.dicts())
+        except Exception as e:
+            logger.error(f"搜索玩家失败: {str(e)}")
+            return []
+
+    @classmethod
+    def ensure_library_player(cls, player_id: str, nickname: str = None) -> None:
+        """确保玩家在库内（种子写入时调用）"""
+        player_id = (player_id or '').strip()
+        if not player_id:
+            return
+        existing = cls.get_or_none(cls.player_id == player_id)
+        if existing is None:
+            cls.create(
+                player_id=player_id,
+                nickname=nickname or player_id,
+                in_library=True,
+            )
+        elif not existing.in_library:
+            existing.in_library = True
+            existing.save()
 
 
 class Config(BaseModel, CRUDMixin):
@@ -423,12 +471,16 @@ class MatchPlayer(BaseModel, CRUDMixin):
             return False
 
     @classmethod
-    def get_cup_day_set(cls):
+    def get_cup_day_set(cls, cup_name=None):
         try:
             query = (cls
                      .select(cls.play_day, fn.COUNT(cls.id).alias('count'))
                      .group_by(cls.play_day)
                      .having(fn.COUNT(cls.id) > 1))
+            # 自定义比赛的候选行 cup_name 为 null，必须按 cup_name 过滤，
+            # 否则会污染首页「日期导航」
+            if cup_name:
+                query = query.where(cls.cup_name == cup_name)
             return [record.play_day for record in query]
         except Exception as e:
             logger.error(f"get_dup_day_set error: {e}")
@@ -672,7 +724,264 @@ class MatchPlayer(BaseModel, CRUDMixin):
         )
 
 
+class Season(BaseModel, CRUDMixin):
+    """赛季定义模型：兼容官方 cupName 赛季（official）与自定义名单赛季（custom）"""
+    cup_name = CharField(max_length=128, unique=True)  # URL / 内部标识，宜用英文 slug
+    cup_alias = CharField(max_length=128, null=True)  # 页面展示名
+    name = CharField(max_length=128, null=True)  # 兼容旧字段，等同展示名
+    match_type = CharField(max_length=32, default='custom')  # 'official' | 'custom'
+    start_date = CharField(max_length=8, null=True)  # YYYYMMDD
+    end_date = CharField(max_length=8, null=True)  # YYYYMMDD
+    status = CharField(max_length=16, default='active')  # 'active' | 'archived'
+    hit_ratio = FloatField(default=0.6)  # 场内库内人数占比门槛，默认 60%
+
+    class Meta:
+        table_name = 'season'
+
+    @classmethod
+    def get_by_cup(cls, cup_name: str) -> Optional[Dict[str, Any]]:
+        """根据 cup_name 获取赛季"""
+        try:
+            record = cls.get(cls.cup_name == cup_name)
+            return record.to_dict()
+        except cls.DoesNotExist:
+            return None
+        except Exception as e:
+            logger.error(f"获取赛季失败: {str(e)}")
+            return None
+
+    @classmethod
+    def get_active_by_type(cls, match_type: str) -> List[Dict[str, Any]]:
+        """获取指定类型的 active 赛季列表"""
+        try:
+            query = cls.select().where(cls.match_type == match_type, cls.status == 'active')
+            return list(query.dicts())
+        except Exception as e:
+            logger.error(f"获取赛季列表失败: {str(e)}")
+            return []
+
+    @classmethod
+    def get_active(cls) -> List[Dict[str, Any]]:
+        """获取全部 active 赛季"""
+        try:
+            query = cls.select().where(cls.status == 'active')
+            return list(query.dicts())
+        except Exception as e:
+            logger.error(f"获取赛季列表失败: {str(e)}")
+            return []
+
+    @classmethod
+    def display_name(cls, cup_name: str) -> str:
+        rec = cls.get_by_cup(cup_name) if cup_name else None
+        if not rec:
+            return cup_name or ''
+        return rec.get('cup_alias') or rec.get('name') or rec.get('cup_name') or cup_name
+
+    @classmethod
+    def annotate(cls, rec: Dict[str, Any]) -> Dict[str, Any]:
+        if not rec:
+            return rec
+        rec['display_name'] = rec.get('cup_alias') or rec.get('name') or rec.get('cup_name')
+        return rec
+
+
+class SeasonRoster(BaseModel, CRUDMixin):
+    """赛季名单（白名单 player_id）"""
+    season_cup_name = CharField(max_length=128)  # 关联 Season.cup_name
+    player_id = CharField(max_length=64)  # 玩家ID
+
+    class Meta:
+        table_name = 'season_roster'
+        indexes = (
+            (('season_cup_name', 'player_id'), True),
+        )
+
+    @classmethod
+    def get_player_ids(cls, season_cup_name: str) -> List[str]:
+        """获取某赛季名单 player_id 列表"""
+        try:
+            query = cls.select(cls.player_id).where(cls.season_cup_name == season_cup_name)
+            return [r.player_id for r in query]
+        except Exception as e:
+            logger.error(f"获取名单失败: {str(e)}")
+            return []
+
+    @classmethod
+    def set_roster(cls, season_cup_name: str, player_ids: List[str]) -> None:
+        """整体替换某赛季名单"""
+        try:
+            with db.atomic():
+                cls.delete().where(cls.season_cup_name == season_cup_name).execute()
+                seen = set()
+                for pid in player_ids or []:
+                    pid = (pid or '').strip()
+                    if pid and pid not in seen:
+                        seen.add(pid)
+                        cls.create(season_cup_name=season_cup_name, player_id=pid)
+                        Player.ensure_library_player(pid)
+        except Exception as e:
+            logger.error(f"设置名单失败: {str(e)}")
+            raise
+
+
+class MatchSelection(BaseModel, CRUDMixin):
+    """赛季比赛纳入/剔除状态。approved 算入统计，rejected 剔除。"""
+    match_id = CharField(max_length=64)
+    season_cup_name = CharField(max_length=128)  # 关联 Season.cup_name
+    status = CharField(max_length=16, default='approved')  # 'approved' | 'rejected'（旧 pending 迁移为 approved）
+    source_type = CharField(max_length=16, default='custom')  # 'custom' | 'official'
+    play_day = CharField(max_length=8, null=True)  # 冗余，便于按天查询
+    roster_hit_count = IntegerField(default=0)  # 库内命中人数
+    note = TextField(null=True)
+
+    class Meta:
+        table_name = 'match_selection'
+        indexes = (
+            (('match_id', 'season_cup_name'), True),
+        )
+
+    @classmethod
+    def get_by_match(cls, match_id: str, season_cup_name: str) -> Optional[Dict[str, Any]]:
+        """根据 match_id + 赛季获取确认记录"""
+        try:
+            record = (cls.select()
+                      .where(cls.match_id == match_id, cls.season_cup_name == season_cup_name)
+                      .get())
+            return record.to_dict()
+        except cls.DoesNotExist:
+            return None
+        except Exception as e:
+            logger.error(f"获取确认记录失败: {str(e)}")
+            return None
+
+    @classmethod
+    def is_rejected(cls, match_id: str, season_cup_name: str) -> bool:
+        sel = cls.get_by_match(match_id, season_cup_name)
+        return bool(sel and sel.get('status') == 'rejected')
+
+    @classmethod
+    def list_by_season(cls, season_cup_name: str, status: str = None,
+                       play_day: str = None) -> List[Dict[str, Any]]:
+        try:
+            query = cls.select().where(cls.season_cup_name == season_cup_name)
+            if status:
+                query = query.where(cls.status == status)
+            if play_day:
+                query = query.where(cls.play_day == play_day)
+            query = query.order_by(cls.play_day.desc(), cls.roster_hit_count.desc())
+            return list(query.dicts())
+        except Exception as e:
+            logger.error(f"列出赛季比赛失败: {str(e)}")
+            return []
+
+    @classmethod
+    def upsert_included(cls, match_id: str, season_cup_name: str, play_day: str,
+                        roster_hit_count: int, source_type: str = 'custom') -> bool:
+        """采集命中后纳入。已剔除的保持 rejected，返回 False 表示不要写 cup_name。"""
+        try:
+            existing = cls.get_or_none((cls.match_id == match_id) & (cls.season_cup_name == season_cup_name))
+            if existing is None:
+                cls.create(
+                    match_id=match_id,
+                    season_cup_name=season_cup_name,
+                    status='approved',
+                    source_type=source_type,
+                    play_day=play_day,
+                    roster_hit_count=roster_hit_count,
+                )
+                return True
+            if existing.status == 'rejected':
+                update_dict = {
+                    'roster_hit_count': max(existing.roster_hit_count or 0, roster_hit_count),
+                }
+                if play_day:
+                    update_dict['play_day'] = play_day
+                cls.update(**update_dict).where(cls.id == existing.id).execute()
+                return False
+            update_dict = {
+                'roster_hit_count': max(existing.roster_hit_count or 0, roster_hit_count),
+                'status': 'approved',
+                'source_type': source_type or existing.source_type,
+            }
+            if play_day:
+                update_dict['play_day'] = play_day
+            cls.update(**update_dict).where(cls.id == existing.id).execute()
+            return True
+        except Exception as e:
+            logger.error(f"更新纳入记录失败: {str(e)}")
+            return False
+
+    @classmethod
+    def upsert_pending(cls, match_id: str, season_cup_name: str, play_day: str, roster_hit_count: int) -> None:
+        """兼容旧调用：等同纳入（不再走 pending）。"""
+        cls.upsert_included(match_id, season_cup_name, play_day, roster_hit_count, source_type='custom')
+
+    @classmethod
+    def set_status(cls, match_id: str, season_cup_name: str, status: str) -> bool:
+        existing = cls.get_or_none((cls.match_id == match_id) & (cls.season_cup_name == season_cup_name))
+        if existing is None:
+            return False
+        existing.status = status
+        existing.save()
+        return True
+
+
+class AdminUser(BaseModel, CRUDMixin):
+    """后台管理员"""
+    username = CharField(max_length=64, unique=True)
+    password_hash = CharField(max_length=255)
+    last_login_at = DateTimeField(null=True)
+
+    class Meta:
+        table_name = 'admin_user'
+
+
+class SchemaMigration(BaseModel):
+    version = CharField(max_length=64, unique=True)
+    applied_at = DateTimeField(default=datetime.now)
+
+    class Meta:
+        table_name = 'schema_migrations'
+
+
+def _column_exists(table_name: str, column_name: str) -> bool:
+    if is_postgres():
+        cursor = db.execute_sql(
+            "SELECT 1 FROM information_schema.columns WHERE table_name = %s AND column_name = %s",
+            (table_name, column_name),
+        )
+        return cursor.fetchone() is not None
+    cursor = db.execute_sql(f"PRAGMA table_info('{table_name}')")
+    return any(row[1] == column_name for row in cursor.fetchall())
+
+
+def _table_exists(table_name: str) -> bool:
+    if is_postgres():
+        cursor = db.execute_sql(
+            "SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = %s",
+            (table_name,),
+        )
+        return cursor.fetchone() is not None
+    cursor = db.execute_sql(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        (table_name,)
+    )
+    return cursor.fetchone() is not None
+
+
+def _add_column(table_name: str, column_name: str, ddl: str) -> None:
+    db.execute_sql(f'ALTER TABLE {table_name} ADD COLUMN {column_name} {ddl}')
+
+
+def migrate_schema():
+    """版本化迁移：启动时自动补齐未应用的变更。"""
+    from migrations import run_migrations
+    run_migrations()
+
+
 def create_tables():
-    """Create database tables if they don't exist"""
+    """Create database tables if they don't exist, then apply migrations."""
     with db:
-        db.create_tables([Config, Match, MatchPlayer, Player, CupDayChampion, PlayerTitle], safe=True)
+        db.create_tables([Config, Match, MatchPlayer, Player, CupDayChampion, PlayerTitle,
+                          Season, SeasonRoster, MatchSelection, AdminUser, SchemaMigration], safe=True)
+    migrate_schema()

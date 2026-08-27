@@ -8,13 +8,14 @@ load_dotenv()
 
 # Database configuration
 DB_PATH = os.getenv('DB_PATH', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cs.db'))
+DATABASE_URL = (os.getenv('DATABASE_URL') or '').strip()
 
-AUTH_CODE = os.getenv('AUTH_CODE', '1005')
+REDIS_URL = (os.getenv('REDIS_URL') or '').strip()
+SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-change-me')
+SITE_NAME = os.getenv('SITE_NAME', 'CS 数据')
 
-CUP_NAME = os.getenv('CUP_NAME', '斗鱼CSGO鲨鱼major S1')
-CUP_TEAM_NUM = int(os.getenv('CUP_TEAM_NUM', 8))
-
-DEFAULT_CRAWL_PLAYER_IDS = os.getenv('DEFAULT_CRAWL_PLAYER_IDS', '76561198068647788')
+ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'admin')
+ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', '')
 
 # 称号系统配置
 MAX_TITLES_PER_PLAYER = int(os.getenv('MAX_TITLES_PER_PLAYER', 10))  # 每个玩家最大称号数量

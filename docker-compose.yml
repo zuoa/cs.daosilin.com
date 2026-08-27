@@ -1,12 +1,43 @@
 services:
+  db:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: cs
+      POSTGRES_USER: cs
+      POSTGRES_PASSWORD: cs
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cs -d cs"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+
   app:
     image: ghcr.io/zuoa/cs.daosilin.com:main
-    restart: "always"
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
     ports:
       - "5001:5001"
     volumes:
       - ./data:/data
     environment:
-      - "TZ=Asia/Shanghai"
-      - "DB_PATH=/data/cs.db"
-      - "AUTH=123123"
+      TZ: Asia/Shanghai
+      DATABASE_URL: postgresql://cs:cs@db:5432/cs
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin1005}
+      SITE_NAME: ${SITE_NAME:-CS 数据}
+
+volumes:
+  pgdata:

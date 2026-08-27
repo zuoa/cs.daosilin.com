@@ -1,7 +1,6 @@
 import datetime
 
 from ajlog import logger
-from config import CUP_NAME
 from database import Match, CupDayChampion, MatchPlayer
 
 
@@ -9,8 +8,9 @@ def judge_champion(day=None, cup_name=None):
     if day is None:
         day = (datetime.datetime.now() - datetime.timedelta(days=1)).strftime("%Y%m%d")
 
-    if cup_name is None:
-        cup_name = CUP_NAME
+    if not cup_name:
+        logger.warning("judge_champion 未指定 cup_name，跳过")
+        return
     match_list = Match.filter_records(**{'cup_name': cup_name, 'play_day': day})
     team_wins = {}
 
