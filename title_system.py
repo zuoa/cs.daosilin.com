@@ -1,733 +1,451 @@
-"""
-重构后的称号系统 - 基于统一逻辑的精简称号分配系统
-采用统一的排名规则和分类体系，去除重复和相似称号
+"""Season title engine.
+
+Titles are intentionally scarce and evidence-led. A player can receive at most
+one honour, one play-style label and one season story. Every saved description
+contains the values that caused the title to be awarded.
 """
 
-from typing import Dict, List, Tuple, Optional
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 import math
-from config import MAX_TITLES_PER_PLAYER, MAX_POSITIVE_TITLES, MAX_NEGATIVE_TITLES, TITLE_PRIORITY_THRESHOLD
+import statistics
+from typing import Callable, Dict, List, Optional, Tuple
+
+from config import MAX_TITLES_PER_PLAYER
+
+
+PlayerData = Dict[str, object]
+Metric = Callable[[PlayerData], float]
+Condition = Callable[[PlayerData, List[PlayerData]], bool]
+Evidence = Callable[[PlayerData, List[PlayerData]], str]
 
 
 class TitleType(Enum):
-    """称号类型"""
-    POSITIVE = "positive"  # 正面称号
-    NEGATIVE = "negative"  # 反面称号
-    NEUTRAL = "neutral"    # 中性称号
+    POSITIVE = "positive"
+    NEUTRAL = "neutral"
+    NEGATIVE = "negative"  # Kept for compatibility with historical rows.
 
 
 class TitleCategory(Enum):
-    """称号分类"""
-    KILLING = "killing"           # 击杀相关
-    SURVIVAL = "survival"         # 生存相关
-    SKILL = "skill"              # 技能相关
-    TEAMWORK = "teamwork"         # 团队合作
-    ACHIEVEMENT = "achievement"   # 成就相关
-    CONSISTENCY = "consistency"   # 稳定性相关
+    HONOUR = "honour"
+    FIREPOWER = "firepower"
+    ENTRY = "entry"
+    CLUTCH = "clutch"
+    TEAMWORK = "teamwork"
+    CONSISTENCY = "consistency"
+    STYLE = "style"
 
 
-@dataclass
+class TitleSlot(Enum):
+    HONOUR = "honour"
+    STYLE = "style"
+    STORY = "story"
+
+
+@dataclass(frozen=True)
 class Title:
-    """称号定义"""
     name: str
     description: str
     category: TitleCategory
     title_type: TitleType
-    condition_func: callable
-    priority: int = 1  # 优先级，数字越大优先级越高
+    condition_func: Condition
+    priority: int = 1
+    slot: TitleSlot = TitleSlot.STYLE
+    evidence_func: Optional[Evidence] = None
+    score_func: Optional[Callable[[PlayerData, List[PlayerData]], float]] = None
+
+
+def _number(value: object) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _per_match(field: str) -> Metric:
+    return lambda data: _number(data.get(field)) / max(_number(data.get("match_count")), 1)
+
+
+def _field(field: str) -> Metric:
+    return lambda data: _number(data.get(field))
+
+
+def _percent(value: float) -> str:
+    return f"{value * 100:.1f}%"
+
+
+def _ratio(value: float) -> str:
+    return f"{value:.2f}"
 
 
 class RefactoredTitleSystem:
-    """重构后的称号系统核心类"""
-    
+    """Calculate a compact, explainable season profile for every player."""
+
     def __init__(self):
         self.titles = self._initialize_titles()
-    
-    def _calculate_relative_rank(self, player_value: float, all_values: List[float], reverse: bool = True) -> float:
-        """
-        计算玩家在所有人中的相对排名
-        
-        Args:
-            player_value: 玩家数值
-            all_values: 所有玩家的数值列表
-            reverse: True表示数值越大越好，False表示数值越小越好
-            
-        Returns:
-            相对排名比例 (0-1)，1表示最高排名
-        """
-        if not all_values or len(all_values) <= 1:
-            return 0.5
-        
-        sorted_values = sorted(all_values, reverse=reverse)
-        try:
-            rank = sorted_values.index(player_value) + 1
-            return rank / len(sorted_values)
-        except ValueError:
-            return 0.5
-    
-    def _is_extreme_value(self, player_value: float, all_values: List[float], 
-                         is_max: bool = True) -> bool:
-        """
-        判断是否为极值（第1名）
-        
-        Args:
-            player_value: 玩家数值
-            all_values: 所有玩家的数值列表
-            is_max: True表示判断是否为最大值，False表示最小值
-            
-        Returns:
-            是否为极值
-        """
-        if not all_values or len(all_values) <= 1:
-            return False
-        
-        if is_max:
-            max_val = max(all_values)
-            ret =  player_value == max_val and player_value > 0
-            return ret
+
+    @staticmethod
+    def _minimum_matches(all_players_data: List[PlayerData]) -> int:
+        maximum = max((_number(p.get("match_count")) for p in all_players_data), default=0)
+        if maximum <= 3:
+            return 1
+        return max(3, math.ceil(maximum * 0.30))
+
+    def _eligible_players(self, all_players_data: List[PlayerData]) -> List[PlayerData]:
+        minimum = self._minimum_matches(all_players_data)
+        return [p for p in all_players_data if _number(p.get("match_count")) >= minimum]
+
+    @staticmethod
+    def _same_player(left: PlayerData, right: PlayerData) -> bool:
+        left_id = left.get("player_id")
+        right_id = right.get("player_id")
+        if left_id is not None and right_id is not None:
+            return left_id == right_id
+        return left is right or left == right
+
+    def _is_eligible(self, player_data: PlayerData, all_players_data: List[PlayerData]) -> bool:
+        return any(self._same_player(player_data, candidate) for candidate in self._eligible_players(all_players_data))
+
+    def _rank(
+        self,
+        player_data: PlayerData,
+        all_players_data: List[PlayerData],
+        metric: Metric,
+        *,
+        reverse: bool = True,
+        valid: Optional[Callable[[PlayerData], bool]] = None,
+    ) -> Tuple[Optional[int], int]:
+        candidates = self._eligible_players(all_players_data)
+        if valid:
+            candidates = [p for p in candidates if valid(p)]
+        if not candidates or not any(self._same_player(player_data, candidate) for candidate in candidates):
+            return None, len(candidates)
+
+        value = metric(player_data)
+        if reverse:
+            rank = 1 + sum(metric(candidate) > value for candidate in candidates)
         else:
-            min_val = min(all_values)
-            return player_value == min_val
-    
-    def _get_percentile_rank(self, player_value: float, all_values: List[float], 
-                            reverse: bool = True) -> float:
-        """
-        获取百分位排名
-        
-        Args:
-            player_value: 玩家数值
-            all_values: 所有玩家的数值列表
-            reverse: True表示数值越大越好
-            
-        Returns:
-            百分位排名 (0-100)
-        """
-        if not all_values or len(all_values) <= 1:
-            return 50.0
-        
-        sorted_values = sorted(all_values, reverse=reverse)
-        try:
-            rank = sorted_values.index(player_value) + 1
-            return (rank - 1) / (len(sorted_values) - 1) * 100
-        except ValueError:
-            return 50.0
-    
-    def _is_top_players_by_field(self, player_data: Dict, all_players_data: List[Dict], 
-                                 field_name: str, top_n: int = 3, reverse: bool = True) -> bool:
-        """
-        判断玩家是否在指定字段的前N名
-        
-        Args:
-            player_data: 玩家数据
-            all_players_data: 所有玩家数据
-            field_name: 字段名
-            top_n: 前N名，默认为3
-            reverse: True表示数值越大越好，False表示数值越小越好
-            
-        Returns:
-            是否在前N名中
-        """
-        if not all_players_data or len(all_players_data) < top_n:
-            return False
-        
-        # 计算所有玩家在该字段的数值
-        player_values = []
-        for player in all_players_data:
-            value = player.get(field_name, 0)
-            player_values.append((player.get('player_id'), value))
-        
-        # 按数值排序
-        player_values.sort(key=lambda x: x[1], reverse=reverse)
-        
-        # 获取前N名的玩家ID
-        top_players = [pid for pid, _ in player_values[:top_n]]
-        
-        # 检查当前玩家是否在前N名中
-        current_player_id = player_data.get('player_id')
-        return current_player_id in top_players
-    
-    def _is_bottom_players_by_field(self, player_data: Dict, all_players_data: List[Dict], 
-                                   field_name: str, bottom_n: int = 3) -> bool:
-        """
-        判断玩家是否在指定字段的最后N名
-        
-        Args:
-            player_data: 玩家数据
-            all_players_data: 所有玩家数据
-            field_name: 字段名
-            bottom_n: 最后N名，默认为3
-            
-        Returns:
-            是否在最后N名中
-        """
-        return self._is_top_players_by_field(player_data, all_players_data, field_name, bottom_n, reverse=False)
-    
-    def _is_top_percentile(self, player_data: Dict, all_players_data: List[Dict], 
-                          field_name: str, percentile: float = 10.0, reverse: bool = True) -> bool:
-        """
-        判断玩家是否在指定百分位以上
-        
-        Args:
-            player_data: 玩家数据
-            all_players_data: 所有玩家数据
-            field_name: 字段名
-            percentile: 百分位阈值（如10.0表示前10%）
-            reverse: True表示数值越大越好
-            
-        Returns:
-            是否在指定百分位以上
-        """
-        if not all_players_data:
-            return False
-        
-        player_value = player_data.get(field_name, 0)
-        all_values = [p.get(field_name, 0) for p in all_players_data]
-        
-        rank = self._get_percentile_rank(player_value, all_values, reverse)
-        return rank <= percentile
-    
-    def _is_bottom_percentile(self, player_data: Dict, all_players_data: List[Dict], 
-                             field_name: str, percentile: float = 10.0, reverse=False) -> bool:
-        """
-        判断玩家是否在指定百分位以下
-        
-        Args:
-            player_data: 玩家数据
-            all_players_data: 所有玩家数据
-            field_name: 字段名
-            percentile: 百分位阈值（如10.0表示后10%）
-            
-        Returns:
-            是否在指定百分位以下
-        """
-        if not all_players_data:
-            return False
-        
-        player_value = player_data.get(field_name, 0)
-        all_values = [p.get(field_name, 0) for p in all_players_data]
-        
-        rank = self._get_percentile_rank(player_value, all_values, reverse=reverse)
-        return rank <= percentile
-    
-    def _is_top_players_by_accuracy(self, player_data: Dict, all_players_data: List[Dict], top_n: int = 3) -> bool:
-        """
-        判断玩家是否是命中率最高的前N名
-        
-        Args:
-            player_data: 玩家数据
-            all_players_data: 所有玩家数据
-            top_n: 前N名，默认为3
-            
-        Returns:
-            是否是命中率最高的前N名
-        """
-        if not all_players_data or len(all_players_data) < top_n:
-            return False
-        
-        # 计算所有玩家的命中率
-        player_accuracies = []
-        for player in all_players_data:
-            hit_count = player.get('total_hit_count', 0)
-            fire_count = player.get('total_fire_count', 1)
-            accuracy = hit_count / max(fire_count, 1)
-            player_accuracies.append((player.get('player_id'), accuracy))
-        
-        # 按命中率降序排序
-        player_accuracies.sort(key=lambda x: x[1], reverse=True)
-        
-        # 获取前N名的玩家ID
-        top_players = [pid for pid, _ in player_accuracies[:top_n]]
-        
-        # 检查当前玩家是否在前N名中
-        current_player_id = player_data.get('player_id')
-        return current_player_id in top_players
-    
+            rank = 1 + sum(metric(candidate) < value for candidate in candidates)
+        return rank, len(candidates)
+
+    def _is_top(
+        self,
+        player_data: PlayerData,
+        all_players_data: List[PlayerData],
+        metric: Metric,
+        fraction: float,
+        *,
+        valid: Optional[Callable[[PlayerData], bool]] = None,
+    ) -> bool:
+        rank, total = self._rank(player_data, all_players_data, metric, valid=valid)
+        return rank is not None and rank <= max(1, math.ceil(total * fraction))
+
+    def _is_bottom(
+        self,
+        player_data: PlayerData,
+        all_players_data: List[PlayerData],
+        metric: Metric,
+        fraction: float,
+    ) -> bool:
+        rank, total = self._rank(player_data, all_players_data, metric, reverse=False)
+        return rank is not None and rank <= max(1, math.ceil(total * fraction))
+
+    def _is_first(
+        self,
+        player_data: PlayerData,
+        all_players_data: List[PlayerData],
+        metric: Metric,
+        *,
+        valid: Optional[Callable[[PlayerData], bool]] = None,
+    ) -> bool:
+        rank, _ = self._rank(player_data, all_players_data, metric, valid=valid)
+        return rank == 1
+
+    def _median(self, all_players_data: List[PlayerData], metric: Metric) -> float:
+        values = [metric(player) for player in self._eligible_players(all_players_data)]
+        return statistics.median(values) if values else 0.0
+
+    def _rank_evidence(
+        self,
+        player_data: PlayerData,
+        all_players_data: List[PlayerData],
+        metric: Metric,
+        label: str,
+        formatter: Callable[[float], str] = _ratio,
+        *,
+        valid: Optional[Callable[[PlayerData], bool]] = None,
+    ) -> str:
+        rank, total = self._rank(player_data, all_players_data, metric, valid=valid)
+        suffix = f"，赛季 #{rank}/{total}" if rank is not None else ""
+        return f"{label} {formatter(metric(player_data))}{suffix}"
+
+    def _rank_score(self, player_data: PlayerData, all_players_data: List[PlayerData], metric: Metric) -> float:
+        rank, total = self._rank(player_data, all_players_data, metric)
+        if rank is None or total == 0:
+            return 0.0
+        return 1 - (rank - 1) / total
+
+    @staticmethod
+    def _weighted_clutches(data: PlayerData) -> float:
+        return (
+            _number(data.get("total_1v2"))
+            + 2 * _number(data.get("total_1v3"))
+            + 3 * _number(data.get("total_1v4"))
+            + 4 * _number(data.get("total_1v5"))
+        ) / max(_number(data.get("match_count")), 1)
+
+    @staticmethod
+    def _weighted_multi_kills(data: PlayerData) -> float:
+        return (
+            _number(data.get("total_2k"))
+            + 2 * _number(data.get("total_3k"))
+            + 3 * _number(data.get("total_4k"))
+            + 4 * _number(data.get("total_5k"))
+        ) / max(_number(data.get("match_count")), 1)
+
+    @staticmethod
+    def _day_ratings(data: PlayerData) -> List[float]:
+        history = data.get("day_history") or []
+        return [_number(item.get("avg_pw_rating")) for item in history if _number(item.get("avg_pw_rating")) > 0]
+
+    def _rating_cv(self, data: PlayerData) -> float:
+        values = self._day_ratings(data)
+        if len(values) < 2 or statistics.mean(values) == 0:
+            return math.inf
+        return statistics.pstdev(values) / statistics.mean(values)
+
+    def _late_gain(self, data: PlayerData) -> float:
+        values = self._day_ratings(data)
+        if len(values) < 4:
+            return 0.0
+        middle = len(values) // 2
+        early = statistics.mean(values[:middle])
+        late = statistics.mean(values[middle:])
+        return (late / early - 1) if early else 0.0
+
     def _initialize_titles(self) -> List[Title]:
-        """初始化所有称号定义 - 精简版"""
-        titles = []
-        
-        # ========== 极值称号（第1名） ==========
+        pwr = _field("avg_pw_rating")
+        adpr = _field("avg_adpr")
+        win_rate = _field("win_rate")
+        kd = _field("kd_ratio")
+        headshot = _field("avg_headshot_ratio")
+        entry_pm = _per_match("total_first_kills")
+        first_death_pm = _per_match("total_first_deaths")
+        assist_pm = _per_match("total_assists")
+        snipe_pm = _per_match("total_snipe_num")
+        throws_pm = _per_match("total_throws_count")
+        mvp_rate = _per_match("match_mvp_count")
+        deaths_pm = _per_match("total_deaths")
 
-        # 击杀相关极值称号
-        titles.extend([
-            Title(
-                name="击杀之王",
-                description="总击杀数最多的玩家",
-                category=TitleCategory.KILLING,
-                title_type=TitleType.POSITIVE,
-                condition_func=lambda data, all_data: self._is_extreme_value(
-                    data.get('total_kills', 0),
-                    [p.get('total_kills', 0) for p in all_data],
-                    is_max=True
-                ),
-                priority=5
-            ),
-            Title(
-                name="爆头之王",
-                description="爆头率最高的玩家",
-                category=TitleCategory.KILLING,
-                title_type=TitleType.POSITIVE,
-                condition_func=lambda data, all_data: self._is_extreme_value(
-                    data.get('avg_headshot_ratio', 0),
-                    [p.get('avg_headshot_ratio', 0) for p in all_data],
-                    is_max=True
-                ),
-                priority=5
-            ),
-            Title(
-                name="多杀之王",
-                description="多杀次数最多的玩家",
-                category=TitleCategory.KILLING,
-                title_type=TitleType.POSITIVE,
-                condition_func=lambda data, all_data: self._is_extreme_value(
-                    data.get('total_multi_kills', 0),
-                    [p.get('total_multi_kills', 0) for p in all_data],
-                    is_max=True
-                ),
-                priority=5
-            ),
-        ])
+        enough_kills = lambda d: _number(d.get("total_kills")) >= 10
+        has_sniper_sample = lambda d: _number(d.get("total_snipe_num")) >= 3
+        has_utility_sample = lambda d: _number(d.get("total_throws_count")) > 0
+        has_mvp = lambda d: _number(d.get("match_mvp_count")) > 0
 
-        # 生存相关极值称号
-        titles.extend([
+        return [
             Title(
-                name="生存之王",
-                description="K/D比最高的玩家",
-                category=TitleCategory.SURVIVAL,
-                title_type=TitleType.POSITIVE,
-                condition_func=lambda data, all_data: self._is_extreme_value(
-                    data.get('kd_ratio', 0),
-                    [p.get('kd_ratio', 0) for p in all_data],
-                    is_max=True
+                "赛季标杆", "综合评分领跑赛季", TitleCategory.HONOUR, TitleType.POSITIVE,
+                lambda d, all_d: self._is_first(d, all_d, pwr), 100, TitleSlot.HONOUR,
+                lambda d, all_d: self._rank_evidence(d, all_d, pwr, "PWR Rating"),
+                lambda d, all_d: self._rank_score(d, all_d, pwr),
+            ),
+            Title(
+                "火力天花板", "回合伤害领跑赛季", TitleCategory.FIREPOWER, TitleType.POSITIVE,
+                lambda d, all_d: self._is_first(d, all_d, adpr), 96, TitleSlot.HONOUR,
+                lambda d, all_d: self._rank_evidence(d, all_d, adpr, "ADPR", lambda v: f"{v:.1f}"),
+                lambda d, all_d: self._rank_score(d, all_d, adpr),
+            ),
+            Title(
+                "关键先生", "高频拿下比赛 MVP", TitleCategory.HONOUR, TitleType.POSITIVE,
+                lambda d, all_d: has_mvp(d) and self._is_top(d, all_d, mvp_rate, .10, valid=has_mvp),
+                92, TitleSlot.HONOUR,
+                lambda d, all_d: self._rank_evidence(d, all_d, mvp_rate, "MVP 率", _percent, valid=has_mvp),
+                lambda d, all_d: self._rank_score(d, all_d, mvp_rate),
+            ),
+            Title(
+                "胜利引擎", "胜率与个人表现同时在线", TitleCategory.HONOUR, TitleType.POSITIVE,
+                lambda d, all_d: self._is_top(d, all_d, win_rate, .10) and pwr(d) >= self._median(all_d, pwr),
+                90, TitleSlot.HONOUR,
+                lambda d, all_d: f"胜率 {_percent(win_rate(d))}，PWR {pwr(d):.2f}",
+                lambda d, all_d: self._rank_score(d, all_d, win_rate),
+            ),
+            Title(
+                "破局先锋", "以首杀打开回合局面", TitleCategory.ENTRY, TitleType.POSITIVE,
+                lambda d, all_d: _number(d.get("fk_fd_ratio")) >= 1.2 and self._is_top(d, all_d, entry_pm, .15),
+                80, TitleSlot.STYLE,
+                lambda d, all_d: f"场均首杀 {entry_pm(d):.2f}，FK/FD {_number(d.get('fk_fd_ratio')):.2f}",
+                lambda d, all_d: self._rank_score(d, all_d, entry_pm),
+            ),
+            Title(
+                "爆头美学", "稳定以头部命中终结对手", TitleCategory.FIREPOWER, TitleType.POSITIVE,
+                lambda d, all_d: self._is_top(d, all_d, headshot, .15, valid=enough_kills),
+                78, TitleSlot.STYLE,
+                lambda d, all_d: self._rank_evidence(d, all_d, headshot, "爆头率", _percent, valid=enough_kills),
+                lambda d, all_d: self._rank_score(d, all_d, headshot),
+            ),
+            Title(
+                "长枪管辖区", "狙击是主要火力来源", TitleCategory.FIREPOWER, TitleType.POSITIVE,
+                lambda d, all_d: (
+                    _number(d.get("total_snipe_num")) / max(_number(d.get("total_kills")), 1) >= .30
+                    and self._is_top(d, all_d, snipe_pm, .20, valid=has_sniper_sample)
                 ),
-                priority=5
+                77, TitleSlot.STYLE,
+                lambda d, all_d: f"场均狙杀 {snipe_pm(d):.2f}，占击杀 {_percent(_number(d.get('total_snipe_num')) / max(_number(d.get('total_kills')), 1))}",
+                lambda d, all_d: self._rank_score(d, all_d, snipe_pm),
             ),
-        ])
-
-        # 技能相关极值称号
-        titles.extend([
             Title(
-                name="伤害之王",
-                description="平均每回合伤害最高的玩家",
-                category=TitleCategory.SKILL,
-                title_type=TitleType.POSITIVE,
-                condition_func=lambda data, all_data: self._is_extreme_value(
-                    data.get('avg_adpr', 0),
-                    [p.get('avg_adpr', 0) for p in all_data],
-                    is_max=True
+                "生存专家", "高效完成击杀交换", TitleCategory.FIREPOWER, TitleType.POSITIVE,
+                lambda d, all_d: self._is_top(d, all_d, kd, .10), 75, TitleSlot.STYLE,
+                lambda d, all_d: self._rank_evidence(d, all_d, kd, "K/D"),
+                lambda d, all_d: self._rank_score(d, all_d, kd),
+            ),
+            Title(
+                "战术支点", "助攻产出稳定支撑团队", TitleCategory.TEAMWORK, TitleType.POSITIVE,
+                lambda d, all_d: self._is_top(d, all_d, assist_pm, .15) and pwr(d) >= self._median(all_d, pwr),
+                73, TitleSlot.STYLE,
+                lambda d, all_d: self._rank_evidence(d, all_d, assist_pm, "场均助攻"),
+                lambda d, all_d: self._rank_score(d, all_d, assist_pm),
+            ),
+            Title(
+                "道具调度员", "高频使用道具建立回合条件", TitleCategory.TEAMWORK, TitleType.POSITIVE,
+                lambda d, all_d: self._is_top(d, all_d, throws_pm, .10, valid=has_utility_sample),
+                70, TitleSlot.STYLE,
+                lambda d, all_d: self._rank_evidence(d, all_d, throws_pm, "场均投掷物", lambda v: f"{v:.1f}", valid=has_utility_sample),
+                lambda d, all_d: self._rank_score(d, all_d, throws_pm),
+            ),
+            Title(
+                "不可能任务", "完成过高难度残局", TitleCategory.CLUTCH, TitleType.POSITIVE,
+                lambda d, all_d: _number(d.get("total_1v4")) + _number(d.get("total_1v5")) > 0,
+                88, TitleSlot.STORY,
+                lambda d, all_d: f"1v4 {_number(d.get('total_1v4')):.0f} 次，1v5 {_number(d.get('total_1v5')):.0f} 次",
+                lambda d, all_d: self._weighted_clutches(d),
+            ),
+            Title(
+                "ACE 收藏家", "在赛季中完成过五杀", TitleCategory.CLUTCH, TitleType.POSITIVE,
+                lambda d, all_d: _number(d.get("total_5k")) > 0, 86, TitleSlot.STORY,
+                lambda d, all_d: f"赛季五杀 {_number(d.get('total_5k')):.0f} 次",
+                lambda d, all_d: _number(d.get("total_5k")),
+            ),
+            Title(
+                "残局接管", "残局产出位列赛季前列", TitleCategory.CLUTCH, TitleType.POSITIVE,
+                lambda d, all_d: self._weighted_clutches(d) > 0 and self._is_top(d, all_d, self._weighted_clutches, .10),
+                84, TitleSlot.STORY,
+                lambda d, all_d: self._rank_evidence(d, all_d, self._weighted_clutches, "加权残局/场"),
+                lambda d, all_d: self._rank_score(d, all_d, self._weighted_clutches),
+            ),
+            Title(
+                "连杀制造机", "多杀回合产出位列赛季前列", TitleCategory.FIREPOWER, TitleType.POSITIVE,
+                lambda d, all_d: (
+                    _number(d.get("total_3k")) + _number(d.get("total_4k")) + _number(d.get("total_5k")) > 0
+                    and self._is_top(d, all_d, self._weighted_multi_kills, .10)
                 ),
-                priority=5
+                80, TitleSlot.STORY,
+                lambda d, all_d: self._rank_evidence(d, all_d, self._weighted_multi_kills, "加权多杀/场"),
+                lambda d, all_d: self._rank_score(d, all_d, self._weighted_multi_kills),
             ),
-        ])
-
-        # 团队合作极值称号
-        titles.extend([
             Title(
-                name="助攻之王",
-                description="总助攻数最多的玩家",
-                category=TitleCategory.TEAMWORK,
-                title_type=TitleType.POSITIVE,
-                condition_func=lambda data, all_data: self._is_extreme_value(
-                    data.get('total_assists', 0),
-                    [p.get('total_assists', 0) for p in all_data],
-                    is_max=True
+                "后程加速", "后半程表现显著提升", TitleCategory.CONSISTENCY, TitleType.POSITIVE,
+                lambda d, all_d: self._late_gain(d) >= .15 and pwr(d) >= self._median(all_d, pwr),
+                76, TitleSlot.STORY,
+                lambda d, all_d: f"后半程 PWR 较前半程提升 {_percent(self._late_gain(d))}",
+                lambda d, all_d: self._late_gain(d),
+            ),
+            Title(
+                "稳如准星", "多比赛日保持稳定输出", TitleCategory.CONSISTENCY, TitleType.POSITIVE,
+                lambda d, all_d: len(self._day_ratings(d)) >= 4 and self._rating_cv(d) <= .12 and pwr(d) >= self._median(all_d, pwr),
+                74, TitleSlot.STORY,
+                lambda d, all_d: f"{len(self._day_ratings(d))} 个比赛日，PWR 波动系数 {_percent(self._rating_cv(d))}",
+                lambda d, all_d: 1 - self._rating_cv(d),
+            ),
+            Title(
+                "玻璃大炮", "输出凶猛，同时承担较高阵亡风险", TitleCategory.STYLE, TitleType.NEUTRAL,
+                lambda d, all_d: self._is_top(d, all_d, adpr, .20) and self._is_top(d, all_d, deaths_pm, .20),
+                68, TitleSlot.STORY,
+                lambda d, all_d: f"ADPR {adpr(d):.1f}，场均阵亡 {deaths_pm(d):.2f}",
+                lambda d, all_d: self._rank_score(d, all_d, adpr),
+            ),
+            Title(
+                "高风险突破", "频繁参与回合的第一波交火", TitleCategory.ENTRY, TitleType.NEUTRAL,
+                lambda d, all_d: (
+                    _number(d.get("fk_fd_ratio")) >= .9
+                    and self._is_top(d, all_d, entry_pm, .20)
+                    and self._is_top(d, all_d, first_death_pm, .20)
                 ),
-                priority=4
+                66, TitleSlot.STORY,
+                lambda d, all_d: f"场均首杀 {entry_pm(d):.2f}，场均首死 {first_death_pm(d):.2f}",
+                lambda d, all_d: self._rank_score(d, all_d, entry_pm),
             ),
-        ])
+            Title(
+                "逆风核心", "个人表现突出，但赛果未完全兑现", TitleCategory.STYLE, TitleType.NEUTRAL,
+                lambda d, all_d: self._is_top(d, all_d, pwr, .20) and self._is_bottom(d, all_d, win_rate, .40),
+                64, TitleSlot.STORY,
+                lambda d, all_d: f"PWR {pwr(d):.2f}，胜率 {_percent(win_rate(d))}",
+                lambda d, all_d: self._rank_score(d, all_d, pwr),
+            ),
+        ]
 
-        # 成就相关极值称号
-        titles.extend([
-            Title(
-                name="MVP之王",
-                description="MVP次数最多的玩家",
-                category=TitleCategory.ACHIEVEMENT,
-                title_type=TitleType.POSITIVE,
-                condition_func=lambda data, all_data: self._is_extreme_value(
-                    data.get('match_mvp_count', 0),
-                    [p.get('match_mvp_count', 0) for p in all_data],
-                    is_max=True
-                ),
-                priority=5
-            ),
-            Title(
-                name="胜率之王",
-                description="胜率最高的玩家",
-                category=TitleCategory.ACHIEVEMENT,
-                title_type=TitleType.POSITIVE,
-                condition_func=lambda data, all_data: self._is_extreme_value(
-                    data.get('win_rate', 0),
-                    [p.get('win_rate', 0) for p in all_data],
-                    is_max=True
-                ),
-                priority=5
-            ),
-        ])
-        
-        # ========== 前三称号 ==========
-        
-        # 击杀相关前三称号
-        titles.extend([
-            Title(
-                name="AWP大师",
-                description="AWP击杀数最多的狙击手",
-                category=TitleCategory.KILLING,
-                title_type=TitleType.POSITIVE,
-                condition_func=lambda data, all_data: self._is_top_players_by_field(data, all_data, 'total_snipe_num', top_n=1),
-                priority=4
-            ),
-        ])
-        
-        # 技能相关前三称号
-        titles.extend([
-            Title(
-                name="输出大师",
-                description="平均伤害最高的输出手",
-                category=TitleCategory.SKILL,
-                title_type=TitleType.POSITIVE,
-                condition_func=lambda data, all_data: self._is_top_players_by_field(data, all_data, 'avg_adpr', top_n=1),
-                priority=4
-            ),
-        ])
-        
-        # 团队合作前三称号
-        titles.extend([
-            Title(
-                name="闪光大师",
-                description="闪光成功率最高的选手",
-                category=TitleCategory.TEAMWORK,
-                title_type=TitleType.POSITIVE,
-                condition_func=lambda data, all_data: self._is_top_players_by_field(data, all_data, 'flash_success_ratio', top_n=1),
-                priority=3
-            ),
-            Title(
-                name="投掷物专家",
-                description="投掷物使用前三的战术家",
-                category=TitleCategory.TEAMWORK,
-                title_type=TitleType.POSITIVE,
-                condition_func=lambda data, all_data: self._is_top_players_by_field(data, all_data, 'total_throws_count', top_n=3),
-                priority=2
-            ),
-        ])
+    def calculate_titles(
+        self,
+        player_data: PlayerData,
+        all_players_data: Optional[List[PlayerData]] = None,
+    ) -> List[Tuple[Title, float]]:
+        all_data = all_players_data or [player_data]
+        if not self._is_eligible(player_data, all_data):
+            return []
 
-        # ========== 前10%称号 ==========
-
-        titles.extend([
-            Title(
-                name="精英射手",
-                description="击杀数排名前10%的玩家",
-                category=TitleCategory.KILLING,
-                title_type=TitleType.POSITIVE,
-                condition_func=lambda data, all_data: self._is_top_percentile(data, all_data, 'total_kills', 10.0),
-                priority=3
-            ),
-        ])
-
-        
-        # ========== 后10%称号 ==========
-        
-        titles.extend([
-            Title(
-                name="菜鸟射手",
-                description="击杀数排名后10%的玩家",
-                category=TitleCategory.KILLING,
-                title_type=TitleType.NEGATIVE,
-                condition_func=lambda data, all_data: self._is_bottom_percentile(data, all_data, 'total_kills', 10.0),
-                priority=2
-            ),
-            Title(
-                name="自闪大师",
-                description="闪光队友成功率最高的选手",
-                category=TitleCategory.TEAMWORK,
-                title_type=TitleType.POSITIVE,
-                condition_func=lambda data, all_data: self._is_top_players_by_field(data, all_data, 'flash_teammate_ratio', top_n=1),
-                priority=3
-            ),
-        ])
-        
-        # ========== 特殊成就称号 ==========
-        
-        titles.extend([
-            Title(
-                name="常胜将军",
-                description="胜率超过70%的胜利者",
-                category=TitleCategory.ACHIEVEMENT,
-                title_type=TitleType.POSITIVE,
-                condition_func=lambda data: data.get('win_rate', 0) > 0.7,
-                priority=4
-            ),
-        ])
-        
-        # ========== 反差萌称号 ==========
-        
-        titles.extend([
-            Title(
-                name="反差萌",
-                description="击杀数很高但死亡数也很高的玩家",
-                category=TitleCategory.KILLING,
-                title_type=TitleType.NEUTRAL,
-                condition_func=lambda data, all_data: self._is_high_in_both(
-                    data, all_data, 'total_kills', 'total_deaths', 0.5
-                ),
-                priority=2
-            ),
-
-            Title(
-                name="莽夫",
-                description="击杀数很高但首死数也很高的玩家",
-                category=TitleCategory.KILLING,
-                title_type=TitleType.NEUTRAL,
-                condition_func=lambda data, all_data: self._is_high_in_both(
-                    data, all_data, 'total_kills', 'total_first_deaths', 0.5
-                ),
-                priority=2
-            ),
-
-            Title(
-                name="躺赢专家",
-                description="胜率很高但个人评分很低的玩家",
-                category=TitleCategory.ACHIEVEMENT,
-                title_type=TitleType.NEUTRAL,
-                condition_func=lambda data, all_data: self._is_high_in_both(
-                    data, all_data, 'win_rate', 'avg_pw_rating', 0.3, reverse_second=True
-                ),
-                priority=2
-            ),
-        ])
-        
-        return titles
-    
-    def _is_high_in_both(self, player_data: Dict, all_players_data: List[Dict], 
-                        field1: str, field2: str, threshold: float, 
-                        reverse_second: bool = False) -> bool:
-        """
-        判断玩家在两个字段上是否都排名靠前
-        
-        Args:
-            player_data: 玩家数据
-            all_players_data: 所有玩家数据
-            field1: 第一个字段名
-            field2: 第二个字段名
-            threshold: 排名阈值 (0-1)
-            reverse_second: 第二个字段是否反向排序
-            
-        Returns:
-            是否在两个字段上都排名靠前
-        """
-        if not all_players_data:
-            return False
-
-        val1 = player_data.get(field1, 0)
-        val2 = player_data.get(field2, 0)
-        
-        all_vals1 = [p.get(field1, 0) for p in all_players_data]
-        all_vals2 = [p.get(field2, 0) for p in all_players_data]
-        
-        rank1 = self._get_percentile_rank(val1, all_vals1, reverse=True)
-        rank2 = self._get_percentile_rank(val2, all_vals2, reverse=not reverse_second)
-        
-        return rank1 >= threshold * 100 and rank2 >= threshold * 100
-    
-    def calculate_titles(self, player_data: Dict, all_players_data: List[Dict] = None) -> List[Tuple[Title, float]]:
-        """
-        为玩家计算称号
-        
-        Args:
-            player_data: 玩家数据字典
-            all_players_data: 所有玩家数据列表，用于相对比较
-            
-        Returns:
-            符合条件的称号列表，按优先级排序
-        """
-        qualified_titles = []
-        
+        qualified: List[Tuple[Title, float]] = []
         for title in self.titles:
             try:
-                # 为条件函数提供所有玩家数据用于相对比较
-                if all_players_data:
-                    if title.condition_func(player_data, all_players_data):
-                        # 计算称号匹配度分数
-                        score = self._calculate_title_score(title, player_data, all_players_data)
-                        qualified_titles.append((title, score))
-                else:
-                    # 兼容原有的单玩家计算方式
-                    if title.condition_func(player_data):
-                        score = self._calculate_title_score(title, player_data)
-                        qualified_titles.append((title, score))
-            except Exception as e:
-                # 如果计算过程中出现错误，跳过这个称号
+                if not title.condition_func(player_data, all_data):
+                    continue
+                score = self._calculate_title_score(title, player_data, all_data)
+                description = title.evidence_func(player_data, all_data) if title.evidence_func else title.description
+                qualified.append((replace(title, description=description), score))
+            except (ArithmeticError, KeyError, TypeError, ValueError):
                 continue
-        
-        # 按优先级和分数排序
-        qualified_titles.sort(key=lambda x: (x[0].priority, x[1]), reverse=True)
-        
-        return qualified_titles
+        return sorted(qualified, key=lambda item: (item[0].priority, item[1]), reverse=True)
 
-    def _calculate_title_score(self, title: Title, player_data: Dict, all_players_data: List[Dict] = None) -> float:
-        """计算称号匹配度分数"""
-        score = 1.0  # 基础分数
+    def _calculate_title_score(
+        self,
+        title: Title,
+        player_data: PlayerData,
+        all_players_data: Optional[List[PlayerData]] = None,
+    ) -> float:
+        all_data = all_players_data or [player_data]
+        match_score = title.score_func(player_data, all_data) if title.score_func else 0.0
+        return round(title.priority + match_score, 4)
 
-        # 根据称号类型调整分数
-        if title.title_type == TitleType.POSITIVE:
-            # 正面称号根据相关数据值调整分数
-            if title.category == TitleCategory.KILLING:
-                score += min(player_data.get('total_kills', 0) / 100, 2.0)
-            elif title.category == TitleCategory.SURVIVAL:
-                score += min(player_data.get('kd_ratio', 0) / 2.0, 2.0)
-            elif title.category == TitleCategory.SKILL:
-                score += min(player_data.get('avg_pw_rating', 0) / 2.0, 2.0)
-            elif title.category in [TitleCategory.TEAMWORK, TitleCategory.ACHIEVEMENT]:
-                # 相对比较称号根据排名调整分数
-                if all_players_data:
-                    score += self._calculate_relative_score(title, player_data, all_players_data)
-        else:
-            # 反面称号根据相关数据值调整分数
-            if title.category == TitleCategory.SURVIVAL:
-                score += min(player_data.get('total_deaths', 0) / 100, 2.0)
-            elif title.category in [TitleCategory.KILLING, TitleCategory.SKILL]:
-                # 相对比较称号根据排名调整分数
-                if all_players_data:
-                    score += self._calculate_relative_score(title, player_data, all_players_data)
+    def get_best_titles(
+        self,
+        player_data: PlayerData,
+        max_titles: Optional[int] = None,
+        all_players_data: Optional[List[PlayerData]] = None,
+    ) -> List[Title]:
+        limit = min(max_titles or MAX_TITLES_PER_PLAYER, 3)
+        selected: List[Title] = []
+        used_slots = set()
+        for title, _ in self.calculate_titles(player_data, all_players_data):
+            if title.slot in used_slots:
+                continue
+            selected.append(title)
+            used_slots.add(title.slot)
+            if len(selected) >= limit:
+                break
+        return sorted(selected, key=lambda title: list(TitleSlot).index(title.slot))
 
-        return score
-
-    def _calculate_relative_score(self, title: Title, player_data: Dict, all_players_data: List[Dict]) -> float:
-        """计算相对比较称号的分数"""
-        # 根据称号名称确定比较的字段
-        field_mapping = {
-            '击杀之王': 'total_kills',
-            '死亡之王': 'total_deaths',
-            '伤害之王': 'avg_adpr',
-            '爆头之王': 'avg_headshot_ratio',
-            '助攻之王': 'total_assists',
-            'MVP之王': 'match_mvp_count',
-            '胜率之王': 'win_rate',
-            '多杀之王': 'total_multi_kills',
-        }
-
-        field_name = field_mapping.get(title.name)
-        if not field_name:
-            return 0.0
-
-        player_value = player_data.get(field_name, 0)
-        all_values = [p.get(field_name, 0) for p in all_players_data]
-
-        # 计算相对排名分数
-        relative_rank = self._calculate_relative_rank(player_value, all_values,
-                                                    reverse=title.title_type == TitleType.POSITIVE)
-
-        # 极值称号额外加分
-        if "之王" in title.name:
-            is_extreme = self._is_extreme_value(player_value, all_values,
-                                              is_max=title.title_type == TitleType.POSITIVE)
-            if is_extreme:
-                return 3.0 + relative_rank * 2.0
-
-        return relative_rank * 2.0
-    
-    def get_best_titles(self, player_data: Dict, max_titles: int = None, all_players_data: List[Dict] = None) -> List[Title]:
-        """
-        获取玩家最佳称号
-        
-        Args:
-            player_data: 玩家数据字典
-            max_titles: 最大返回称号数量，None表示使用配置中的默认值
-            all_players_data: 所有玩家数据列表，用于相对比较
-            
-        Returns:
-            最佳称号列表
-        """
-        if max_titles is None:
-            max_titles = MAX_TITLES_PER_PLAYER
-            
-        qualified_titles = self.calculate_titles(player_data, all_players_data)
-        
-        # 按类型分组
-        positive_titles = []
-        negative_titles = []
-        neutral_titles = []
-        
-        for title, score in qualified_titles:
-            if title.title_type == TitleType.POSITIVE:
-                positive_titles.append((title, score))
-            elif title.title_type == TitleType.NEGATIVE:
-                negative_titles.append((title, score))
-            else:
-                neutral_titles.append((title, score))
-        
-        # 选择最佳称号
-        result = []
-        seen_titles = set()
-        
-        # 优先选择高优先级的正面称号
-        for title, score in positive_titles:
-            if (len(result) < max_titles and 
-                title.name not in seen_titles and 
-                len([t for t in result if t.title_type == TitleType.POSITIVE]) < MAX_POSITIVE_TITLES and
-                title.priority >= TITLE_PRIORITY_THRESHOLD):
-                seen_titles.add(title.name)
-                result.append(title)
-        
-        # 如果还有空间，选择高优先级的反面称号
-        for title, score in negative_titles:
-            if (len(result) < max_titles and 
-                title.name not in seen_titles and 
-                len([t for t in result if t.title_type == TitleType.NEGATIVE]) < MAX_NEGATIVE_TITLES and
-                title.priority >= TITLE_PRIORITY_THRESHOLD):
-                seen_titles.add(title.name)
-                result.append(title)
-        
-        # 如果还有空间，选择中性称号
-        for title, score in neutral_titles:
-            if (len(result) < max_titles and 
-                title.name not in seen_titles and
-                title.priority >= TITLE_PRIORITY_THRESHOLD):
-                seen_titles.add(title.name)
-                result.append(title)
-        
-        # 如果仍然没有足够的称号，降低优先级要求
-        if len(result) < max_titles:
-            all_remaining = []
-            for title, score in qualified_titles:
-                if title.name not in seen_titles:
-                    all_remaining.append((title, score))
-            
-            # 按优先级和分数排序
-            all_remaining.sort(key=lambda x: (x[0].priority, x[1]), reverse=True)
-            
-            for title, score in all_remaining:
-                if len(result) < max_titles:
-                    seen_titles.add(title.name)
-                    result.append(title)
-        
-        return result
-    
-    def get_title_statistics(self, all_players_data: List[Dict]) -> Dict:
-        """
-        获取称号统计信息
-        
-        Args:
-            all_players_data: 所有玩家数据列表
-            
-        Returns:
-            称号统计信息
-        """
-        stats = {
-            'total_players': len(all_players_data),
-            'title_distribution': {},
-            'category_distribution': {}
-        }
-        
+    def get_title_statistics(self, all_players_data: List[PlayerData]) -> Dict[str, object]:
+        distribution: Dict[str, int] = {}
+        categories: Dict[str, int] = {}
         for player_data in all_players_data:
-            titles = self.get_best_titles(player_data, max_titles=1, all_players_data=all_players_data)
-            if titles:
-                title = titles[0]
-                stats['title_distribution'][title.name] = stats['title_distribution'].get(title.name, 0) + 1
-                stats['category_distribution'][title.category.value] = stats['category_distribution'].get(title.category.value, 0) + 1
-        
-        return stats
+            for title in self.get_best_titles(player_data, all_players_data=all_players_data):
+                distribution[title.name] = distribution.get(title.name, 0) + 1
+                key = title.category.value
+                categories[key] = categories.get(key, 0) + 1
+        return {
+            "total_players": len(all_players_data),
+            "title_distribution": distribution,
+            "category_distribution": categories,
+        }
 
 
-# 全局称号系统实例
 title_system = RefactoredTitleSystem()

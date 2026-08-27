@@ -45,7 +45,7 @@
             </div>
             <div v-if="trophies.length" class="profile-honours">
               <span v-for="(trophy, index) in trophies" :key="index" :class="trophy.trophy">
-                <AppIcon name="trophy" /><strong>{{ trophy.trophy === 'champion' ? '冠军' : '亚军' }}</strong><small>{{ trophy.day }} · {{ trophy.team_name || '—' }}</small>
+                <AppIcon name="trophy" /><strong>{{ trophy.trophy === 'champion' ? '冠军' : '亚军' }}</strong><small>{{ trophy.day }} · {{ trophy.team_name || '暂无队名' }}</small>
               </span>
             </div>
           </div>
@@ -86,17 +86,33 @@
           </section>
         </div>
 
-        <section v-if="titles.length" class="panel player-section">
+        <section v-if="titles.length" class="panel player-section title-profile-section">
           <div class="panel-header">
-            <h2>选手称号</h2>
-            <span class="result-count">{{ titles.length }} 项</span>
+            <h2>{{ day ? '当日画像' : '赛季画像' }}</h2>
+            <span class="result-count">{{ day ? '比赛日样本' : '完整赛季样本' }}</span>
           </div>
-          <div class="achievement-grid">
-            <article v-for="title in titles" :key="title.title_name" :class="`title-${title.title_type}`">
-              <span class="achievement-marker"><AppIcon :name="title.title_type === 'positive' ? 'trophy' : title.title_type === 'negative' ? 'alert' : 'activity'" /></span>
-              <div><strong>{{ title.title_name }}</strong><p>{{ title.title_description || '暂无称号说明' }}</p></div>
-              <small>{{ title.title_category || '综合' }}</small>
+          <div class="title-showcase" :class="{ single: !secondaryTitles.length }">
+            <article v-if="primaryTitle" class="title-feature">
+              <span class="title-mark"><AppIcon :name="titleIcon(primaryTitle)" :size="24" /></span>
+              <div class="title-feature-copy">
+                <span class="title-role">主称号</span>
+                <h3>{{ primaryTitle.title_name }}</h3>
+                <p class="title-summary">{{ titleSummary(primaryTitle) }}</p>
+                <p class="title-evidence">{{ primaryTitle.title_description }}</p>
+              </div>
+              <small class="title-category">{{ titleCategory(primaryTitle) }}</small>
             </article>
+            <div v-if="secondaryTitles.length" class="title-support-list">
+              <article v-for="title in secondaryTitles" :key="title.title_name">
+                <span class="title-mark compact"><AppIcon :name="titleIcon(title)" /></span>
+                <div>
+                  <span class="title-category">{{ titleCategory(title) }}</span>
+                  <h3>{{ title.title_name }}</h3>
+                  <p>{{ titleSummary(title) }}</p>
+                  <small>{{ title.title_description }}</small>
+                </div>
+              </article>
+            </div>
           </div>
         </section>
 
@@ -177,6 +193,17 @@ let radarChart
 let lineChart
 
 const playerName = computed(() => player.value?.alias_name || player.value?.nickname || player.value?.player_id || '选手')
+const primaryTitle = computed(() => titles.value[0] || null)
+const secondaryTitles = computed(() => titles.value.slice(1, 3))
+const titleCategories = {
+  honour: { label: '赛季荣誉', icon: 'trophy' },
+  firepower: { label: '火力特征', icon: 'target' },
+  entry: { label: '突破特征', icon: 'arrowRight' },
+  clutch: { label: '残局时刻', icon: 'shield' },
+  teamwork: { label: '团队价值', icon: 'users' },
+  consistency: { label: '赛季走势', icon: 'activity' },
+  style: { label: '打法画像', icon: 'database' },
+}
 const heroStats = computed(() => !stats.value ? [] : [
   { label: 'PWR RATING', value: n2(stats.value.avg_pw_rating), rank: ranks.value.avg_pw_rating, featured: true },
   { label: '比赛场次', value: stats.value.match_count || 0, note: `${stats.value.win_count || 0} 场胜利` },
@@ -214,6 +241,10 @@ const statGroups = computed(() => {
 
 function n2(value) { return Number(value || 0).toFixed(2) }
 function pct(value) { return `${(Number(value || 0) * 100).toFixed(1)}%` }
+function titleMeta(title) { return titleCategories[title?.title_category] || { label: '赛季画像', icon: 'activity' } }
+function titleCategory(title) { return titleMeta(title).label }
+function titleIcon(title) { return titleMeta(title).icon }
+function titleSummary(title) { return title?.title_summary || '由本赛季有效样本计算得出' }
 function normalizeRatio(value) { const number = Number(value || 0); return number > 1 ? number : number * 100 }
 function ratioDisplay(value) { return `${normalizeRatio(value).toFixed(1)}%` }
 function pad(value) { return String(value || 0).padStart(2, '0') }

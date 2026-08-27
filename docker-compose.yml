@@ -35,8 +35,8 @@ services:
       DATABASE_URL: postgresql://cs:cs@db:5432/cs
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
-      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin1005}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-vane}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-vane1005}
       SITE_NAME: ${SITE_NAME:-熊掌CS Major}
 
 volumes:

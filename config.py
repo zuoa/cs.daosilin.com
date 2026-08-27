@@ -22,7 +22,7 @@ ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'admin')
 ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', '')
 
 # 称号系统配置
-MAX_TITLES_PER_PLAYER = int(os.getenv('MAX_TITLES_PER_PLAYER', 10))  # 每个玩家最大称号数量
-MAX_POSITIVE_TITLES = int(os.getenv('MAX_POSITIVE_TITLES', 7))  # 每个玩家最大正面称号数量
-MAX_NEGATIVE_TITLES = int(os.getenv('MAX_NEGATIVE_TITLES', 3))  # 每个玩家最大反面称号数量
+MAX_TITLES_PER_PLAYER = int(os.getenv('MAX_TITLES_PER_PLAYER', 3))  # 主荣誉、打法、故事各最多一个
+MAX_POSITIVE_TITLES = int(os.getenv('MAX_POSITIVE_TITLES', 3))  # 兼容旧配置
+MAX_NEGATIVE_TITLES = int(os.getenv('MAX_NEGATIVE_TITLES', 0))  # 赛季档案不展示羞辱性称号
 TITLE_PRIORITY_THRESHOLD = int(os.getenv('TITLE_PRIORITY_THRESHOLD', 2))  # 称号优先级阈值

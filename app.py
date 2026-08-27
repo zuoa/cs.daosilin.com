@@ -113,9 +113,15 @@ def _build_cup_players(cup, day=None):
                     'team_name': champion.get('runner_up_team_name'),
                     'trophy': 'runner_up',
                 })
-        player['titles'] = PlayerTitle.get_player_titles(player_id, cup, day)
         player_data.append(player)
     player_data.sort(key=lambda x: x.get('avg_pw_rating', 0), reverse=True)
+    if day:
+        comparable_players = [player for player in player_data if player.get('match_count')]
+        for player in comparable_players:
+            player['titles'] = title_service.build_title_rows(player, comparable_players)
+    else:
+        for player in player_data:
+            player['titles'] = PlayerTitle.get_player_titles(player['player_id'], cup, day)
     return player_data, MatchPlayer.get_cup_day_set(cup)
 
 
@@ -130,7 +136,6 @@ def _player_detail_payload(player_id, cup, day=None):
     player_data = MatchPlayer.get_match_exploit(cup, player_id, day)
     if not player_data:
         return None, "该选手在此杯赛/日期下无数据"
-    titles = PlayerTitle.get_player_titles(player_id, cup, day)
     all_champions = CupDayChampion.filter_records(**{'cup_name': cup})
     all_champions.sort(key=lambda champion: champion.get('day', ''))
     trophy_history = []
@@ -160,6 +165,15 @@ def _player_detail_payload(player_id, cup, day=None):
             p_data['player_id'] = p["player_id"]
             p_data['nickname'] = p["nickname"]
             all_players_data.append(p_data)
+    comparison_player = next(
+        (data for data in all_players_data if data['player_id'] == player_id),
+        None,
+    )
+    if comparison_player:
+        comparison_player['day_history'] = [item['data'] for item in historical_data]
+        titles = title_service.build_title_rows(comparison_player, all_players_data)
+    else:
+        titles = []
     player_rankings = {}
     for field in ['avg_pw_rating', 'total_kills', 'kd_ratio', 'win_rate', 'avg_adpr', 'total_mvp']:
         if field in player_data:
@@ -301,11 +315,12 @@ def api_admin_title_refresh():
         else:
             logger.error(f"计算 {cup_name} 称号失败")
 
-        is_success = title_service.calculate_and_save_titles(cup_name, day)
-        if is_success:
-            logger.info(f"成功计算 {cup_name} {day} 的称号")
-        else:
-            logger.error(f"计算 {cup_name} {day} 称号失败")
+        if day:
+            is_success = title_service.calculate_and_save_titles(cup_name, day)
+            if is_success:
+                logger.info(f"成功计算 {cup_name} {day} 的称号")
+            else:
+                logger.error(f"计算 {cup_name} {day} 称号失败")
 
     except Exception as e:
         logger.error(f"计算称号失败: {str(e)}")

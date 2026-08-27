@@ -515,11 +515,12 @@ def judge_all_champions():
 def calc_titles(today):
     try:
         for cup_name in _active_cup_names():
-            success = title_service.calculate_and_save_titles(cup_name, today)
-            if success:
-                logger.info(f"成功计算 {cup_name} {today} 的称号")
-            else:
-                logger.error(f"计算 {cup_name} {today} 称号失败")
+            season_success = title_service.calculate_and_save_titles(cup_name)
+            day_success = title_service.calculate_and_save_titles(cup_name, today)
+            if season_success:
+                logger.info(f"成功更新 {cup_name} 赛季称号")
+            if day_success:
+                logger.info(f"成功更新 {cup_name} {today} 比赛日称号")
     except Exception as e:
         logger.error(f"计算称号失败: {str(e)}")
 

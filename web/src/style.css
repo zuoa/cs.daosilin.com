@@ -1110,6 +1110,139 @@ h1, h2, h3 {
   border-left-color: var(--color-rule) !important;
 }
 
+.title-profile-section {
+  box-shadow: none;
+}
+
+.title-showcase {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, .65fr);
+  min-height: 244px;
+}
+
+.title-showcase.single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.title-feature {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-content: center;
+  gap: var(--space-md);
+  overflow: hidden;
+  padding: var(--space-xl);
+  background: var(--color-accent-faint);
+}
+
+.title-feature::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--color-accent);
+  content: "";
+}
+
+.title-mark {
+  display: inline-flex;
+  width: 52px;
+  height: 52px;
+  align-items: center;
+  justify-content: center;
+  border: var(--rule-hair) solid var(--color-accent-line);
+  border-radius: var(--radius-card);
+  background: var(--color-paper-2);
+  color: var(--color-accent-strong);
+}
+
+.title-mark.compact {
+  width: 38px;
+  height: 38px;
+  border-color: var(--color-rule);
+  background: transparent;
+  color: var(--color-neutral);
+}
+
+.title-feature-copy {
+  min-width: 0;
+}
+
+.title-role,
+.title-category {
+  color: var(--color-neutral);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: .06em;
+}
+
+.title-feature h3 {
+  margin-top: var(--space-2xs);
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 4vw, 3.25rem);
+  letter-spacing: -.055em;
+  line-height: .95;
+}
+
+.title-summary {
+  margin-top: var(--space-sm);
+  color: var(--color-ink-3);
+  font-size: var(--text-sm);
+}
+
+.title-evidence {
+  margin-top: var(--space-md);
+  color: var(--color-accent-strong);
+  font-family: var(--font-outlier);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.title-feature > .title-category {
+  grid-column: 2;
+}
+
+.title-support-list {
+  display: grid;
+  grid-auto-rows: 1fr;
+  border-left: var(--rule-hair) solid var(--color-rule);
+}
+
+.title-support-list article {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+}
+
+.title-support-list article + article {
+  border-top: var(--rule-hair) solid var(--color-rule);
+}
+
+.title-support-list h3 {
+  margin-top: var(--space-2xs);
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  letter-spacing: -.025em;
+  line-height: 1.05;
+}
+
+.title-support-list p {
+  margin-top: var(--space-xs);
+  color: var(--color-ink-3);
+  font-size: var(--text-xs);
+}
+
+.title-support-list small {
+  display: block;
+  margin-top: var(--space-xs);
+  color: var(--color-accent-strong);
+  font-family: var(--font-outlier);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
 .map-card-visual {
   background-image: var(--gradient-map-overlay), var(--map-image, none);
   color: var(--color-accent-ink);
@@ -1233,6 +1366,16 @@ h1, h2, h3 {
   .hero-lead { max-width: 55ch; }
   .season-summary { min-width: 0; }
   .player-profile-proof { grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); }
+  .title-showcase { grid-template-columns: minmax(0, 1fr); }
+  .title-support-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-top: var(--rule-hair) solid var(--color-rule);
+    border-left: 0;
+  }
+  .title-support-list article + article {
+    border-top: 0;
+    border-left: var(--rule-hair) solid var(--color-rule);
+  }
   .login-page { grid-template-columns: minmax(0, 1fr); }
   .season-directory-wide .season-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -1269,6 +1412,15 @@ h1, h2, h3 {
   .player-profile-proof { grid-template-columns: minmax(0, 1fr); }
   .player-lead-stat strong { font-size: clamp(4rem, 24vw, 6rem); }
   .profile-honours > span { min-width: 100%; }
+  .title-feature { padding: var(--space-lg) var(--space-sm); }
+  .title-mark { width: 44px; height: 44px; }
+  .title-feature h3 { font-size: var(--text-2xl); }
+  .title-feature > .title-category { grid-column: 1 / -1; }
+  .title-support-list { grid-template-columns: minmax(0, 1fr); }
+  .title-support-list article + article {
+    border-top: var(--rule-hair) solid var(--color-rule);
+    border-left: 0;
+  }
   .player-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .player-kpi-grid article,
   .player-kpi-grid article:nth-child(3) { border-right: var(--rule-hair) solid var(--color-rule); }
