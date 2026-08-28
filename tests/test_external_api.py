@@ -14,7 +14,7 @@ os.environ['ADMIN_PASSWORD'] = 'test-admin-password'
 
 from app import app  # noqa: E402
 from auth import EXTERNAL_TOKEN_HASH_KEY, EXTERNAL_TOKEN_HINT_KEY  # noqa: E402
-from database import Config, MatchPlayer, Player, Season, db  # noqa: E402
+from database import Config, Match, MatchPlayer, MatchSelection, Player, Season, db  # noqa: E402
 from peewee import BooleanField, FloatField, IntegerField  # noqa: E402
 
 
@@ -75,6 +75,18 @@ class ExternalPlayersApiTest(unittest.TestCase):
         create_match_player(
             'm2', 'p1', 'season-two', kill=20, death=10, entry_kill=3,
             first_death=1, rating=2.0, adpr=100.0, win=0,
+        )
+        Match.create(
+            match_id='m2', map_name='炼狱小镇', map_name_en='de_inferno',
+            start_time=datetime(2025, 2, 3, 20, 15, 30),
+            end_time=datetime(2025, 2, 3, 20, 55, 30), duration=2400,
+            win_team=2, team1_name='Alpha', team1_score=9, team1_half_score=5,
+            team2_name='Bravo', team2_score=13, team2_half_score=7,
+            game_mode='MR12', cup_name='season-two', play_day='20250101',
+        )
+        MatchSelection.create(
+            match_id='m2', season_cup_name='season-two', status='approved',
+            source_type='custom', play_day='20250101', roster_hit_count=1,
         )
         create_match_player(
             'm3', 'p2', 'current-season', kill=30, death=10, entry_kill=4,
@@ -186,6 +198,26 @@ class ExternalPlayersApiTest(unittest.TestCase):
             '/api/v1/external/players?season=missing', headers=self.auth,
         )
         self.assertEqual(response.status_code, 404)
+
+    def test_player_detail_includes_season_match_records(self):
+        response = self.client.get('/api/v1/player/p1?cup=season-two')
+        self.assertEqual(response.status_code, 200)
+        records = response.get_json()['data']['match_records']
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]['match_id'], 'm2')
+        self.assertEqual(records[0]['start_time'], '2025-02-03T20:15:30')
+        self.assertEqual(records[0]['kill'], 20)
+        self.assertEqual(records[0]['team1_name'], 'Alpha')
+
+    def test_admin_match_list_exposes_exact_start_time(self):
+        with self.client.session_transaction() as session:
+            session['admin_user'] = 'admin'
+        response = self.client.get(
+            '/api/admin/selection/list?cup=season-two&status=approved',
+        )
+        self.assertEqual(response.status_code, 200)
+        records = response.get_json()['data']['list']
+        self.assertEqual(records[0]['start_time'], '2025-02-03T20:15:30')
 
 
 if __name__ == '__main__':
