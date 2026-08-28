@@ -72,7 +72,6 @@ def _season_list_payload():
             if isinstance(val, datetime):
                 s[key] = val.isoformat(timespec='seconds')
     seasons.sort(key=lambda x: (
-        0 if x.get('status') == 'active' else 1,
         x.get('start_date') or '',
         x.get('cup_name') or '',
     ), reverse=True)
@@ -646,6 +645,10 @@ def api_admin_season_list():
             set_auto_crawl_enabled(s['cup_name'], False)
             set_crawl_status(s['cup_name'], state='expired', message='赛季已截止，自动采集已停止')
         s['crawl'] = get_crawl_status(s['cup_name'])
+    seasons.sort(key=lambda x: (
+        x.get('start_date') or '',
+        x.get('cup_name') or '',
+    ), reverse=True)
     return success({"seasons": seasons})
 
 
@@ -710,11 +713,10 @@ def api_admin_season_delete():
         return error(400, "参数 cup 不能为空"), 400
 
     with _crawl_lock:
-        if cup in _crawl_running or crawl_is_running(cup):
-            return error(409, "该赛季正在采集，请等待本轮完成后再删除"), 409
         if not Season.get_by_cup(cup):
             return error(404, "赛季不存在"), 404
-        set_auto_crawl_enabled(cup, False)
+        if cup in _crawl_running or crawl_is_running(cup):
+            return error(409, "该赛季正在采集，请等待本轮完成后再删除"), 409
         deleted = Season.delete_with_related_data(cup)
 
     try:
