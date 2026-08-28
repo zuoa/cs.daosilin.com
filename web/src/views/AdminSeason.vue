@@ -213,7 +213,7 @@
             <thead>
               <tr>
                 <th class="check-cell"><input type="checkbox" :checked="allMatchesSelected" aria-label="选择当前筛选的全部比赛" @change="toggleAll"></th>
-                <th>比赛日</th><th>地图</th><th>比分 / 对阵</th><th>名单命中</th><th>玩家</th><th class="action-cell"><span class="sr-only">操作</span></th>
+                <th>比赛时间</th><th>地图</th><th>比分 / 对阵</th><th>名单命中</th><th>玩家</th><th class="action-cell"><span class="sr-only">操作</span></th>
               </tr>
             </thead>
             <tbody v-if="!matchLoading && visibleMatches.length">
@@ -228,7 +228,11 @@
                 <td class="check-cell" @click.stop>
                   <input v-model="checked" type="checkbox" :value="m.match_id" :aria-label="`选择比赛 ${m.match_id}`">
                 </td>
-                <td><strong class="mono-data">{{ formatPlayDay(m.play_day) }}</strong><code>{{ m.match_id }}</code></td>
+                <td class="match-time-cell">
+                  <strong class="mono-data">{{ formatPlayDay(m.play_day) }}</strong>
+                  <small>{{ formatClock(m.start_time) }}</small>
+                  <code>{{ m.match_id }}</code>
+                </td>
                 <td><strong>{{ m.map_name || '未知地图' }}</strong><small>{{ m.game_mode || '—' }}</small></td>
                 <td>
                   <div class="score-cell">
@@ -592,6 +596,14 @@ function toDateTimeInput(value) {
 }
 function formatDateTime(value) {
   return value ? String(value).replace('T', ' ').slice(0, 19) : '…'
+}
+function formatClock(value) {
+  if (!value) return '时间未知'
+  const text = String(value).replace('T', ' ')
+  const time = text.match(/\b(\d{2}:\d{2}(?::\d{2})?)/)?.[1]
+  if (time) return time.length === 5 ? `${time}:00` : time
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '时间未知' : date.toLocaleTimeString('zh-CN', { hour12: false })
 }
 function formatRange(season) {
   if (!season || (!season.start_date && !season.end_date)) return '未设置时间段'

@@ -190,6 +190,12 @@ def _player_detail_payload(player_id, cup, day=None):
                     i for i, p in enumerate(sorted_players) if p['player_id'] == player_id) + 1
             except StopIteration:
                 player_rankings[field] = len(all_players_data)
+    match_records = MatchPlayer.get_player_match_records(cup, player_id, day)
+    for record in match_records:
+        record['start_time'] = _iso_dt(record.get('start_time'))
+        record['end_time'] = _iso_dt(record.get('end_time'))
+        record['mvp'] = bool(record.get('mvp'))
+
     return {
         'player': player,
         'player_data': player_data,
@@ -198,6 +204,7 @@ def _player_detail_payload(player_id, cup, day=None):
         'historical_data': historical_data,
         'player_rankings': player_rankings,
         'map_stats': MatchPlayer.get_player_map_stats(cup, player_id, day),
+        'match_records': match_records,
         'cup': cup,
         'cup_alias': Season.display_name(cup),
         'day': day,
@@ -478,8 +485,8 @@ def _selection_payload(cup, status=None, day=None):
             'play_day': s['play_day'],
             'roster_hit_count': s['roster_hit_count'],
             'status': s['status'],
-            'start_time': m.get('start_time'),
-            'end_time': m.get('end_time'),
+            'start_time': _iso_dt(m.get('start_time')),
+            'end_time': _iso_dt(m.get('end_time')),
             'map_name': m.get('map_name'),
             'game_mode': m.get('game_mode'),
             'team1_name': m.get('team1_name'),
@@ -488,6 +495,10 @@ def _selection_payload(cup, status=None, day=None):
             'team2_score': m.get('team2_score'),
             'players': players_by_match.get(s['match_id'], []),
         })
+    result.sort(
+        key=lambda item: (item.get('start_time') or item.get('play_day') or '', item.get('match_id') or ''),
+        reverse=True,
+    )
     return result
 
 

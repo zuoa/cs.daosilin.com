@@ -20,8 +20,7 @@
       <template v-else-if="player && stats">
         <section class="player-profile-hero">
           <div class="player-profile-main">
-            <img v-if="player.avatar" :src="avatarUrl(player.avatar)" :alt="`${playerName} 头像`" class="profile-avatar">
-            <span v-else class="profile-avatar fallback">{{ playerName.slice(0, 1).toUpperCase() }}</span>
+            <PlayerAvatar :src="player.avatar" :name="playerName" class="profile-avatar" />
             <div class="profile-copy">
               <div class="profile-name-line">
                 <h1>{{ playerName }}</h1>
@@ -116,6 +115,42 @@
           </div>
         </section>
 
+        <section class="panel player-section player-matches-section">
+          <div class="panel-header">
+            <h2>比赛记录</h2>
+            <span class="result-count">{{ matchRecords.length }} 场</span>
+          </div>
+          <div v-if="matchRecords.length" class="table-scroll">
+            <table class="data-table player-match-table">
+              <thead>
+                <tr>
+                  <th>比赛时间</th><th>地图</th><th>对阵 / 比分</th><th>结果</th>
+                  <th class="num">K / D / A</th><th class="num">Rating</th><th class="num">ADR</th><th class="num">KAST</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="match in matchRecords" :key="match.match_id">
+                  <td class="player-match-time"><strong>{{ formatMatchDate(match) }}</strong><small>{{ formatMatchClock(match.start_time) }}</small></td>
+                  <td><strong>{{ match.map_name || '未知地图' }}</strong><small>{{ match.game_mode || match.map_name_en || '—' }}</small></td>
+                  <td>
+                    <div class="player-match-score">
+                      <span>{{ match.team1_name || '队伍 A' }}</span>
+                      <strong>{{ match.team1_score ?? '—' }} : {{ match.team2_score ?? '—' }}</strong>
+                      <span>{{ match.team2_name || '队伍 B' }}</span>
+                    </div>
+                  </td>
+                  <td><span class="match-result" :class="Number(match.win) ? 'win' : 'loss'">{{ Number(match.win) ? '胜' : '负' }}</span></td>
+                  <td class="num mono-data">{{ match.kill ?? 0 }} / {{ match.death ?? 0 }} / {{ match.assist ?? 0 }}</td>
+                  <td class="num"><strong class="rating-value">{{ n2(match.pw_rating || match.rating) }}</strong></td>
+                  <td class="num mono-data">{{ Number(match.adpr || 0).toFixed(0) }}</td>
+                  <td class="num mono-data">{{ ratioDisplay(match.kast) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-else class="empty-state compact"><span><AppIcon name="database" /></span><h3>暂无比赛记录</h3><p>该统计范围内还没有可展示的逐场数据。</p></div>
+        </section>
+
         <section class="panel player-section">
           <div class="panel-header">
             <h2>地图表现</h2>
@@ -166,8 +201,9 @@ import * as echarts from 'echarts/core'
 import { LineChart, RadarChart } from 'echarts/charts'
 import { GridComponent, RadarComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
-import { api, avatarUrl } from '../api'
+import { api } from '../api'
 import AppIcon from '../components/AppIcon.vue'
+import PlayerAvatar from '../components/PlayerAvatar.vue'
 
 echarts.use([LineChart, RadarChart, GridComponent, RadarComponent, TooltipComponent, CanvasRenderer])
 
@@ -184,6 +220,7 @@ const cupDays = ref([])
 const cupAlias = ref('')
 const history = ref([])
 const mapStats = ref([])
+const matchRecords = ref([])
 const lastCrawl = ref('')
 const error = ref('')
 const loading = ref(true)
@@ -249,6 +286,15 @@ function normalizeRatio(value) { const number = Number(value || 0); return numbe
 function ratioDisplay(value) { return `${normalizeRatio(value).toFixed(1)}%` }
 function pad(value) { return String(value || 0).padStart(2, '0') }
 function formatTime(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '' }
+function formatMatchDate(match) {
+  const raw = String(match?.play_day || '').replace(/\D/g, '')
+  if (raw.length === 8) return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`
+  return formatTime(match?.start_time).slice(0, 10) || '—'
+}
+function formatMatchClock(value) {
+  const text = formatTime(value)
+  return text.length >= 16 ? text.slice(11, 16) : '时间未知'
+}
 function uniqueTitles(list) {
   const seen = new Set()
   return (list || []).filter((title) => {
@@ -325,6 +371,7 @@ async function load() {
     cupAlias.value = data.cup_alias || data.cup
     history.value = data.historical_data || []
     mapStats.value = data.map_stats || []
+    matchRecords.value = data.match_records || []
     lastCrawl.value = data.last_crawl_time || ''
     document.title = `${playerName.value} · ${cupAlias.value} · 熊掌CS Major`
     loading.value = false

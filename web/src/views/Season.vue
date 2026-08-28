@@ -81,8 +81,7 @@
                     <td class="rank-cell"><span class="rank-number" :class="{ top: index < 3 }">{{ pad(index + 1) }}</span></td>
                     <td>
                       <div class="identity-cell public-player">
-                        <img v-if="p.avatar" :src="avatarUrl(p.avatar)" :alt="`${displayName(p)} 头像`" class="player-avatar" @error="hideImg">
-                        <span v-else class="player-monogram">{{ displayName(p).slice(0, 1).toUpperCase() }}</span>
+                        <PlayerAvatar :src="p.avatar" :name="displayName(p)" class="player-avatar" />
                         <span><strong>{{ displayName(p) }}</strong><small>{{ p.team_name || p.nickname || '—' }}</small></span>
                       </div>
                     </td>
@@ -163,8 +162,9 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { api, avatarUrl } from '../api'
+import { api } from '../api'
 import AppIcon from '../components/AppIcon.vue'
+import PlayerAvatar from '../components/PlayerAvatar.vue'
 
 const route = useRoute()
 const cup = computed(() => route.params.cup)
@@ -204,7 +204,6 @@ function uniqueTitles(list) {
     return true
   })
 }
-function hideImg(event) { event.target.style.display = 'none' }
 async function load() {
   error.value = ''
   loading.value = true

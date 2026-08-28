@@ -850,6 +850,59 @@ class MatchPlayer(BaseModel, CRUDMixin):
             logger.error(f"获取选手地图统计数据失败: {str(e)}")
             return []
 
+    @classmethod
+    def get_player_match_records(cls, cup_name: str, player_id: str,
+                                 play_day: str = None) -> List[Dict[str, Any]]:
+        """获取选手在指定赛季（或比赛日）的逐场比赛记录。"""
+        try:
+            conditions = [
+                cls.player_id == player_id,
+                cls.cup_name == cup_name,
+                Match.cup_name == cup_name,
+            ]
+            if play_day:
+                conditions.append(cls.play_day == play_day)
+
+            return list(
+                cls.select(
+                    cls.match_id,
+                    cls.play_day,
+                    cls.team.alias('player_team'),
+                    cls.team_name.alias('player_team_name'),
+                    cls.win,
+                    cls.kill,
+                    cls.death,
+                    cls.assist,
+                    cls.entry_kill,
+                    cls.first_death,
+                    cls.adpr,
+                    cls.rating,
+                    cls.pw_rating,
+                    cls.kast,
+                    cls.headshot_ratio,
+                    cls.mvp,
+                    Match.start_time,
+                    Match.end_time,
+                    Match.duration,
+                    Match.map_name,
+                    Match.map_name_en,
+                    Match.map_url,
+                    Match.game_mode,
+                    Match.team1_name,
+                    Match.team1_score,
+                    Match.team2_name,
+                    Match.team2_score,
+                    Match.win_team,
+                )
+                .join(Match, on=(cls.match_id == Match.match_id))
+                .where(*conditions)
+                .order_by(Match.start_time.desc(), cls.match_id.desc())
+                .dicts()
+            )
+        except Exception as e:
+            logger.error(f"获取选手逐场比赛记录失败: {str(e)}")
+            return []
+
     class Meta:
         table_name = 'match_player'
 
