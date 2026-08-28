@@ -21,14 +21,40 @@ from wm import WMAPI
 CRAWL_HEARTBEAT_TIMEOUT = datetime.timedelta(minutes=3)
 
 
-def _store_match(match_data, assigned_cup_name=None, play_day=None):
+def canonical_match_id(match_id):
+    """Return the stable database identity used for a WMPVP match.
+
+    WMPVP may return the same PVP match as either ``123`` or ``PVP@123``
+    depending on the endpoint.  Persisting those values verbatim creates two
+    database matches for one game, so numeric IDs are always stored with the
+    PVP prefix.
+    """
+    value = str(match_id or '').strip()
+    if not value:
+        return ''
+    prefix, separator, suffix = value.partition('@')
+    if separator and prefix.upper() == 'PVP' and suffix.isdigit():
+        return f'PVP@{suffix}'
+    if value.isdigit():
+        return f'PVP@{value}'
+    return value
+
+
+def _store_match(match_data, assigned_cup_name=None, play_day=None, match_id=None):
     """把一场比赛详情入库（Match + MatchPlayer + Player）。
 
     assigned_cup_name：官方比赛传 API cupName；自定义候选传 None（待管理员确认后回填赛季 cup_name）。
     play_day：已算好的比赛日（自定义候选路径传入）；未传则按 -3h 比赛日计算。
     """
     match_base_info = match_data.get('base', {})
-    match_id = match_base_info.get('matchId')
+    detail_match_id = canonical_match_id(match_base_info.get('matchId'))
+    match_id = canonical_match_id(match_id or detail_match_id)
+    if not match_id:
+        raise ValueError('比赛详情缺少 matchId')
+    if detail_match_id and detail_match_id != match_id:
+        logger.warning(
+            f'比赛列表 ID {match_id} 与详情 ID {detail_match_id} 不一致，按列表 ID 入库'
+        )
     match_model = {
         "match_id": match_id,
         "map_name": match_base_info.get('map'),
@@ -198,13 +224,14 @@ def crawl_data(default_player_id='76561198068647788'):
         return
 
     for match in match_list:
-        match_id = match.get('matchId')
+        source_match_id = match.get('matchId')
+        match_id = canonical_match_id(source_match_id)
         cup_name = match.get('cupName')
-        if not cup_name or cup_name not in official_cups:
+        if not match_id or not cup_name or cup_name not in official_cups:
             continue
-        match_data = wm.get_match(match_id)
+        match_data = wm.get_match(source_match_id)
         if match_data:
-            _store_match(match_data, assigned_cup_name=cup_name)
+            _store_match(match_data, assigned_cup_name=cup_name, match_id=match_id)
 
 
 def get_crawl_status(cup_name):
@@ -413,7 +440,8 @@ def crawl_season(season, ignore_deadline=False):
                 queue.clear()
                 logger.info(f"赛季 {cup_name} 已到截止时间，停止继续获取比赛")
                 break
-            match_id = match.get('matchId')
+            source_match_id = match.get('matchId')
+            match_id = canonical_match_id(source_match_id)
             if not match_id or match_id in seen_matches:
                 continue
             seen_matches.add(match_id)
@@ -430,7 +458,7 @@ def crawl_season(season, ignore_deadline=False):
                 if api_cup:
                     continue
 
-            match_data = wm.get_match(match_id)
+            match_data = wm.get_match(source_match_id)
             if not match_data:
                 continue
 
@@ -447,7 +475,12 @@ def crawl_season(season, ignore_deadline=False):
                 match_id, cup_name, play_day, hit_count, source_type=match_type
             )
             if assigned:
-                _store_match(match_data, assigned_cup_name=cup_name, play_day=play_day)
+                _store_match(
+                    match_data,
+                    assigned_cup_name=cup_name,
+                    play_day=play_day,
+                    match_id=match_id,
+                )
                 included += 1
                 logger.info(
                     f"比赛 {match_id} 纳入 {cup_name}（库内 {hit_count}/{len(player_ids)}）"
