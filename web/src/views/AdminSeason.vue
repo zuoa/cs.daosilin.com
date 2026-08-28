@@ -151,10 +151,15 @@
             <div><span>获取频率</span><strong>每 10 分钟</strong></div>
             <div><span>比赛类型</span><strong>{{ currentSeason?.match_type === 'official' ? '官方比赛' : '自定义比赛' }}</strong></div>
             <div><span>纳入规则</span><strong>库内占比 ≥ {{ pct(currentSeason?.hit_ratio) }}%</strong></div>
+            <div><span>冠军统计</span><strong>{{ currentSeason?.champion_enabled ? '计算冠军 / 亚军' : '仅保留比赛与选手排名' }}</strong></div>
           </div>
-          <button class="button primary crawl-button" type="button" :disabled="crawlButtonDisabled" @click="startCrawl">
+          <button class="button primary crawl-button" type="button" :disabled="crawlButtonDisabled" @click="startCrawl('auto')">
             <AppIcon :name="autoEnabled ? 'activity' : 'refresh'" :class="{ spinning: crawling }" />
             {{ crawlButtonLabel }}
+          </button>
+          <button class="button subtle crawl-button" type="button" :disabled="manualCrawlDisabled" @click="startCrawl('once')">
+            <AppIcon name="refresh" :class="{ spinning: crawling }" />
+            {{ crawling ? '本轮采集中' : '立即手动采集一次' }}
           </button>
         </section>
       </div>
@@ -448,6 +453,10 @@
           <input id="season-hit" v-model.number="form.hit" type="range" min="0" max="100" step="5">
           <div class="range-labels"><span>宽松 0%</span><span>严格 100%</span></div>
         </div>
+        <label class="field-group checkbox-field" for="season-champion">
+          <span><input id="season-champion" v-model="form.championEnabled" type="checkbox"> 计算冠军和亚军</span>
+          <small>关闭后仍采集并展示比赛、选手数据与排名，不运行冠军判断任务。</small>
+        </label>
         <div class="form-actions">
           <button class="button subtle" type="button" :disabled="savingSeason" @click="closeSeasonModal">取消</button>
           <button class="button primary" type="submit" :disabled="savingSeason">
@@ -501,7 +510,7 @@ const matchDetailError = ref('')
 let crawlTimer
 let toastTimer
 
-function defaultForm() { return { cup: '', alias: '', type: 'custom', start: '', end: '', hit: 60, status: 'active' } }
+function defaultForm() { return { cup: '', alias: '', type: 'custom', start: '', end: '', hit: 60, status: 'active', championEnabled: false } }
 const currentSeason = computed(() => seasons.value.find((s) => s.cup_name === currentCup.value))
 const seasonExpired = computed(() => {
   const end = currentSeason.value?.end_date
@@ -521,6 +530,9 @@ const crawlHeadline = computed(() => {
 })
 const crawlButtonDisabled = computed(() => (
   crawling.value || autoEnabled.value || seasonExpired.value || currentSeason.value?.status !== 'active'
+))
+const manualCrawlDisabled = computed(() => (
+  crawling.value || !currentSeason.value
 ))
 const crawlButtonLabel = computed(() => {
   if (seasonExpired.value) return '赛季已截止'
@@ -650,6 +662,7 @@ function editSeason(s) {
     end: toDateTimeInput(s.end_date),
     hit: pct(s.hit_ratio),
     status: s.status || 'active',
+    championEnabled: Boolean(s.champion_enabled),
   }
   seasonModalOpen.value = true
 }
@@ -684,6 +697,7 @@ async function saveSeason() {
       end_date: form.value.end,
       status: form.value.status,
       hit_percent: String(form.value.hit ?? 60),
+      champion_enabled: form.value.championEnabled ? '1' : '0',
     })
     show(typeof data === 'string' ? data : '杯赛已保存')
     const cup = form.value.cup.trim()
@@ -749,11 +763,11 @@ async function refreshCrawl() {
     }
   } catch (e) { show(e.message, 'error') }
 }
-async function startCrawl() {
-  if (!currentCup.value || crawlButtonDisabled.value) return
+async function startCrawl(mode = 'auto') {
+  if (!currentCup.value || (mode === 'auto' ? crawlButtonDisabled.value : manualCrawlDisabled.value)) return
   try {
-    const data = await api.get('/api/admin/season/crawl?cup=' + encodeURIComponent(currentCup.value))
-    show(typeof data === 'string' ? data : '自动采集已启动')
+    const data = await api.get('/api/admin/season/crawl?cup=' + encodeURIComponent(currentCup.value) + '&mode=' + mode)
+    show(typeof data === 'string' ? data : mode === 'once' ? '手动采集已启动' : '自动采集已启动')
     await refreshCrawl()
   } catch (e) { show(e.message, 'error') }
 }

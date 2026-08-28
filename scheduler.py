@@ -18,6 +18,9 @@ from utils import get_play_day
 from wm import WMAPI
 
 
+CRAWL_HEARTBEAT_TIMEOUT = datetime.timedelta(minutes=3)
+
+
 def _store_match(match_data, assigned_cup_name=None, play_day=None):
     """把一场比赛详情入库（Match + MatchPlayer + Player）。
 
@@ -241,6 +244,33 @@ def set_crawl_status(cup_name, **fields):
     Config.set_value(f'crawl_status:{cup_name}', json.dumps(current, ensure_ascii=False))
 
 
+def _crawl_status_time(value):
+    return _as_datetime(value)
+
+
+def crawl_is_running(cup_name, now=None):
+    """只把心跳仍然新鲜的 running 视为运行中，并自动恢复崩溃遗留状态。"""
+    status = _stored_crawl_status(cup_name)
+    if status.get('state') != 'running':
+        return False
+    now = now or datetime.datetime.now()
+    heartbeat = _crawl_status_time(status.get('heartbeat_at') or status.get('started_at'))
+    if heartbeat and now - heartbeat <= CRAWL_HEARTBEAT_TIMEOUT:
+        return True
+    set_crawl_status(
+        cup_name,
+        state='interrupted',
+        message='上一轮采集进程已中断，已自动解除锁定，可重新采集',
+        finished_at=now.strftime("%Y-%m-%d %H:%M:%S"),
+    )
+    logger.warning(f'赛季 {cup_name} 采集心跳已过期，解除 running 状态')
+    return False
+
+
+def touch_crawl_heartbeat(cup_name):
+    set_crawl_status(cup_name, heartbeat_at=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+
 def season_crawl_phase(season, now=None):
     """返回赛季在当前时间所处的采集阶段。"""
     now = now or datetime.datetime.now()
@@ -265,15 +295,16 @@ def expire_auto_crawl(season):
     )
 
 
-def crawl_season_with_status(cup_name):
+def crawl_season_with_status(cup_name, manual=False):
+    """采集一个赛季；manual=True 时允许对已截止/未开始赛季按既定时间窗补采。"""
     season = Season.get_by_cup(cup_name)
     if not season:
         raise ValueError(f'赛季不存在: {cup_name}')
     phase = season_crawl_phase(season)
-    if phase == 'expired':
+    if phase == 'expired' and not manual:
         expire_auto_crawl(season)
         return {'cup_name': cup_name, 'visited': 0, 'included': 0, 'skipped': 0, 'expired': True}
-    if phase == 'waiting':
+    if phase == 'waiting' and not manual:
         set_crawl_status(
             cup_name,
             state='scheduled',
@@ -285,12 +316,13 @@ def crawl_season_with_status(cup_name):
         state='running',
         message='采集中',
         started_at=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        heartbeat_at=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         finished_at=None,
         stats=None,
     )
     try:
-        stats = crawl_season(season)
-        if season_crawl_phase(season) == 'expired':
+        stats = crawl_season(season, ignore_deadline=manual)
+        if season_crawl_phase(season) == 'expired' and not manual:
             set_auto_crawl_enabled(cup_name, False)
             set_crawl_status(
                 cup_name,
@@ -301,13 +333,14 @@ def crawl_season_with_status(cup_name):
             )
             Config.set_value("last_crawl_time", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
             return stats
+        keep_scheduled = is_auto_crawl_enabled(cup_name) and not manual
         set_crawl_status(
             cup_name,
-            state='scheduled' if is_auto_crawl_enabled(cup_name) else 'done',
+            state='scheduled' if keep_scheduled else 'done',
             message=(
                 f"本轮完成：访问 {stats.get('visited')} 人，纳入 {stats.get('included')} 场，"
                 f"跳过 {stats.get('skipped')} 场；每 10 分钟自动获取"
-                if is_auto_crawl_enabled(cup_name)
+                if keep_scheduled
                 else f"完成：访问 {stats.get('visited')} 人，纳入 {stats.get('included')} 场，跳过 {stats.get('skipped')} 场"
             ),
             finished_at=datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -325,7 +358,7 @@ def crawl_season_with_status(cup_name):
         raise
 
 
-def crawl_season(season):
+def crawl_season(season, ignore_deadline=False):
     """按赛季采集：种子滚雪球 + 时间窗 + 库内占比门槛，默认写入 cup_name。"""
     cup_name = season.get('cup_name')
     match_type = season.get('match_type') or 'custom'
@@ -357,7 +390,8 @@ def crawl_season(season):
     )
 
     while queue:
-        if season_crawl_phase(season) == 'expired':
+        touch_crawl_heartbeat(cup_name)
+        if not ignore_deadline and season_crawl_phase(season) == 'expired':
             logger.info(f"赛季 {cup_name} 已到截止时间，结束本轮采集")
             break
         pid = queue.pop(0)
@@ -374,7 +408,8 @@ def crawl_season(season):
             continue
 
         for match in match_list:
-            if season_crawl_phase(season) == 'expired':
+            touch_crawl_heartbeat(cup_name)
+            if not ignore_deadline and season_crawl_phase(season) == 'expired':
                 queue.clear()
                 logger.info(f"赛季 {cup_name} 已到截止时间，停止继续获取比赛")
                 break
@@ -454,7 +489,7 @@ def crawl_all():
                 message=f"自动采集已启动，将在 {season.get('start_date')} 后开始获取",
             )
             continue
-        if get_crawl_status(cup_name).get('state') == 'running':
+        if crawl_is_running(cup_name):
             logger.info(f"赛季 {cup_name} 上一轮仍在采集，本轮跳过")
             continue
         try:
@@ -499,13 +534,16 @@ def create_scheduler():
     return scheduler
 
 
-def _active_cup_names():
-    return {s['cup_name'] for s in Season.get_active()}
+def _active_cup_names(champion_only=False):
+    seasons = Season.get_active()
+    if champion_only:
+        seasons = [s for s in seasons if s.get('champion_enabled')]
+    return {s['cup_name'] for s in seasons}
 
 
 def judge_all_champions():
     yesterday = (datetime.datetime.now() - datetime.timedelta(days=1)).strftime("%Y%m%d")
-    for cup_name in _active_cup_names():
+    for cup_name in _active_cup_names(champion_only=True):
         try:
             judge_champion(yesterday, cup_name)
         except Exception as e:

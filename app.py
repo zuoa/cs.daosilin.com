@@ -15,7 +15,7 @@ from config import ADMIN_PASSWORD, ADMIN_USERNAME, REDIS_URL, SECRET_KEY, SITE_N
 from database import (AdminUser, MatchPlayer, Player, CupDayChampion, create_tables, Config, PlayerTitle,
                       Match, Season, SeasonRoster, MatchSelection, import_history_sql)
 from scheduler import (crawl_season_with_status, get_crawl_status,
-                       is_auto_crawl_enabled, season_crawl_phase,
+                       crawl_is_running, is_auto_crawl_enabled, season_crawl_phase,
                        set_auto_crawl_enabled, set_crawl_status)
 from title_service import title_service
 from utils import success, error
@@ -291,6 +291,9 @@ def api_admin_champion_judge():
     cup_name = request.args.get('cup')
     if not cup_name:
         return error(400, "参数 cup 不能为空")
+    season = Season.get_by_cup(cup_name)
+    if season and not season.get('champion_enabled'):
+        return error(409, "该赛季未启用冠军统计")
 
     try:
         judge_champion(day, cup_name)
@@ -530,6 +533,13 @@ def api_admin_season_save():
         return error(400, "开始时间和结束时间不能为空")
     if start_date and end_date and start_date > end_date:
         return error(400, "结束时间不能早于开始时间")
+    existing = Season.get_or_none(Season.cup_name == cup)
+    champion_raw = request.args.get('champion_enabled')
+    champion_enabled = (
+        champion_raw.lower() in ('1', 'true', 'yes', 'on')
+        if champion_raw is not None
+        else bool(existing.champion_enabled) if existing else False
+    )
     fields = {
         'name': request.args.get('cup_alias') or request.args.get('name'),
         'cup_alias': request.args.get('cup_alias') or request.args.get('name'),
@@ -538,8 +548,8 @@ def api_admin_season_save():
         'end_date': end_date,
         'status': request.args.get('status') or 'active',
         'hit_ratio': _parse_hit_ratio(),
+        'champion_enabled': champion_enabled,
     }
-    existing = Season.get_or_none(Season.cup_name == cup)
     if existing:
         Season.update(**fields).where(Season.cup_name == cup).execute()
     else:
@@ -599,34 +609,41 @@ def api_admin_season_crawl():
     season = Season.get_by_cup(cup)
     if not season:
         return error(404, "赛季不存在")
-    if season.get('status') != 'active':
+    mode = request.args.get('mode') or 'auto'
+    if mode not in ('auto', 'once'):
+        return error(400, "参数 mode 只能是 auto 或 once")
+    if mode == 'auto' and season.get('status') != 'active':
         return error(409, "已归档赛季不能启动采集")
-    if season_crawl_phase(season) == 'expired':
+    if mode == 'auto' and season_crawl_phase(season) == 'expired':
         set_auto_crawl_enabled(cup, False)
         set_crawl_status(cup, state='expired', message='赛季已截止，不能再启动采集')
         return error(409, "赛季已截止，不能再启动采集")
-    if is_auto_crawl_enabled(cup):
+    if mode == 'auto' and is_auto_crawl_enabled(cup):
         return success("自动采集已在运行，将每 10 分钟获取一次")
-    existing_status = get_crawl_status(cup)
-    if existing_status.get('state') == 'running':
+    if crawl_is_running(cup):
         return error(409, "该赛季正在采集")
-    set_auto_crawl_enabled(cup, True)
-    set_crawl_status(cup, state='scheduled', message='自动采集已启动，将每 10 分钟获取一次')
+    if mode == 'auto':
+        set_auto_crawl_enabled(cup, True)
+        set_crawl_status(cup, state='scheduled', message='自动采集已启动，将每 10 分钟获取一次')
+    else:
+        set_crawl_status(cup, state='scheduled', message='手动采集已排队')
     with _crawl_lock:
         if cup in _crawl_running:
-            return success("自动采集已启动，将每 10 分钟获取一次")
+            return error(409, "该赛季正在采集")
         _crawl_running.add(cup)
 
     def _run():
         try:
-            crawl_season_with_status(cup)
+            crawl_season_with_status(cup, manual=(mode == 'once'))
         except Exception as e:
-            logger.error(f"启动自动采集 {cup} 失败: {e}")
+            logger.error(f"采集赛季 {cup} 失败: {e}")
         finally:
             with _crawl_lock:
                 _crawl_running.discard(cup)
 
     threading.Thread(target=_run, daemon=True, name=f'crawl-{cup}').start()
+    if mode == 'once':
+        return success("手动采集已启动，本轮完成后自动停止")
     return success("自动采集已启动，将每 10 分钟获取一次，赛季截止后自动停止")
 
 
@@ -641,8 +658,10 @@ def api_admin_season_crawl_status():
     if season and is_auto_crawl_enabled(cup) and season_crawl_phase(season) == 'expired':
         set_auto_crawl_enabled(cup, False)
         set_crawl_status(cup, state='expired', message='赛季已截止，自动采集已停止')
+    running = cup in _crawl_running or crawl_is_running(cup)
+    # crawl_is_running 可能刚刚恢复了崩溃遗留的状态，需要重新读取。
     status = get_crawl_status(cup)
-    status['running'] = cup in _crawl_running or status.get('state') == 'running'
+    status['running'] = running
     status['auto_enabled'] = is_auto_crawl_enabled(cup)
     return success(status)
 

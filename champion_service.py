@@ -12,6 +12,9 @@ def judge_champion(day=None, cup_name=None):
         logger.warning("judge_champion 未指定 cup_name，跳过")
         return
     match_list = Match.filter_records(**{'cup_name': cup_name, 'play_day': day})
+    if not match_list:
+        logger.info(f"{cup_name} {day} 没有比赛记录，跳过冠军判断")
+        return
     team_wins = {}
 
     # 比赛分几轮，每一轮对阵会有2-3场比赛，取得2场胜利的队伍为该轮胜者，然后进入下一轮，最终轮的胜者为冠军,冠军的对手就是亚军。不是简单统计胜场多的
@@ -105,4 +108,7 @@ def judge_champion(day=None, cup_name=None):
         })
 
     else:
-        logger.info("昨日没有比赛数据，无法判断冠军队伍")
+        logger.info(
+            f"{cup_name} {day} 有 {len(match_list)} 场比赛，但缺少有效队伍信息或尚未产生两胜对局，"
+            "无法判断冠军队伍"
+        )

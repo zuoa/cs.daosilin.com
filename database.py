@@ -735,6 +735,7 @@ class Season(BaseModel, CRUDMixin):
     end_date = DateTimeField()  # 赛季统计终点，精确到秒
     status = CharField(max_length=16, default='active')  # 'active' | 'archived'
     hit_ratio = FloatField(default=0.6)  # 场内库内人数占比门槛，默认 60%
+    champion_enabled = BooleanField(default=False)  # 是否计算每日冠军/亚军；自定义赛季默认关闭
 
     class Meta:
         table_name = 'season'
@@ -1025,6 +1026,14 @@ def import_history_sql(sql_path: str = None) -> Dict[str, Any]:
             cursor.execute(sql)
         finally:
             cursor.close()
+        # 全新部署会先建好最新表结构再导入历史数据，此时 007 迁移已经标记完成；
+        # 根据已导入的冠军记录补回历史赛季的开关状态。
+        if _column_exists('season', 'champion_enabled'):
+            enabled = 'TRUE' if is_postgres() else '1'
+            db.execute_sql(
+                f'UPDATE season SET champion_enabled = {enabled} '
+                'WHERE EXISTS (SELECT 1 FROM cup_day_champion c WHERE c.cup_name = season.cup_name)'
+            )
         imported = SchemaMigration.select().where(
             SchemaMigration.version == HISTORY_IMPORT_VERSION
         ).exists()

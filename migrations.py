@@ -62,6 +62,19 @@ def _m006_player_live_url():
         logger.info('player.live_url 已补列')
 
 
+def _m007_season_champion_enabled():
+    if _table_exists('season') and not _column_exists('season', 'champion_enabled'):
+        ddl = 'BOOLEAN DEFAULT FALSE' if is_postgres() else 'INTEGER DEFAULT 0'
+        _add_column('season', 'champion_enabled', ddl)
+        # 仅已有冠军记录的历史赛季继续开启，练习赛等现有赛季默认关闭。
+        enabled = 'TRUE' if is_postgres() else '1'
+        db.execute_sql(
+            f'UPDATE season SET champion_enabled = {enabled} '
+            'WHERE EXISTS (SELECT 1 FROM cup_day_champion c WHERE c.cup_name = season.cup_name)'
+        )
+        logger.info('season.champion_enabled 已补列，已有冠军记录的历史赛季保持开启')
+
+
 MIGRATIONS = [
     ('001_player_in_library', _m001_player_in_library),
     ('002_season_hit_ratio', _m002_season_hit_ratio),
@@ -69,6 +82,7 @@ MIGRATIONS = [
     ('004_season_cup_alias', _m004_season_cup_alias),
     ('005_bootstrap_admin', _m005_bootstrap_admin),
     ('006_player_live_url', _m006_player_live_url),
+    ('007_season_champion_enabled', _m007_season_champion_enabled),
 ]
 
 
