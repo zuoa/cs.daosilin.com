@@ -121,6 +121,19 @@ input::placeholder, textarea::placeholder { color: var(--color-muted); }
 .field-group input:focus, .field-group select:focus, .field-group textarea:focus { border-color: var(--signal); outline: 0; box-shadow: var(--focus); }
 .field-group input:disabled { background: var(--surface-soft); color: var(--ink-500); }
 .field-group textarea { min-height: 100px; resize: vertical; font-family: var(--font-body); font-size: 0.77rem; }
+.live-room-input { display: grid; grid-template-columns: minmax(105px, .7fr) minmax(180px, 1.6fr) auto; gap: 8px; }
+.live-room-input .button { min-height: 43px; }
+.avatar-source-picker { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+.avatar-source-picker > label { display: flex; min-width: 0; align-items: center; gap: 9px; border: 1px solid var(--line-strong); border-radius: 10px; padding: 10px; cursor: pointer; transition: border-color var(--dur-short) var(--ease-out), background-color var(--dur-short) var(--ease-out); }
+.avatar-source-picker > label.active { border-color: var(--signal); background: var(--signal-soft); }
+.avatar-source-picker > label.disabled { cursor: not-allowed; opacity: .55; }
+.avatar-source-picker input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; }
+.avatar-source-picker img, .avatar-source-picker .avatar-fallback { width: 40px; height: 40px; flex: 0 0 auto; border: 1px solid var(--line); border-radius: 10px; object-fit: cover; }
+.avatar-source-picker .avatar-fallback { display: inline-flex; align-items: center; justify-content: center; background: var(--surface); color: var(--ink-500); font-weight: 800; }
+.avatar-source-picker span:last-child { display: grid; min-width: 0; gap: 2px; }
+.avatar-source-picker strong { color: var(--ink-800); font-size: .75rem; }
+.avatar-source-picker small { overflow: hidden; color: var(--ink-500); font-size: .63rem; text-overflow: ellipsis; white-space: nowrap; }
+.avatar-actions { display: flex; justify-content: flex-end; }
 .label-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .label-line span, .label-line output { color: var(--ink-500); font-family: var(--font-body); font-size: 0.69rem; }
 .form-actions { display: flex; align-items: center; justify-content: flex-end; gap: 9px; padding-top: 2px; }
@@ -707,6 +720,8 @@ img.player-monogram { object-fit: cover; }
   .metric-card div { align-items: flex-start; flex-direction: column; gap: 2px; }
   .metric-card div strong { font-size: 1.4rem; }
   .field-grid.two { grid-template-columns: 1fr; }
+  .live-room-input { grid-template-columns: 1fr; }
+  .avatar-source-picker { grid-template-columns: 1fr; }
   .modal-backdrop { align-items: end; padding: 0; }
   .app-modal, .app-modal.large, .app-modal.wide { width: 100%; max-height: min(92vh, 760px); border: 0; border-radius: 18px 18px 0 0; }
   .modal-header { padding: 19px 18px 16px; }

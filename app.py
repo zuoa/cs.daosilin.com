@@ -20,9 +20,12 @@ from config import (ADMIN_PASSWORD, ADMIN_USERNAME, EXTERNAL_API_TOKEN, REDIS_UR
                     SECRET_KEY, SITE_NAME)
 from database import (AdminUser, MatchPlayer, Player, CupDayChampion, create_tables, Config, PlayerTitle,
                       Match, Season, SeasonRoster, MatchSelection, import_history_sql)
+from live_service import (LiveRoomError, fetch_live_avatar, normalize_live_room,
+                          resolve_live_room)
 from scheduler import (crawl_season_with_status, get_crawl_status,
                        crawl_is_running, is_auto_crawl_enabled, season_crawl_phase,
                        set_auto_crawl_enabled, set_crawl_status)
+from steam_service import SteamAvatarError, fetch_steam_avatar
 from title_service import title_service
 from utils import success, error
 
@@ -91,7 +94,7 @@ def _build_cup_players(cup, day=None):
     players = MatchPlayer.filter_records(**filter_params)
     players_map = {player["player_id"]: {
         "nickname": player["nickname"],
-        "avatar": player["avatar"],
+        "avatar": all_players_map.get(player["player_id"], {}).get("avatar") or player["avatar"],
         "player_id": player["player_id"],
         "alias_name": all_players_map.get(player["player_id"], {}).get("alias_name", ""),
         "team_name": player.get("team_name", ""),
@@ -106,6 +109,9 @@ def _build_cup_players(cup, day=None):
         d = MatchPlayer.get_match_exploit(cup, player_id, day)
         if d:
             player.update(d)
+        profile_avatar = all_players_map.get(player_id, {}).get('avatar')
+        if profile_avatar:
+            player['avatar'] = profile_avatar
         for champion in all_champions:
             if player_id in champion.get("champion_team_player_ids", '').split(','):
                 player.setdefault('trophy_history', []).append({
@@ -271,9 +277,12 @@ def api_players():
     for i in range(len(all_players)):
         player = all_players[i]
         player_id = player.get('player_id')
+        profile_avatar = player.get('avatar')
         d = MatchPlayer.get_match_exploit(cup, player_id, day)
         if d:
             player.update(d)
+        if profile_avatar:
+            player['avatar'] = profile_avatar
 
         for champion in all_champions:
             if player_id in champion.get("champion_team_player_ids", '').split(','):
@@ -945,7 +954,52 @@ def api_admin_players():
     elif in_lib in ('0', 'false', 'no'):
         flag = False
     players = Player.search_players(q=q, in_library=flag)
+    for player in players:
+        live_room_key = Player.live_room_id(player.get('live_url'))
+        platform, separator, room_id = live_room_key.partition('_')
+        player['live_platform'] = platform if separator else ''
+        player['live_room'] = room_id if separator else ''
+        player['avatar_source'] = player.get('avatar_source') or 'wanmei'
+        if not player.get('wanmei_avatar') and player['avatar_source'] == 'wanmei':
+            player['wanmei_avatar'] = player.get('avatar')
     return success({"players": players})
+
+
+@app.route('/api/admin/live-room/resolve')
+def api_admin_live_room_resolve():
+    if not _admin_authed():
+        return error(403, "无权限访问")
+    platform = request.args.get('platform')
+    room_or_url = request.args.get('room') or request.args.get('live_url')
+    include_avatar = request.args.get('include_avatar', '1') not in ('0', 'false', 'no')
+    try:
+        result = resolve_live_room(platform, room_or_url, include_avatar=include_avatar)
+    except LiveRoomError as exc:
+        return error(400, str(exc)), 400
+    return success(result)
+
+
+@app.route('/api/admin/steam-avatar/resolve')
+def api_admin_steam_avatar_resolve():
+    if not _admin_authed():
+        return error(403, "无权限访问")
+    try:
+        result = fetch_steam_avatar(request.args.get('steam_id'))
+    except SteamAvatarError as exc:
+        return error(400, str(exc)), 400
+    return success(result)
+
+
+def _latest_wanmei_avatar(player_id):
+    row = (MatchPlayer.select(MatchPlayer.avatar)
+           .where(
+               (MatchPlayer.player_id == player_id) &
+               MatchPlayer.avatar.is_null(False) &
+               (MatchPlayer.avatar != '')
+           )
+           .order_by(MatchPlayer.updated_at.desc())
+           .first())
+    return row.avatar if row else None
 
 
 @app.route('/api/admin/player/save')
@@ -954,26 +1008,100 @@ def api_admin_player_save():
         return error(403, "无权限访问")
     player_id = (request.args.get('player_id') or '').strip()
     if not player_id:
-        return error(400, "参数 player_id 不能为空")
+        return error(400, "参数 player_id 不能为空"), 400
+
+    existing = Player.get_or_none(Player.player_id == player_id)
+    platform = (request.args.get('live_platform') or '').strip().upper()
+    room_input = request.args.get('live_room')
+    live_url_input = request.args.get('live_url')
+    resolved_room = None
     try:
-        live_url = _parse_optional_http_url(request.args.get('live_url'))
-    except ValueError:
-        return error(400, "直播间地址必须是有效的 http(s) URL")
+        if platform or room_input is not None:
+            resolved_room = normalize_live_room(platform, room_input or live_url_input)
+            live_url = resolved_room.get('live_url') or None
+        else:
+            # Keep the old API contract for clients that only submit live_url.
+            live_url = _parse_optional_http_url(live_url_input)
+    except (ValueError, LiveRoomError) as exc:
+        message = str(exc) or "直播间地址必须是有效的 http(s) URL"
+        return error(400, message), 400
+
+    requested_source = (request.args.get('avatar_source') or '').strip().lower()
+    if requested_source and requested_source not in ('wanmei', 'steam', 'live'):
+        return error(400, "头像来源只能是 wanmei、steam 或 live"), 400
+
+    legacy_avatar = (request.args.get('avatar') or '').strip() or None
+    current_source = (existing.avatar_source or 'wanmei') if existing else 'wanmei'
+    wanmei_avatar = (
+        (existing.wanmei_avatar if existing else None) or
+        legacy_avatar or
+        _latest_wanmei_avatar(player_id) or
+        (existing.avatar if existing and current_source == 'wanmei' else None)
+    )
+    steam_avatar = existing.steam_avatar if existing else None
+    live_avatar = existing.live_avatar if existing else None
+    avatar_source = requested_source or current_source
+    steam_id = (request.args.get('steam_id') or '').strip() or None
+
+    if requested_source == 'steam':
+        try:
+            steam_profile = fetch_steam_avatar(
+                steam_id or (existing.steam_id if existing else None) or player_id
+            )
+        except SteamAvatarError as exc:
+            return error(400, str(exc)), 400
+        steam_id = steam_profile['steam_id']
+        steam_avatar = steam_profile['avatar']
+
+    if requested_source == 'live':
+        if not resolved_room or not live_url:
+            return error(400, "选择直播间头像前，请填写直播平台和房间号"), 400
+        try:
+            live_avatar = fetch_live_avatar(
+                resolved_room.get('platform'), resolved_room.get('room_id')
+            )
+        except LiveRoomError as exc:
+            return error(400, str(exc)), 400
+
+    avatars = {
+        'wanmei': wanmei_avatar,
+        'steam': steam_avatar,
+        'live': live_avatar,
+    }
+    selected_avatar = avatars.get(avatar_source)
+    if not requested_source and legacy_avatar:
+        # Old callers explicitly edited the single avatar field.
+        wanmei_avatar = legacy_avatar
+        selected_avatar = legacy_avatar
+        avatar_source = 'wanmei'
+
     in_library = request.args.get('in_library', '1') not in ('0', 'false', 'no')
     fields = {
         'nickname': request.args.get('nickname') or player_id,
         'alias_name': request.args.get('alias_name') or None,
-        'steam_id': request.args.get('steam_id') or None,
-        'avatar': request.args.get('avatar') or None,
+        'steam_id': steam_id,
+        'avatar': selected_avatar,
+        'avatar_source': avatar_source,
+        'wanmei_avatar': wanmei_avatar,
+        'steam_avatar': steam_avatar,
+        'live_avatar': live_avatar,
         'live_url': live_url,
         'in_library': in_library,
     }
-    existing = Player.get_or_none(Player.player_id == player_id)
     if existing:
         Player.update(**fields).where(Player.player_id == player_id).execute()
     else:
         Player.create(player_id=player_id, **fields)
-    return success("玩家已保存")
+    try:
+        cache.clear()
+    except Exception:
+        pass
+    return success({
+        'message': '玩家已保存',
+        'avatar': selected_avatar,
+        'avatar_source': avatar_source,
+        'live_url': live_url,
+    })
 
 
 @app.route('/api/admin/player/library')

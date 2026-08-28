@@ -100,7 +100,7 @@
                 </td>
                 <td>
                   <div class="identity-cell">
-                    <span class="player-monogram">{{ displayName(p).slice(0, 1).toUpperCase() }}</span>
+                    <PlayerAvatar :src="p.avatar" :name="displayName(p)" class="player-monogram" />
                     <span><strong>{{ displayName(p) }}</strong><small>{{ p.alias_name ? p.nickname : '未设置别名' }}</small></span>
                   </div>
                 </td>
@@ -172,16 +172,55 @@
           </div>
           <div class="field-group">
             <label for="player-steam">Steam ID</label>
-            <input id="player-steam" v-model.trim="form.steam" placeholder="可选">
+            <input id="player-steam" v-model.trim="form.steam" placeholder="可选" @input="steamResolved = false">
           </div>
           <div class="field-group">
-            <label for="player-avatar">头像地址</label>
-            <input id="player-avatar" v-model.trim="form.avatar" type="url" placeholder="https://…">
+            <label for="player-live-room">直播间</label>
+            <div class="live-room-input">
+              <select v-model="form.livePlatform" aria-label="直播平台">
+                <option v-for="platform in livePlatforms" :key="platform.code" :value="platform.code">
+                  {{ platform.name }}
+                </option>
+              </select>
+              <input
+                id="player-live-room"
+                v-model.trim="form.liveRoom"
+                placeholder="房间号或完整 URL"
+                @input="liveResolved = false"
+              >
+              <button class="button subtle" type="button" :disabled="resolvingLive || !form.liveRoom" @click="resolveLiveRoom">
+                <span v-if="resolvingLive" class="button-spinner"></span>
+                {{ resolvingLive ? '获取中…' : '识别直播间' }}
+              </button>
+            </div>
+            <small>可输入房间号，也可直接粘贴完整直播间 URL。</small>
           </div>
           <div class="field-group">
-            <label for="player-live-url">直播间地址</label>
-            <input id="player-live-url" v-model.trim="form.liveUrl" type="url" placeholder="https://…">
-            <small>设置后会在选手公开详情页显示直播间入口。</small>
+            <label>公开头像</label>
+            <div class="avatar-source-picker">
+              <label :class="{ active: form.avatarSource === 'wanmei' }">
+                <input v-model="form.avatarSource" type="radio" value="wanmei">
+                <PlayerAvatar :src="form.wanmeiAvatar" :name="form.alias || form.nick || form.id" />
+                <span><strong>完美头像</strong><small>{{ form.wanmeiAvatar ? '来自完美世界比赛资料' : '暂无可用头像' }}</small></span>
+              </label>
+              <label :class="{ active: form.avatarSource === 'steam' }">
+                <input v-model="form.avatarSource" type="radio" value="steam">
+                <PlayerAvatar :src="form.steamAvatar" :name="form.alias || form.nick || form.id" />
+                <span><strong>Steam 头像</strong><small>{{ steamAvatarLabel }}</small></span>
+              </label>
+              <label :class="{ active: form.avatarSource === 'live', disabled: form.livePlatform !== 'DOUYU' }">
+                <input v-model="form.avatarSource" type="radio" value="live" :disabled="form.livePlatform !== 'DOUYU'">
+                <PlayerAvatar :src="form.liveAvatar" :name="form.alias || form.nick || form.id" />
+                <span><strong>直播间头像</strong><small>{{ liveAvatarLabel }}</small></span>
+              </label>
+            </div>
+            <div class="avatar-actions">
+              <button class="button subtle small" type="button" :disabled="resolvingSteam || !form.steam" @click="resolveSteamAvatar">
+                <span v-if="resolvingSteam" class="button-spinner"></span>
+                {{ resolvingSteam ? '获取中…' : '获取 Steam 头像' }}
+              </button>
+            </div>
+            <small>斗鱼头像会在保存时重新获取，头像展示统一使用图片代理避免盗链限制。</small>
           </div>
           <label class="switch-row" for="player-library">
             <span>
@@ -220,6 +259,18 @@ import { api } from '../api'
 import AdminLayout from '../components/AdminLayout.vue'
 import AppIcon from '../components/AppIcon.vue'
 import AppModal from '../components/AppModal.vue'
+import PlayerAvatar from '../components/PlayerAvatar.vue'
+
+const livePlatforms = [
+  { code: 'DOUYU', name: '斗鱼' },
+  { code: 'HUYA', name: '虎牙' },
+  { code: 'BILIBILI', name: '哔哩哔哩' },
+  { code: 'DOUYIN', name: '抖音' },
+  { code: 'KUAISHOU', name: '快手' },
+  { code: 'CC', name: '网易 CC' },
+  { code: 'YY', name: 'YY' },
+  { code: 'TWITCH', name: 'Twitch' },
+]
 
 const players = ref([])
 const q = ref('')
@@ -228,10 +279,19 @@ const checked = ref([])
 const toast = ref({ message: '', type: 'success' })
 const loading = ref(false)
 const saving = ref(false)
+const resolvingLive = ref(false)
+const resolvingSteam = ref(false)
+const liveResolved = ref(false)
+const steamResolved = ref(false)
 const busy = ref(false)
 const editorOpen = ref(false)
 const idInput = ref(null)
-const form = ref({ id: '', nick: '', alias: '', steam: '', avatar: '', liveUrl: '', lib: '1' })
+const emptyForm = () => ({
+  id: '', nick: '', alias: '', steam: '', avatarSource: 'wanmei',
+  wanmeiAvatar: '', steamAvatar: '', liveAvatar: '',
+  livePlatform: 'DOUYU', liveRoom: '', lib: '1',
+})
+const form = ref(emptyForm())
 let searchTimer
 let toastTimer
 
@@ -240,6 +300,15 @@ const libraryCount = computed(() => players.value.filter((p) => p.in_library).le
 const outsiderCount = computed(() => players.value.length - libraryCount.value)
 const allSelected = computed(() => players.value.length > 0 && checked.value.length === players.value.length)
 const filterLabel = computed(() => ({ '': '全部状态', 1: '仅库内', 0: '仅非库内' }[filterLib.value]))
+const steamAvatarLabel = computed(() => {
+  if (form.value.steamAvatar) return steamResolved.value ? '已获取 Steam 公开头像' : '已保存的 Steam 头像'
+  return form.value.steam ? '可点击下方按钮预览' : '请先填写 Steam ID'
+})
+const liveAvatarLabel = computed(() => {
+  if (form.value.livePlatform !== 'DOUYU') return '该平台头像暂未支持'
+  if (form.value.liveAvatar) return liveResolved.value ? '已获取斗鱼主播头像' : '已保存的斗鱼头像'
+  return '请先填写并识别斗鱼直播间'
+})
 
 function displayName(p) { return p.alias_name || p.nickname || p.player_id }
 function show(message, type = 'success') {
@@ -268,14 +337,22 @@ function fill(p) {
     nick: p.nickname || '',
     alias: p.alias_name || '',
     steam: p.steam_id || '',
-    avatar: p.avatar || '',
-    liveUrl: p.live_url || '',
+    avatarSource: p.avatar_source || 'wanmei',
+    wanmeiAvatar: p.wanmei_avatar || (p.avatar_source !== 'steam' && p.avatar_source !== 'live' ? p.avatar : '') || '',
+    steamAvatar: p.steam_avatar || (p.avatar_source === 'steam' ? p.avatar : '') || '',
+    liveAvatar: p.live_avatar || (p.avatar_source === 'live' ? p.avatar : '') || '',
+    livePlatform: p.live_platform || 'DOUYU',
+    liveRoom: p.live_room || p.live_url || '',
     lib: p.in_library ? '1' : '0',
   }
+  liveResolved.value = false
+  steamResolved.value = false
   editorOpen.value = true
 }
 function clearForm() {
-  form.value = { id: '', nick: '', alias: '', steam: '', avatar: '', liveUrl: '', lib: '1' }
+  form.value = emptyForm()
+  liveResolved.value = false
+  steamResolved.value = false
 }
 function closeEditor() {
   if (saving.value) return
@@ -297,8 +374,9 @@ async function save() {
       nickname: form.value.nick,
       alias_name: form.value.alias,
       steam_id: form.value.steam,
-      avatar: form.value.avatar,
-      live_url: form.value.liveUrl,
+      avatar_source: form.value.avatarSource,
+      live_platform: form.value.livePlatform,
+      live_room: form.value.liveRoom,
       in_library: form.value.lib,
     })
     show(typeof data === 'string' ? data : '玩家已保存')
@@ -309,6 +387,45 @@ async function save() {
     show(e.message, 'error')
   } finally {
     saving.value = false
+  }
+}
+async function resolveLiveRoom() {
+  if (!form.value.liveRoom) return show('请填写直播间号或 URL', 'error')
+  resolvingLive.value = true
+  try {
+    const params = new URLSearchParams({
+      platform: form.value.livePlatform,
+      room: form.value.liveRoom,
+      include_avatar: form.value.livePlatform === 'DOUYU' ? '1' : '0',
+    })
+    const data = await api.get('/api/admin/live-room/resolve?' + params)
+    form.value.livePlatform = data.platform
+    form.value.liveRoom = data.room_id
+    if (data.avatar) form.value.liveAvatar = data.avatar
+    liveResolved.value = true
+    show(data.avatar ? '已获取直播间头像' : '已识别直播间')
+  } catch (e) {
+    liveResolved.value = false
+    show(e.message, 'error')
+  } finally {
+    resolvingLive.value = false
+  }
+}
+async function resolveSteamAvatar() {
+  if (!form.value.steam) return show('请填写 Steam ID', 'error')
+  resolvingSteam.value = true
+  try {
+    const params = new URLSearchParams({ steam_id: form.value.steam })
+    const data = await api.get('/api/admin/steam-avatar/resolve?' + params)
+    form.value.steam = data.steam_id
+    form.value.steamAvatar = data.avatar
+    steamResolved.value = true
+    show('已获取 Steam 头像')
+  } catch (e) {
+    steamResolved.value = false
+    show(e.message, 'error')
+  } finally {
+    resolvingSteam.value = false
   }
 }
 async function setLib(ids, on) {

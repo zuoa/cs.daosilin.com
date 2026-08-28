@@ -168,7 +168,9 @@ def _store_match(match_data, assigned_cup_name=None, play_day=None, match_id=Non
         player_model = {
             "player_id": player_id,
             "nickname": match_player.get('nickName'),
-            "avatar": match_player.get('avatar')
+            "avatar": match_player.get('avatar'),
+            "wanmei_avatar": match_player.get('avatar'),
+            "avatar_source": "wanmei",
         }
 
         if not Player.is_exist(player_id):

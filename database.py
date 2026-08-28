@@ -182,6 +182,10 @@ class Player(BaseModel, CRUDMixin):
     player_id = CharField(max_length=64, primary_key=True)  # 玩家唯一标识
     nickname = CharField(max_length=64)
     avatar = CharField(max_length=255, null=True)  # 头像URL
+    avatar_source = CharField(max_length=16, default='wanmei')  # wanmei / steam / live
+    wanmei_avatar = CharField(max_length=500, null=True)
+    steam_avatar = CharField(max_length=500, null=True)
+    live_avatar = CharField(max_length=500, null=True)
     alias_name = CharField(max_length=255, null=True)  # 别名，多个别名用逗号分隔
     steam_id = CharField(max_length=64, null=True)  # Steam ID
     live_url = CharField(max_length=500, null=True)  # 直播间 URL
@@ -1324,6 +1328,11 @@ def import_history_sql(sql_path: str = None) -> Dict[str, Any]:
             db.execute_sql(
                 f'UPDATE season SET champion_enabled = {enabled} '
                 'WHERE EXISTS (SELECT 1 FROM cup_day_champion c WHERE c.cup_name = season.cup_name)'
+            )
+        if _column_exists('player', 'wanmei_avatar'):
+            db.execute_sql(
+                "UPDATE player SET wanmei_avatar = avatar, avatar_source = 'wanmei' "
+                "WHERE avatar IS NOT NULL AND wanmei_avatar IS NULL"
             )
         imported = SchemaMigration.select().where(
             SchemaMigration.version == HISTORY_IMPORT_VERSION

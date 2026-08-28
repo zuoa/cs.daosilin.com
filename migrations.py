@@ -75,6 +75,25 @@ def _m007_season_champion_enabled():
         logger.info('season.champion_enabled 已补列，已有冠军记录的历史赛季保持开启')
 
 
+def _m008_player_avatar_sources():
+    if not _table_exists('player'):
+        return
+    if not _column_exists('player', 'avatar_source'):
+        _add_column('player', 'avatar_source', "VARCHAR(16) DEFAULT 'wanmei'")
+    if not _column_exists('player', 'wanmei_avatar'):
+        _add_column('player', 'wanmei_avatar', 'VARCHAR(500)')
+    if not _column_exists('player', 'steam_avatar'):
+        _add_column('player', 'steam_avatar', 'VARCHAR(500)')
+    if not _column_exists('player', 'live_avatar'):
+        _add_column('player', 'live_avatar', 'VARCHAR(500)')
+    db.execute_sql("UPDATE player SET avatar_source = 'wanmei' WHERE avatar_source IS NULL")
+    db.execute_sql(
+        "UPDATE player SET wanmei_avatar = avatar "
+        "WHERE wanmei_avatar IS NULL AND avatar IS NOT NULL"
+    )
+    logger.info('player 头像来源与分类头像字段已补齐')
+
+
 MIGRATIONS = [
     ('001_player_in_library', _m001_player_in_library),
     ('002_season_hit_ratio', _m002_season_hit_ratio),
@@ -83,6 +102,7 @@ MIGRATIONS = [
     ('005_bootstrap_admin', _m005_bootstrap_admin),
     ('006_player_live_url', _m006_player_live_url),
     ('007_season_champion_enabled', _m007_season_champion_enabled),
+    ('008_player_avatar_sources', _m008_player_avatar_sources),
 ]
 
 

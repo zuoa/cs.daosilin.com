@@ -3,6 +3,7 @@ import shutil
 import tempfile
 import unittest
 from datetime import datetime
+from unittest.mock import patch
 
 
 TEST_DIR = tempfile.mkdtemp(prefix='cs-external-api-')
@@ -200,6 +201,71 @@ class ExternalPlayersApiTest(unittest.TestCase):
             headers=self.auth,
         )
         self.assertEqual(response.status_code, 404)
+
+    def _login_admin(self):
+        with self.client.session_transaction() as session:
+            session['admin_user'] = 'admin'
+
+    def test_admin_can_keep_existing_wanmei_avatar(self):
+        self._login_admin()
+        Player.create(
+            player_id='avatar-wanmei', nickname='完美头像玩家',
+            avatar='https://img.wmpvp.com/wanmei.png',
+            wanmei_avatar='https://img.wmpvp.com/wanmei.png',
+            avatar_source='wanmei', in_library=True,
+        )
+        response = self.client.get(
+            '/api/admin/player/save?player_id=avatar-wanmei&nickname=test'
+            '&avatar_source=wanmei&live_platform=DOUYU&live_room=',
+        )
+        self.assertEqual(response.status_code, 200)
+        player = Player.get(Player.player_id == 'avatar-wanmei')
+        self.assertEqual(player.avatar_source, 'wanmei')
+        self.assertEqual(player.avatar, 'https://img.wmpvp.com/wanmei.png')
+
+    def test_admin_can_select_steam_avatar(self):
+        self._login_admin()
+        Player.create(
+            player_id='avatar-steam', nickname='Steam 头像玩家',
+            avatar='https://img.wmpvp.com/wanmei.png',
+            wanmei_avatar='https://img.wmpvp.com/wanmei.png',
+            avatar_source='wanmei', in_library=True,
+        )
+        with patch('app.fetch_steam_avatar', return_value={
+            'steam_id': '76561198205495787',
+            'avatar': 'https://avatars.fastly.steamstatic.com/example_full.jpg',
+        }):
+            response = self.client.get(
+                '/api/admin/player/save?player_id=avatar-steam&nickname=test'
+                '&steam_id=76561198205495787&avatar_source=steam'
+                '&live_platform=DOUYU&live_room=',
+            )
+        self.assertEqual(response.status_code, 200)
+        player = Player.get(Player.player_id == 'avatar-steam')
+        self.assertEqual(player.avatar_source, 'steam')
+        self.assertEqual(player.avatar, 'https://avatars.fastly.steamstatic.com/example_full.jpg')
+        self.assertEqual(player.wanmei_avatar, 'https://img.wmpvp.com/wanmei.png')
+
+    def test_admin_can_select_douyu_avatar_from_full_url(self):
+        self._login_admin()
+        Player.create(
+            player_id='avatar-douyu', nickname='斗鱼头像玩家',
+            avatar='https://img.wmpvp.com/wanmei.png',
+            wanmei_avatar='https://img.wmpvp.com/wanmei.png',
+            avatar_source='wanmei', in_library=True,
+        )
+        with patch('app.fetch_live_avatar', return_value='https://apic.douyucdn.cn/avatar.jpg') as fetch:
+            response = self.client.get(
+                '/api/admin/player/save?player_id=avatar-douyu&nickname=test'
+                '&avatar_source=live&live_platform=DOUYU'
+                '&live_room=https%3A%2F%2Fwww.douyu.com%2F2602307%3Ffrom%3Dtest',
+            )
+        self.assertEqual(response.status_code, 200)
+        fetch.assert_called_once_with('DOUYU', '2602307')
+        player = Player.get(Player.player_id == 'avatar-douyu')
+        self.assertEqual(player.avatar_source, 'live')
+        self.assertEqual(player.avatar, 'https://apic.douyucdn.cn/avatar.jpg')
+        self.assertEqual(player.live_url, 'https://www.douyu.com/2602307')
 
     def test_admin_can_generate_and_revoke_database_token(self):
         app.config['EXTERNAL_API_TOKEN'] = ''
