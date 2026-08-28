@@ -50,9 +50,12 @@ class ExternalPlayersApiTest(unittest.TestCase):
         app.config.update(TESTING=True, EXTERNAL_API_TOKEN='test-token')
         Player.create(
             player_id='p1', nickname='选手一', alias_name='One', steam_id='steam-p1',
-            live_url='https://example.com/p1', in_library=True,
+            live_url='https://www.douyu.com/731778', in_library=True,
         )
-        Player.create(player_id='p2', nickname='选手二', in_library=True)
+        Player.create(
+            player_id='p2', nickname='选手二',
+            live_url='https://www.huya.com/731778', in_library=True,
+        )
         Season.create(
             cup_name='season-one', cup_alias='赛季一', name='赛季一',
             start_date=datetime(2024, 1, 1), end_date=datetime(2024, 6, 1),
@@ -139,6 +142,62 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(p1['avg_rating'], 1.5)
         self.assertEqual(p1['avg_adpr'], 90.0)
         self.assertEqual(p1['fk_fd_ratio'], 1.6667)
+        self.assertEqual(p1['live_room_id'], 'DOUYU_731778')
+
+    def test_external_player_can_be_queried_by_steam_id(self):
+        response = self.client.get(
+            '/api/v1/external/player?steam_id=steam-p1&season=all',
+            headers=self.auth,
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()['data']
+        self.assertEqual(payload['lookup'], {'type': 'steam_id', 'value': 'steam-p1'})
+        self.assertEqual(payload['player']['player_id'], 'p1')
+        self.assertEqual(payload['player']['match_count'], 2)
+
+    def test_external_player_steam_id_falls_back_to_player_id(self):
+        response = self.client.get(
+            '/api/v1/external/player?steamid=p1&season=last',
+            headers=self.auth,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['data']['player']['player_id'], 'p1')
+
+    def test_external_player_can_be_queried_by_live_room_id(self):
+        response = self.client.get(
+            '/api/v1/external/player?room_id=DOUYU_731778&season=season-one',
+            headers=self.auth,
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()['data']
+        self.assertEqual(payload['lookup'], {'type': 'room_id', 'value': 'DOUYU_731778'})
+        self.assertEqual(payload['player']['player_id'], 'p1')
+        self.assertEqual(payload['player']['avg_rating'], 1.0)
+
+        # The platform prefix keeps identical room numbers unambiguous.
+        response = self.client.get(
+            '/api/v1/external/player?room_id=huya_731778&season=current-season',
+            headers=self.auth,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['data']['player']['player_id'], 'p2')
+
+    def test_external_player_requires_exactly_one_identifier(self):
+        response = self.client.get('/api/v1/external/player?season=all', headers=self.auth)
+        self.assertEqual(response.status_code, 400)
+
+        response = self.client.get(
+            '/api/v1/external/player?steam_id=steam-p1&room_id=DOUYU_731778&season=all',
+            headers=self.auth,
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_external_player_returns_404_for_unknown_identifier(self):
+        response = self.client.get(
+            '/api/v1/external/player?room_id=missing&season=all',
+            headers=self.auth,
+        )
+        self.assertEqual(response.status_code, 404)
 
     def test_admin_can_generate_and_revoke_database_token(self):
         app.config['EXTERNAL_API_TOKEN'] = ''

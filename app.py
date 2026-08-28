@@ -359,6 +359,57 @@ def api_external_players(season_selector):
     return response
 
 
+def _external_lookup_arg(*names):
+    """Read aliases for one lookup argument and reject conflicting values."""
+    values = []
+    for name in names:
+        value = (request.args.get(name) or '').strip()
+        if value and value not in values:
+            values.append(value)
+    if len(values) > 1:
+        raise ValueError
+    return values[0] if values else ''
+
+
+@app.route('/api/v1/external/player')
+@external_api_token_required
+def api_external_player():
+    """Token-protected stats for one player resolved by Steam ID or room ID."""
+    try:
+        steam_id = _external_lookup_arg('steam_id', 'steamid', 'STEAMID')
+        room_id = _external_lookup_arg('room_id', 'roomid', 'room')
+    except ValueError:
+        return error(400, "同一查询参数不能提供多个不同值"), 400
+    if bool(steam_id) == bool(room_id):
+        return error(400, "请且仅请提供 steam_id 或 room_id 其中一个参数"), 400
+
+    player = Player.find_by_external_identifier(steam_id=steam_id, room_id=room_id)
+    if not player:
+        return error(404, "选手不存在"), 404
+
+    selector = request.args.get('season', 'last')
+    seasons, err = _resolve_external_seasons(selector)
+    if err:
+        return error(404, err), 404
+    players = MatchPlayer.get_external_player_stats(
+        [season['cup_name'] for season in seasons],
+        player_id=player.player_id,
+    )
+    if not players:
+        return error(404, "该选手在所选赛季中无数据"), 404
+
+    lookup_type = 'steam_id' if steam_id else 'room_id'
+    response = success({
+        'lookup': {'type': lookup_type, 'value': steam_id or room_id},
+        'selector': (selector or 'last').strip(),
+        'seasons': [_external_season_payload(season) for season in seasons],
+        'player': players[0],
+        'last_crawl_time': Config.get_value('last_crawl_time'),
+    })
+    response.headers['Cache-Control'] = 'private, no-store'
+    return response
+
+
 @app.route('/api/admin/champion/judge')
 def api_admin_champion_judge():
     day = request.args.get('day')
@@ -917,6 +968,7 @@ def _external_token_admin_response(extra=None):
     payload = external_api_token_status()
     payload.update({
         'api_path': '/api/v1/external/players',
+        'player_api_path': '/api/v1/external/player',
         'minimum_length': EXTERNAL_TOKEN_MIN_LENGTH,
     })
     if extra:

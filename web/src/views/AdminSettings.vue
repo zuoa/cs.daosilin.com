@@ -98,11 +98,14 @@
           <div class="endpoint-block">
             <small>ENDPOINT</small>
             <code>GET {{ status.api_path }}</code>
+            <code>GET {{ status.player_api_path }}</code>
           </div>
           <div class="selector-list">
             <div><code>season=all</code><span>全部赛季合并统计</span></div>
             <div><code>season=last</code><span>最近结束的赛季</span></div>
             <div><code>season=&lt;name&gt;</code><span>指定赛季名称</span></div>
+            <div><code>steam_id=&lt;id&gt;</code><span>个人接口按 Steam ID 查询</span></div>
+            <div><code>room_id=DOUYU_9999</code><span>个人接口按平台 + 房间号查询</span></div>
           </div>
           <div class="request-example">
             <small>AUTHORIZATION HEADER</small>

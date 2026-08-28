@@ -1,5 +1,6 @@
 from datetime import datetime
 from typing import List, Dict, Any, Optional
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from peewee import *
 from playhouse.db_url import connect
@@ -185,6 +186,63 @@ class Player(BaseModel, CRUDMixin):
     steam_id = CharField(max_length=64, null=True)  # Steam ID
     live_url = CharField(max_length=500, null=True)  # 直播间 URL
     in_library = BooleanField(default=False)  # 是否计入玩家库（占比门槛只认库内）
+
+    @staticmethod
+    def live_room_id(live_url: str) -> str:
+        """Build PLATFORM_ROOM from a configured live-stream URL."""
+        value = (live_url or '').strip()
+        if not value:
+            return ''
+        try:
+            parsed = urlsplit(value)
+        except ValueError:
+            return ''
+
+        hostname = (parsed.hostname or '').lower()
+        platform_domains = (
+            ('DOUYU', 'douyu.com'),
+            ('HUYA', 'huya.com'),
+            ('BILIBILI', 'live.bilibili.com'),
+            ('DOUYIN', 'live.douyin.com'),
+            ('KUAISHOU', 'live.kuaishou.com'),
+            ('CC', 'cc.163.com'),
+            ('YY', 'yy.com'),
+            ('TWITCH', 'twitch.tv'),
+        )
+        platform = next((
+            name for name, domain in platform_domains
+            if hostname == domain or hostname.endswith(f'.{domain}')
+        ), '')
+        if not platform:
+            return ''
+
+        query = parse_qs(parsed.query)
+        for key in ('room_id', 'roomid', 'room', 'id'):
+            values = query.get(key) or []
+            if values and values[0].strip():
+                return f'{platform}_{values[0].strip()}'
+
+        path_parts = [unquote(part).strip() for part in parsed.path.split('/') if part.strip()]
+        return f'{platform}_{path_parts[-1]}' if path_parts else ''
+
+    @classmethod
+    def find_by_external_identifier(cls, steam_id: str = None,
+                                    room_id: str = None) -> Optional['Player']:
+        """Find one player by Steam ID or the room ID in their live URL."""
+        steam_id = (steam_id or '').strip()
+        room_id = (room_id or '').strip()
+        if steam_id:
+            # Historical data commonly stores the Steam64 ID as player_id.
+            return (cls.select()
+                    .where((cls.steam_id == steam_id) | (cls.player_id == steam_id))
+                    .order_by(cls.updated_at.desc())
+                    .first())
+        if room_id:
+            expected = room_id.casefold()
+            for player in cls.select().where(cls.live_url.is_null(False)):
+                if cls.live_room_id(player.live_url).casefold() == expected:
+                    return player
+        return None
 
     @classmethod
     def is_exist(cls, player_id: str) -> Optional[bool]:
@@ -630,7 +688,8 @@ class MatchPlayer(BaseModel, CRUDMixin):
             return None
 
     @classmethod
-    def get_external_player_stats(cls, cup_names: List[str]) -> List[Dict[str, Any]]:
+    def get_external_player_stats(cls, cup_names: List[str],
+                                  player_id: str = None) -> List[Dict[str, Any]]:
         """Aggregate every player's public statistics across selected seasons."""
         cup_names = list(dict.fromkeys(name for name in (cup_names or []) if name))
         if not cup_names:
@@ -709,9 +768,12 @@ class MatchPlayer(BaseModel, CRUDMixin):
             for name, field in average_fields.items()
         )
 
+        conditions = [cls.cup_name.in_(cup_names)]
+        if player_id:
+            conditions.append(cls.player_id == player_id)
         rows = list(
             cls.select(*select_fields)
-            .where(cls.cup_name.in_(cup_names))
+            .where(*conditions)
             .group_by(cls.player_id)
             .dicts()
         )
@@ -749,6 +811,7 @@ class MatchPlayer(BaseModel, CRUDMixin):
                     'alias_name': player.alias_name or '',
                     'steam_id': player.steam_id or '',
                     'live_url': player.live_url or '',
+                    'live_room_id': Player.live_room_id(player.live_url),
                     'in_library': bool(player.in_library),
                 })
             else:
@@ -756,6 +819,7 @@ class MatchPlayer(BaseModel, CRUDMixin):
                     'alias_name': '',
                     'steam_id': '',
                     'live_url': '',
+                    'live_room_id': '',
                     'in_library': False,
                 })
             result.append(row)
