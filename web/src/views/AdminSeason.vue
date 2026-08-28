@@ -36,10 +36,12 @@
       </article>
     </section>
 
-    <section class="panel season-directory season-directory-wide" aria-labelledby="season-list-title">
+    <div class="season-workbench">
+      <aside class="panel season-directory season-directory-rail" aria-labelledby="season-list-title">
         <div class="panel-header">
           <div>
             <h2 id="season-list-title">杯赛目录</h2>
+            <p>选择杯赛后在右侧管理</p>
           </div>
           <span class="result-count">{{ seasons.length }} 个</span>
         </div>
@@ -47,13 +49,18 @@
         <div v-if="seasonLoading" class="loading-state compact"><span class="loader"></span><p>读取杯赛…</p></div>
         <div v-else-if="seasons.length" class="season-list">
           <article
-            v-for="s in seasons"
+            v-for="(s, index) in seasons"
             :key="s.cup_name"
             class="season-list-item"
             :class="{ current: s.cup_name === currentCup }"
           >
-            <button class="season-select" type="button" @click="selectCup(s.cup_name)">
-              <span class="season-index">{{ padIndex(seasons.indexOf(s) + 1) }}</span>
+            <button
+              class="season-select"
+              type="button"
+              :aria-pressed="s.cup_name === currentCup"
+              @click="selectCup(s.cup_name)"
+            >
+              <span class="season-index">{{ padIndex(index + 1) }}</span>
               <span class="season-list-copy">
                 <span class="season-name-line">
                   <strong>{{ displaySeason(s) }}</strong>
@@ -79,9 +86,10 @@
           <p>先建立杯赛，再配置种子并采集比赛。</p>
           <button class="button subtle" type="button" @click="createSeason">新建杯赛</button>
         </div>
-    </section>
+      </aside>
 
-    <template v-if="currentCup">
+      <main class="season-detail-workspace">
+        <template v-if="currentCup">
       <div class="current-context">
         <div>
           <span class="live-indicator" :class="{ idle: currentSeason?.status !== 'active' }"></span>
@@ -266,13 +274,15 @@
           <p>{{ matchTab === 'approved' ? '完成采集后，符合条件的比赛会显示在这里。' : '被人工剔除的比赛会保留在这里，可随时恢复。' }}</p>
         </div>
       </section>
-    </template>
+        </template>
 
-    <section v-else-if="!seasonLoading" class="panel onboarding-panel">
-      <div class="onboarding-mark"><AppIcon name="target" :size="42" /></div>
-      <div><h2>建立第一个杯赛工作流</h2><p>创建杯赛后，即可继续配置种子名单、执行采集和审核比赛记录。</p></div>
-      <button class="button primary" type="button" @click="createSeason"><AppIcon name="plus" />新建杯赛</button>
-    </section>
+        <section v-else-if="!seasonLoading" class="panel onboarding-panel">
+          <div class="onboarding-mark"><AppIcon name="target" :size="42" /></div>
+          <div><h2>建立第一个杯赛工作流</h2><p>创建杯赛后，即可继续配置种子名单、执行采集和审核比赛记录。</p></div>
+          <button class="button primary" type="button" @click="createSeason"><AppIcon name="plus" />新建杯赛</button>
+        </section>
+      </main>
+    </div>
 
     <AppModal
       :open="matchDetailOpen"

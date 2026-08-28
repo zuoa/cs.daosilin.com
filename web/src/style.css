@@ -261,15 +261,15 @@ input::placeholder, textarea::placeholder { color: var(--color-muted); }
 .admin-player-table { min-width: 720px; }
 
 /* Season administration */
+.season-workbench { display: grid; grid-template-columns: minmax(260px, 320px) minmax(0, 1fr); align-items: start; gap: 16px; }
+.season-detail-workspace { min-width: 0; }
 .season-list { display: grid; }
-.season-directory-wide .season-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.season-directory-wide .season-list-item { border-right: 1px solid var(--line); border-bottom: 0; }
-.season-directory-wide .season-list-item:last-child { border-right: 0; }
-.season-directory-wide .season-select { min-height: 132px; align-items: flex-start; padding-top: 22px; }
+.season-directory-rail { position: sticky; top: 18px; max-height: calc(100dvh - 36px); overflow: hidden; }
+.season-directory-rail .season-list { max-height: calc(100dvh - 122px); overflow-y: auto; overscroll-behavior: contain; }
 .season-list-item { position: relative; border-bottom: 1px solid var(--line); transition: background-color var(--dur-short) var(--ease-out), box-shadow var(--dur-short) var(--ease-out); }
 .season-list-item:last-child { border-bottom: 0; }
 .season-list-item.current { background: var(--color-accent-faint); box-shadow: inset 3px 0 var(--signal); }
-.season-select { display: grid; width: 100%; min-height: 101px; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 11px; border: 0; padding: 14px 58px 14px 18px; background: transparent; color: inherit; text-align: left; }
+.season-select { display: grid; width: 100%; min-height: 112px; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 10px; border: 0; padding: 15px 52px 15px 16px; background: transparent; color: inherit; text-align: left; }
 .season-select:hover { background: var(--color-accent-faint); }
 .season-index { color: var(--ink-400); font-family: var(--font-body); font-size: 0.7rem; }
 .season-list-copy { display: flex; min-width: 0; flex-direction: column; }
@@ -278,11 +278,11 @@ input::placeholder, textarea::placeholder { color: var(--color-muted); }
 .season-list-copy code { margin-top: 2px; }
 .season-list-meta { margin-top: 7px; color: var(--ink-500); font-size: 0.69rem; }
 .season-select > svg { color: var(--ink-400); }
-.edit-season { position: absolute; top: 31px; right: 13px; width: 34px; height: 34px; opacity: 0; }
+.edit-season { position: absolute; top: 39px; right: 11px; width: 34px; height: 34px; opacity: 0; }
 .season-list-item:hover .edit-season, .edit-season:focus-visible { opacity: 1; }
 .threshold-field input[type="range"] { height: 7px; border: 0; padding: 0; accent-color: var(--signal); }
 .range-labels { display: flex; justify-content: space-between; color: var(--ink-400); font-size: 0.64rem; }
-.current-context { display: flex; min-height: 72px; align-items: center; justify-content: space-between; gap: 16px; margin: 20px 0 12px; border: 1px solid var(--color-accent-line); border-radius: 14px; padding: 14px 18px; background: var(--gradient-context); }
+.current-context { display: flex; min-height: 72px; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 12px; border: 1px solid var(--color-accent-line); border-radius: 14px; padding: 14px 18px; background: var(--gradient-context); }
 .current-context > div { display: flex; align-items: center; gap: 12px; }
 .current-context p { display: flex; flex-direction: column; }
 .current-context p small { color: var(--signal-dark); font-family: var(--font-body); font-size: 0.58rem; letter-spacing: .13em; }
@@ -655,8 +655,7 @@ img.player-monogram { object-fit: cover; }
   .players-split .editor-panel { grid-row: 1; }
   .home-hero { grid-template-columns: minmax(0, 1fr) minmax(360px, .75fr); gap: 50px; }
   .season-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .season-directory-wide .season-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .season-directory-wide .season-list-item { border-bottom: 1px solid var(--line); }
+  .season-workbench { grid-template-columns: minmax(240px, 280px) minmax(0, 1fr); }
   .season-hero { align-items: flex-start; flex-direction: column; }
   .season-summary { width: 100%; min-width: 0; }
   .player-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -676,6 +675,9 @@ img.player-monogram { object-fit: cover; }
   .admin-account { margin: 0; border: 0; padding: 0; }
   .account-copy, .account-avatar { display: none; }
   .admin-topbar { min-height: 116px; }
+  .season-workbench { grid-template-columns: 1fr; }
+  .season-directory-rail { position: static; max-height: none; }
+  .season-directory-rail .season-list { max-height: 360px; }
   .workflow-grid { grid-template-columns: 1fr; }
   .settings-grid { grid-template-columns: 1fr; }
   .home-hero { min-height: auto; grid-template-columns: 1fr; padding-top: 70px; }
@@ -714,8 +716,6 @@ img.player-monogram { object-fit: cover; }
   .selection-bar { align-items: flex-start; flex-direction: column; }
   .selection-bar > div { width: 100%; flex-wrap: wrap; }
   .current-context { align-items: flex-start; flex-direction: column; }
-  .season-directory-wide .season-list { grid-template-columns: 1fr; }
-  .season-directory-wide .season-list-item { border-right: 0; }
   .matches-heading { align-items: flex-start; flex-direction: column; }
   .match-detail { padding: 16px 16px 18px; }
   .match-detail-facts { grid-template-columns: 1fr 1fr; }
