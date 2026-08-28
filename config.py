@@ -25,6 +25,12 @@ ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', '')
 # administrator can configure a database-backed token from the control panel.
 EXTERNAL_API_TOKEN = (os.getenv('EXTERNAL_API_TOKEN') or '').strip()
 
+# 完美段位每天定时刷新。Cron 小时列表使用逗号分隔，例如 2,8,14,20。
+PERFECT_RANK_REFRESH_HOURS = (
+    os.getenv('PERFECT_RANK_REFRESH_HOURS') or '2,8,14,20'
+).strip()
+PERFECT_RANK_REQUEST_INTERVAL = float(os.getenv('PERFECT_RANK_REQUEST_INTERVAL', '0.2'))
+
 # 称号系统配置
 MAX_TITLES_PER_PLAYER = int(os.getenv('MAX_TITLES_PER_PLAYER', 3))  # 主荣誉、打法、故事各最多一个
 MAX_POSITIVE_TITLES = int(os.getenv('MAX_POSITIVE_TITLES', 3))  # 兼容旧配置

@@ -97,6 +97,11 @@ def _build_cup_players(cup, day=None):
         "avatar": all_players_map.get(player["player_id"], {}).get("avatar") or player["avatar"],
         "player_id": player["player_id"],
         "alias_name": all_players_map.get(player["player_id"], {}).get("alias_name", ""),
+        "perfect_score": all_players_map.get(player["player_id"], {}).get("perfect_score"),
+        "perfect_level": all_players_map.get(player["player_id"], {}).get("perfect_level"),
+        "perfect_rank_updated_at": _iso_dt(
+            all_players_map.get(player["player_id"], {}).get("perfect_rank_updated_at")
+        ),
         "team_name": player.get("team_name", ""),
         "is_champion": player["player_id"] in day_champion.get("champion_team_player_ids", '').split(
             ',') if day_champion else False,
@@ -142,7 +147,7 @@ def _player_detail_payload(player_id, cup, day=None):
     if not rec:
         return None, "选手不存在"
     player = rec.to_dict()
-    for key in ('created_at', 'updated_at'):
+    for key in ('created_at', 'updated_at', 'perfect_rank_updated_at'):
         if hasattr(player.get(key), 'isoformat'):
             player[key] = player[key].isoformat()
     player_data = MatchPlayer.get_match_exploit(cup, player_id, day)

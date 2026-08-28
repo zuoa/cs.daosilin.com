@@ -24,14 +24,23 @@
             <div class="profile-copy">
               <div class="profile-name-line">
                 <h1>{{ playerName }}</h1>
-                <span v-if="day" class="status-badge neutral">{{ day }}</span>
-                <a
-                  v-if="player.live_url"
-                  class="button primary small profile-live-link"
-                  :href="player.live_url"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                ><AppIcon name="external" />进入直播间</a>
+                <div class="profile-meta-actions">
+                  <PerfectRankBadge
+                    v-if="player.perfect_level"
+                    :level="player.perfect_level"
+                    :score="player.perfect_score"
+                    :updated-at="player.perfect_rank_updated_at"
+                    large
+                  />
+                  <span v-if="day" class="status-badge neutral">{{ day }}</span>
+                  <a
+                    v-if="player.live_url"
+                    class="button primary small profile-live-link"
+                    :href="player.live_url"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  ><AppIcon name="external" />进入直播间</a>
+                </div>
               </div>
               <p><code>{{ player.player_id }}</code><span>{{ cupAlias }}</span></p>
             </div>
@@ -204,6 +213,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { api } from '../api'
 import AppIcon from '../components/AppIcon.vue'
 import PlayerAvatar from '../components/PlayerAvatar.vue'
+import PerfectRankBadge from '../components/PerfectRankBadge.vue'
 
 echarts.use([LineChart, RadarChart, GridComponent, RadarComponent, TooltipComponent, CanvasRenderer])
 

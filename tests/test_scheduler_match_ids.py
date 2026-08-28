@@ -1,7 +1,8 @@
 import unittest
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import ANY, patch
 
-from scheduler import _store_match, canonical_match_id
+from scheduler import _store_match, canonical_match_id, refresh_perfect_ranks
 
 
 class MatchIdNormalizationTest(unittest.TestCase):
@@ -42,6 +43,36 @@ class MatchIdNormalizationTest(unittest.TestCase):
             'PVP@9223339745715475470',
         )
         match_player_model.is_exist.assert_not_called()
+
+    @patch('scheduler.time.sleep')
+    @patch('scheduler.clear_perfect_rank_cache')
+    @patch('scheduler.Config')
+    @patch('scheduler.get_perfect_rank')
+    @patch('scheduler.resolve_steam_id64')
+    @patch('scheduler.Player')
+    def test_refresh_perfect_ranks_persists_successful_lookup(
+        self, player_model, resolve_steam_id, get_rank, config_model, clear_cache, sleep,
+    ):
+        player = SimpleNamespace(
+            player_id='76561199039451434',
+            steam_id=None,
+            in_library=True,
+        )
+        player_model.select.return_value.order_by.return_value = [player]
+        resolve_steam_id.return_value = player.player_id
+        get_rank.return_value = {'score': 1513, 'level': 'B'}
+
+        stats = refresh_perfect_ranks()
+
+        self.assertEqual(stats, {'total': 1, 'updated': 1, 'failed': 0, 'invalid': 0})
+        player_model.update.assert_called_once()
+        saved = player_model.update.call_args.kwargs
+        self.assertEqual(saved['perfect_score'], 1513)
+        self.assertEqual(saved['perfect_level'], 'B')
+        self.assertIn('perfect_rank_updated_at', saved)
+        config_model.set_value.assert_any_call('perfect_rank_refresh_stats', ANY)
+        clear_cache.assert_called_once_with()
+        sleep.assert_not_called()
 
 
 if __name__ == '__main__':

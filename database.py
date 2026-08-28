@@ -190,6 +190,9 @@ class Player(BaseModel, CRUDMixin):
     steam_id = CharField(max_length=64, null=True)  # Steam ID
     live_url = CharField(max_length=500, null=True)  # 直播间 URL
     in_library = BooleanField(default=False)  # 是否计入玩家库（占比门槛只认库内）
+    perfect_score = IntegerField(null=True)  # 完美平台当前天梯分
+    perfect_level = CharField(max_length=16, null=True)  # S21+ 完美平台段位
+    perfect_rank_updated_at = DateTimeField(null=True)  # 段位最近成功更新时间
 
     @staticmethod
     def live_room_id(live_url: str) -> str:

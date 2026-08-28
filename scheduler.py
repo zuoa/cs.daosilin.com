@@ -10,9 +10,12 @@ from dotenv import load_dotenv
 
 from ajlog import logger
 from champion_service import judge_champion
+from config import PERFECT_RANK_REFRESH_HOURS, PERFECT_RANK_REQUEST_INTERVAL
 
 from database import (create_tables, Match, MatchPlayer, Player, Config,
                       Season, SeasonRoster, MatchSelection)
+from perfect_service import (clear_perfect_rank_cache, get_perfect_rank,
+                             resolve_steam_id64)
 from title_service import title_service
 from utils import get_play_day
 from wm import WMAPI
@@ -538,6 +541,43 @@ def crawl_all():
         calc_titles(today)
 
 
+def refresh_perfect_ranks():
+    """Refresh and persist Perfect World ranks for every known player."""
+    players = list(Player.select().order_by(Player.in_library.desc(), Player.player_id.asc()))
+    clear_perfect_rank_cache()
+    stats = {'total': len(players), 'updated': 0, 'failed': 0, 'invalid': 0}
+    started_at = datetime.datetime.now()
+    logger.info(f"====== 开始刷新完美段位，共 {len(players)} 名玩家 ======")
+
+    for index, player in enumerate(players):
+        steam_id = resolve_steam_id64(player.steam_id, player.player_id)
+        if not steam_id:
+            stats['invalid'] += 1
+            continue
+
+        rank = get_perfect_rank(steam_id)
+        if rank is None:
+            stats['failed'] += 1
+        else:
+            refreshed_at = datetime.datetime.now()
+            (Player.update(
+                perfect_score=rank['score'],
+                perfect_level=rank['level'],
+                perfect_rank_updated_at=refreshed_at,
+            ).where(Player.player_id == player.player_id).execute())
+            stats['updated'] += 1
+
+        if index < len(players) - 1 and PERFECT_RANK_REQUEST_INTERVAL > 0:
+            time.sleep(PERFECT_RANK_REQUEST_INTERVAL)
+
+    finished_at = datetime.datetime.now()
+    Config.set_value('perfect_rank_last_refresh', finished_at.strftime('%Y-%m-%d %H:%M:%S'))
+    Config.set_value('perfect_rank_refresh_stats', json.dumps(stats, ensure_ascii=False))
+    elapsed = (finished_at - started_at).total_seconds()
+    logger.info(f"====== 完美段位刷新完成 {stats}，耗时 {elapsed:.1f}s ======")
+    return stats
+
+
 
 def create_scheduler():
     executors = {
@@ -564,6 +604,21 @@ def create_scheduler():
         id='job_judge_champion',
         name='冠军判断任务',
         replace_existing=True
+    )
+
+    scheduler.add_job(
+        func=refresh_perfect_ranks,
+        trigger=CronTrigger(hour=PERFECT_RANK_REFRESH_HOURS, minute='15'),
+        id='refresh_perfect_ranks',
+        name='完美段位定时刷新任务',
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        misfire_grace_time=3600,
+        next_run_time=datetime.datetime.now() + datetime.timedelta(seconds=10),
+    )
+    logger.info(
+        f'完美段位任务已添加：每天 {PERFECT_RANK_REFRESH_HOURS} 点的 15 分执行，启动后立即执行一次'
     )
 
     return scheduler

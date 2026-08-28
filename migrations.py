@@ -94,6 +94,19 @@ def _m008_player_avatar_sources():
     logger.info('player 头像来源与分类头像字段已补齐')
 
 
+def _m009_player_perfect_rank():
+    if not _table_exists('player'):
+        return
+    if not _column_exists('player', 'perfect_score'):
+        _add_column('player', 'perfect_score', 'INTEGER')
+    if not _column_exists('player', 'perfect_level'):
+        _add_column('player', 'perfect_level', 'VARCHAR(16)')
+    if not _column_exists('player', 'perfect_rank_updated_at'):
+        ddl = 'TIMESTAMP' if is_postgres() else 'DATETIME'
+        _add_column('player', 'perfect_rank_updated_at', ddl)
+    logger.info('player 完美天梯分、段位与更新时间字段已补齐')
+
+
 MIGRATIONS = [
     ('001_player_in_library', _m001_player_in_library),
     ('002_season_hit_ratio', _m002_season_hit_ratio),
@@ -103,6 +116,7 @@ MIGRATIONS = [
     ('006_player_live_url', _m006_player_live_url),
     ('007_season_champion_enabled', _m007_season_champion_enabled),
     ('008_player_avatar_sources', _m008_player_avatar_sources),
+    ('009_player_perfect_rank', _m009_player_perfect_rank),
 ]
 
 

@@ -71,7 +71,7 @@
             <table class="data-table leaderboard-table">
               <thead>
                 <tr>
-                  <th class="rank-cell">排名</th><th>选手</th><th v-if="day">称号</th><th>荣誉</th>
+                  <th class="rank-cell">排名</th><th>选手</th><th>完美段位</th><th v-if="day">称号</th><th>荣誉</th>
                   <th>场次</th><th>胜率</th><th>K/D</th><th>Rating</th><th>ADPR</th><th>WE</th><th>爆头率</th><th>MVP</th><th class="action-cell"><span class="sr-only">查看详情</span></th>
                 </tr>
               </thead>
@@ -84,6 +84,16 @@
                         <PlayerAvatar :src="p.avatar" :name="displayName(p)" class="player-avatar" />
                         <span><strong>{{ displayName(p) }}</strong><small>{{ p.team_name || p.nickname || '—' }}</small></span>
                       </div>
+                    </td>
+                    <td class="perfect-rank-cell">
+                      <PerfectRankBadge
+                        v-if="p.perfect_level"
+                        :level="p.perfect_level"
+                        :score="p.perfect_score"
+                        :updated-at="p.perfect_rank_updated_at"
+                        compact
+                      />
+                      <span v-else class="muted-cell">待更新</span>
                     </td>
                     <td v-if="day">
                       <div class="title-container">
@@ -123,7 +133,7 @@
                     </td>
                   </tr>
                   <tr v-if="open === p.player_id" class="detail-drawer">
-                    <td :colspan="day ? 13 : 12">
+                    <td :colspan="day ? 14 : 13">
                       <div class="drawer-content">
                         <div v-if="uniqueTitles(p.titles).length" class="drawer-section titles-drawer">
                           <h3>称号信息</h3>
@@ -165,6 +175,7 @@ import { useRoute } from 'vue-router'
 import { api } from '../api'
 import AppIcon from '../components/AppIcon.vue'
 import PlayerAvatar from '../components/PlayerAvatar.vue'
+import PerfectRankBadge from '../components/PerfectRankBadge.vue'
 
 const route = useRoute()
 const cup = computed(() => route.params.cup)
