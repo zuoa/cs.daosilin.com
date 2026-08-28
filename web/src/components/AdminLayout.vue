@@ -20,8 +20,12 @@
           <AppIcon name="users" />
           <span>玩家库</span>
         </router-link>
+        <router-link to="/admin/settings">
+          <AppIcon name="key" />
+          <span>API 与安全</span>
+        </router-link>
         <p class="admin-menu-label public-label">公开页面</p>
-        <router-link to="/">
+        <router-link class="public-menu-link" to="/">
           <AppIcon name="home" />
           <span>数据首页</span>
           <AppIcon class="menu-external" name="external" :size="14" />

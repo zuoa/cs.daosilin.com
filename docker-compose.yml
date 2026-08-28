@@ -38,6 +38,7 @@ services:
       ADMIN_USERNAME: ${ADMIN_USERNAME:-vane}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-vane1005}
       SITE_NAME: ${SITE_NAME:-熊掌CS Major}
+      EXTERNAL_API_TOKEN: ${EXTERNAL_API_TOKEN:-}
 
 volumes:
   pgdata:

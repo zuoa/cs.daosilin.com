@@ -21,6 +21,10 @@ SITE_NAME = os.getenv('SITE_NAME', '熊掌CS Major')
 ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'admin')
 ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', '')
 
+# Optional environment override for the external API token. When empty, an
+# administrator can configure a database-backed token from the control panel.
+EXTERNAL_API_TOKEN = (os.getenv('EXTERNAL_API_TOKEN') or '').strip()
+
 # 称号系统配置
 MAX_TITLES_PER_PLAYER = int(os.getenv('MAX_TITLES_PER_PLAYER', 3))  # 主荣誉、打法、故事各最多一个
 MAX_POSITIVE_TITLES = int(os.getenv('MAX_POSITIVE_TITLES', 3))  # 兼容旧配置

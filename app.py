@@ -1,4 +1,5 @@
 import os
+import secrets
 import threading
 from datetime import datetime
 from urllib.parse import urlsplit
@@ -8,10 +9,15 @@ from flask_caching import Cache
 
 import title_service
 from ajlog import logger
-from auth import (captcha_ok, captcha_response, clear_login_fail, current_admin, login_admin,
-                  login_locked, logout_admin, record_login_fail, verify_password)
+from auth import (captcha_ok, captcha_response, clear_login_fail, current_admin,
+                  EXTERNAL_TOKEN_MIN_LENGTH, external_api_token_required,
+                  external_api_token_status, login_admin, login_locked, logout_admin,
+                  record_login_fail,
+                  revoke_database_external_api_token, save_external_api_token,
+                  verify_password)
 from champion_service import judge_champion
-from config import ADMIN_PASSWORD, ADMIN_USERNAME, REDIS_URL, SECRET_KEY, SITE_NAME
+from config import (ADMIN_PASSWORD, ADMIN_USERNAME, EXTERNAL_API_TOKEN, REDIS_URL,
+                    SECRET_KEY, SITE_NAME)
 from database import (AdminUser, MatchPlayer, Player, CupDayChampion, create_tables, Config, PlayerTitle,
                       Match, Season, SeasonRoster, MatchSelection, import_history_sql)
 from scheduler import (crawl_season_with_status, get_crawl_status,
@@ -24,6 +30,7 @@ app = Flask(__name__)
 app.secret_key = SECRET_KEY
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['EXTERNAL_API_TOKEN'] = EXTERNAL_API_TOKEN
 
 if REDIS_URL:
     cache = Cache(config={
@@ -279,7 +286,70 @@ def api_players():
     return success({"players": all_players, "cache_time": last_crawl_time})
 
 
+def _external_season_payload(season):
+    return {
+        'cup_name': season.get('cup_name'),
+        'name': season.get('cup_alias') or season.get('name') or season.get('cup_name'),
+        'start_date': _iso_dt(season.get('start_date')),
+        'end_date': _iso_dt(season.get('end_date')),
+        'status': season.get('status'),
+        'match_type': season.get('match_type'),
+    }
 
+
+def _resolve_external_seasons(selector):
+    seasons = list(Season.select().order_by(Season.end_date.desc()).dicts())
+    normalized = (selector or 'last').strip()
+    if normalized.lower() == 'all':
+        return seasons, None
+    if normalized.lower() == 'last':
+        now = datetime.now()
+        completed = [
+            season for season in seasons
+            if season.get('status') == 'archived' or season.get('end_date') <= now
+        ]
+        return completed[:1], None if completed else "暂无已结束的赛季"
+
+    exact = [
+        season for season in seasons
+        if normalized in (season.get('cup_name'), season.get('cup_alias'), season.get('name'))
+    ]
+    if exact:
+        return exact[:1], None
+    folded = normalized.casefold()
+    insensitive = [
+        season for season in seasons
+        if folded in {
+            str(season.get('cup_name') or '').casefold(),
+            str(season.get('cup_alias') or '').casefold(),
+            str(season.get('name') or '').casefold(),
+        }
+    ]
+    return (insensitive[:1], None) if insensitive else ([], "赛季不存在")
+
+
+@app.route('/api/v1/external/players', defaults={'season_selector': None})
+@app.route('/api/v1/external/players/<path:season_selector>')
+@external_api_token_required
+def api_external_players(season_selector):
+    """Token-protected player statistics for all, last, or a named season."""
+    selector = season_selector if season_selector is not None else request.args.get('season', 'last')
+    seasons, err = _resolve_external_seasons(selector)
+    if err:
+        return error(404, err), 404
+
+    players = MatchPlayer.get_external_player_stats([
+        season['cup_name'] for season in seasons
+    ])
+    response = success({
+        'selector': (selector or 'last').strip(),
+        'seasons': [_external_season_payload(season) for season in seasons],
+        'player_count': len(players),
+        'players': players,
+        'last_crawl_time': Config.get_value('last_crawl_time'),
+    })
+    response.headers['Cache-Control'] = 'private, no-store'
+    return response
 
 
 @app.route('/api/admin/champion/judge')
@@ -830,6 +900,52 @@ def api_admin_player_library():
             Player.create(player_id=pid, nickname=pid, in_library=True)
             n += 1
     return success(f"已更新 {n} 名玩家的库内状态")
+
+
+def _external_token_admin_response(extra=None):
+    payload = external_api_token_status()
+    payload.update({
+        'api_path': '/api/v1/external/players',
+        'minimum_length': EXTERNAL_TOKEN_MIN_LENGTH,
+    })
+    if extra:
+        payload.update(extra)
+    response = success(payload)
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
+    return response
+
+
+@app.route('/api/admin/external-api-token', methods=['GET', 'POST'])
+def api_admin_external_api_token():
+    if request.method == 'GET':
+        return _external_token_admin_response()
+
+    data = request.get_json(silent=True) or {}
+    raw_action = data.get('action')
+    action = raw_action.strip().lower() if isinstance(raw_action, str) else ''
+    status = external_api_token_status()
+    if action in ('generate', 'save') and status['environment_locked']:
+        return error(409, "当前 token 由环境变量管理，请先修改部署配置"), 409
+
+    if action == 'generate':
+        token = secrets.token_urlsafe(32)
+        save_external_api_token(token)
+        return _external_token_admin_response({
+            'token': token,
+            'message': '新 token 已生成，请立即复制；关闭页面后将无法再查看明文。',
+        })
+    if action == 'save':
+        try:
+            save_external_api_token(data.get('token'))
+        except ValueError as exc:
+            return error(400, str(exc)), 400
+        return _external_token_admin_response({'message': 'API token 已保存'})
+    if action == 'revoke':
+        revoke_database_external_api_token()
+        message = ('数据库备用 token 已删除，环境变量 token 仍然有效'
+                   if status['environment_locked'] else 'API token 已撤销')
+        return _external_token_admin_response({'message': message})
+    return error(400, "action 只能是 generate、save 或 revoke"), 400
 
 
 @app.route('/api/admin/login', methods=['POST'])

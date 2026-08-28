@@ -630,6 +630,140 @@ class MatchPlayer(BaseModel, CRUDMixin):
             return None
 
     @classmethod
+    def get_external_player_stats(cls, cup_names: List[str]) -> List[Dict[str, Any]]:
+        """Aggregate every player's public statistics across selected seasons."""
+        cup_names = list(dict.fromkeys(name for name in (cup_names or []) if name))
+        if not cup_names:
+            return []
+
+        total_fields = {
+            'win_count': cls.win,
+            'total_kills': cls.kill,
+            'total_bot_kills': cls.bot_kill,
+            'total_negative_kills': cls.neg_kill,
+            'total_handgun_kills': cls.handgun_kill,
+            'total_first_kills': cls.entry_kill,
+            'total_awp_kills': cls.awp_kill,
+            'total_deaths': cls.death,
+            'total_entry_deaths': cls.entry_death,
+            'total_first_deaths': cls.first_death,
+            'total_assists': cls.assist,
+            'total_headshots': cls.headshot,
+            'total_damage': cls.damage,
+            'total_item_throws': cls.item_throw,
+            'total_flashes': cls.flash,
+            'total_flash_teammate': cls.flash_teammate,
+            'total_flash_success': cls.flash_success,
+            'total_end_games': cls.end_game,
+            'total_mvp': cls.mvp_value,
+            'total_score': cls.score,
+            'total_2k': cls.two_kill,
+            'total_3k': cls.three_kill,
+            'total_4k': cls.four_kill,
+            'total_5k': cls.five_kill,
+            'total_multi_kills': cls.multi_kills,
+            'total_1v1': cls.vs1,
+            'total_1v2': cls.vs2,
+            'total_1v3': cls.vs3,
+            'total_1v4': cls.vs4,
+            'total_1v5': cls.vs5,
+            'total_headshot_count': cls.headshot_count,
+            'total_armor_damage': cls.dmg_armor,
+            'total_health_damage': cls.dmg_health,
+            'total_fire_count': cls.fire_count,
+            'total_hit_count': cls.hit_count,
+            'total_throws_count': cls.throws_count,
+            'total_snipe_num': cls.snipe_num,
+            'total_game_count': cls.game_count,
+        }
+        average_fields = {
+            'avg_kills': cls.kill,
+            'avg_deaths': cls.death,
+            'avg_assists': cls.assist,
+            'avg_rating': cls.rating,
+            'avg_pw_rating': cls.pw_rating,
+            'avg_adpr': cls.adpr,
+            'avg_rws': cls.rws,
+            'avg_kast': cls.kast,
+            'avg_we': cls.we,
+            'avg_headshot_ratio': cls.headshot_ratio,
+            'avg_armor_damage': cls.dmg_armor,
+            'avg_health_damage': cls.dmg_health,
+            'avg_throws_count': cls.throws_count,
+        }
+        select_fields = [
+            cls.player_id,
+            fn.MAX(cls.nickname).alias('nickname'),
+            fn.MAX(cls.avatar).alias('avatar'),
+            fn.COUNT(fn.DISTINCT(cls.match_id)).alias('match_count'),
+            fn.COALESCE(
+                fn.SUM(Case(None, [(cls.mvp == True, 1)], 0)), 0
+            ).alias('match_mvp_count'),
+        ]
+        select_fields.extend(
+            fn.COALESCE(fn.SUM(field), 0).alias(name)
+            for name, field in total_fields.items()
+        )
+        select_fields.extend(
+            fn.COALESCE(fn.AVG(field), 0).alias(name)
+            for name, field in average_fields.items()
+        )
+
+        rows = list(
+            cls.select(*select_fields)
+            .where(cls.cup_name.in_(cup_names))
+            .group_by(cls.player_id)
+            .dicts()
+        )
+        player_ids = [row['player_id'] for row in rows]
+        player_map = {
+            player.player_id: player
+            for player in Player.select().where(Player.player_id.in_(player_ids))
+        } if player_ids else {}
+
+        def _ratio(numerator, denominator, precision=4):
+            return round(float(numerator or 0) / float(denominator or 0), precision) \
+                if denominator else 0.0
+
+        result = []
+        for row in rows:
+            for name in total_fields:
+                row[name] = int(row.get(name) or 0)
+            for name in average_fields:
+                row[name] = float(row.get(name) or 0)
+            row['match_count'] = int(row.get('match_count') or 0)
+            row['match_mvp_count'] = int(row.get('match_mvp_count') or 0)
+            row['kd_ratio'] = _ratio(row['total_kills'], row['total_deaths'])
+            row['fk_fd_ratio'] = _ratio(row['total_first_kills'], row['total_first_deaths'])
+            row['win_rate'] = _ratio(row['win_count'], row['match_count'])
+            row['headshot_ratio'] = _ratio(row['total_headshots'], row['total_kills'])
+            row['flash_success_ratio'] = _ratio(row['total_flash_success'], row['total_flashes'])
+            row['flash_teammate_ratio'] = _ratio(row['total_flash_teammate'], row['total_flashes'])
+            row['hit_ratio'] = _ratio(row['total_hit_count'], row['total_fire_count'])
+
+            player = player_map.get(row['player_id'])
+            if player:
+                row.update({
+                    'nickname': player.nickname or row.get('nickname'),
+                    'avatar': player.avatar or row.get('avatar'),
+                    'alias_name': player.alias_name or '',
+                    'steam_id': player.steam_id or '',
+                    'live_url': player.live_url or '',
+                    'in_library': bool(player.in_library),
+                })
+            else:
+                row.update({
+                    'alias_name': '',
+                    'steam_id': '',
+                    'live_url': '',
+                    'in_library': False,
+                })
+            result.append(row)
+
+        result.sort(key=lambda item: (-item['avg_rating'], item['player_id']))
+        return result
+
+    @classmethod
     def get_player_map_stats(cls, cup_name: str, player_id: str, play_day: str = None) -> List[Dict[str, Any]]:
         """获取选手地图统计数据"""
         try:

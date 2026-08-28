@@ -36,6 +36,7 @@ export const api = {
   logout: () => request('/api/admin/logout', { method: 'POST' }),
   me: () => request('/api/admin/me'),
   get: (path) => request(path),
+  post: (path, body) => request(path, { method: 'POST', body: JSON.stringify(body) }),
   send: (path, params) => request(path + (path.includes('?') ? '&' : '?') + new URLSearchParams(params)),
 }
 

@@ -2,23 +2,27 @@
 import io
 import os
 import random
+import secrets
 import string
 import time
 from datetime import datetime
 from functools import wraps
 
-from flask import Response, redirect, request, session, url_for
-from werkzeug.security import check_password_hash
+from flask import Response, current_app, redirect, request, session, url_for
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from ajlog import logger
 from config import REDIS_URL
-from database import AdminUser
+from database import AdminUser, Config
 from utils import error
 
 CAPTCHA_LEN = 4
 CAPTCHA_TTL = 180
 MAX_FAILS = 8
 LOCK_SECONDS = 600
+EXTERNAL_TOKEN_HASH_KEY = 'external_api_token_hash'
+EXTERNAL_TOKEN_HINT_KEY = 'external_api_token_hint'
+EXTERNAL_TOKEN_MIN_LENGTH = 32
 
 _redis = None
 
@@ -171,6 +175,81 @@ def admin_required(fn):
                 return error(401, "未登录"), 401
             nxt = request.full_path if request.query_string else request.path
             return redirect(url_for('admin_login', next=nxt))
+        return fn(*args, **kwargs)
+    return wrapper
+
+
+def external_api_token_status():
+    """Return safe token metadata without ever exposing a stored token."""
+    environment_token = (current_app.config.get('EXTERNAL_API_TOKEN') or '').strip()
+    database_hash = Config.get_value(EXTERNAL_TOKEN_HASH_KEY) or ''
+    database_hint = Config.get_value(EXTERNAL_TOKEN_HINT_KEY) or ''
+    if environment_token:
+        return {
+            'configured': True,
+            'source': 'environment',
+            'hint': f'••••••••{environment_token[-4:]}',
+            'environment_locked': True,
+            'database_fallback_configured': bool(database_hash),
+        }
+    if database_hash:
+        return {
+            'configured': True,
+            'source': 'database',
+            'hint': f'••••••••{database_hint}' if database_hint else '••••••••',
+            'environment_locked': False,
+            'database_fallback_configured': True,
+        }
+    return {
+        'configured': False,
+        'source': 'none',
+        'hint': '',
+        'environment_locked': False,
+        'database_fallback_configured': False,
+    }
+
+
+def save_external_api_token(token):
+    if not isinstance(token, str):
+        raise ValueError('API token 必须是字符串')
+    token = token.strip()
+    if len(token) < EXTERNAL_TOKEN_MIN_LENGTH:
+        raise ValueError(f'API token 至少需要 {EXTERNAL_TOKEN_MIN_LENGTH} 个字符')
+    Config.set_value(EXTERNAL_TOKEN_HASH_KEY, generate_password_hash(token))
+    Config.set_value(EXTERNAL_TOKEN_HINT_KEY, token[-4:])
+
+
+def revoke_database_external_api_token():
+    Config.delete().where(Config.key.in_([
+        EXTERNAL_TOKEN_HASH_KEY,
+        EXTERNAL_TOKEN_HINT_KEY,
+    ])).execute()
+
+
+def external_api_token_required(fn):
+    """Require the configured token for read-only external API routes."""
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        environment_token = (current_app.config.get('EXTERNAL_API_TOKEN') or '').strip()
+        stored_hash = '' if environment_token else (Config.get_value(EXTERNAL_TOKEN_HASH_KEY) or '')
+        if not environment_token and not stored_hash:
+            logger.error('对外 API token 未配置，接口已关闭')
+            return error(503, "对外 API 未配置"), 503
+
+        authorization = (request.headers.get('Authorization') or '').strip()
+        scheme, separator, credentials = authorization.partition(' ')
+        provided = credentials.strip() if separator and scheme.lower() == 'bearer' else ''
+        if not provided:
+            provided = (request.headers.get('X-API-Token') or '').strip()
+
+        valid = (
+            secrets.compare_digest(provided, environment_token)
+            if environment_token else bool(provided and check_password_hash(stored_hash, provided))
+        )
+        if not valid:
+            response = error(401, "无效或缺失的 API token")
+            response.headers['WWW-Authenticate'] = 'Bearer'
+            return response, 401
         return fn(*args, **kwargs)
     return wrapper
 
