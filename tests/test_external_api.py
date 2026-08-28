@@ -14,8 +14,10 @@ os.environ['ADMIN_PASSWORD'] = 'test-admin-password'
 
 from app import app  # noqa: E402
 from auth import EXTERNAL_TOKEN_HASH_KEY, EXTERNAL_TOKEN_HINT_KEY  # noqa: E402
-from database import Config, Match, MatchPlayer, MatchSelection, Player, Season, db  # noqa: E402
+from database import (Config, CupDayChampion, Match, MatchPlayer, MatchSelection,
+                      Player, PlayerTitle, Season, SeasonRoster, db)  # noqa: E402
 from peewee import BooleanField, FloatField, IntegerField  # noqa: E402
+from scheduler import set_crawl_status  # noqa: E402
 
 
 def create_match_player(match_id, player_id, cup_name, **values):
@@ -277,6 +279,86 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         records = response.get_json()['data']['list']
         self.assertEqual(records[0]['start_time'], '2025-02-03T20:15:30')
+
+    def test_admin_can_delete_season_and_related_data(self):
+        cup = 'season-delete-test'
+        match_id = 'm-delete-test'
+        Season.create(
+            cup_name=cup, cup_alias='待删除赛季', name='待删除赛季',
+            start_date=datetime(2025, 1, 1), end_date=datetime(2025, 2, 1),
+            status='archived', match_type='custom',
+        )
+        SeasonRoster.create(season_cup_name=cup, player_id='p1')
+        Match.create(
+            match_id=match_id, map_name='荒漠迷城', map_name_en='de_mirage',
+            start_time=datetime(2025, 1, 2, 20), end_time=datetime(2025, 1, 2, 21),
+            duration=3600, win_team=1, team1_name='Alpha', team1_score=13,
+            team1_half_score=7, team2_name='Bravo', team2_score=8,
+            team2_half_score=5, game_mode='MR12', cup_name=cup, play_day='20250102',
+        )
+        create_match_player(match_id, 'p1', cup)
+        MatchSelection.create(
+            match_id=match_id, season_cup_name=cup, status='approved',
+            source_type='custom', play_day='20250102', roster_hit_count=1,
+        )
+        CupDayChampion.create(cup_name=cup, day='20250102')
+        PlayerTitle.create(
+            player_id='p1', cup_name=cup, play_day='20250102',
+            title_name='测试称号', title_description='测试',
+            title_category='achievement', title_type='positive',
+        )
+        Config.set_value(f'crawl_enabled:{cup}', '0')
+        Config.set_value(f'crawl_status:{cup}', '{"state":"done"}')
+
+        with self.client.session_transaction() as session:
+            session['admin_user'] = 'admin'
+        response = self.client.post('/api/admin/season/delete', json={'cup': cup})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()['data']
+        self.assertEqual(payload['message'], '赛季已删除')
+        self.assertIsNone(Season.get_by_cup(cup))
+        self.assertEqual(SeasonRoster.select().where(SeasonRoster.season_cup_name == cup).count(), 0)
+        self.assertEqual(MatchSelection.select().where(MatchSelection.season_cup_name == cup).count(), 0)
+        self.assertEqual(PlayerTitle.select().where(PlayerTitle.cup_name == cup).count(), 0)
+        self.assertEqual(CupDayChampion.select().where(CupDayChampion.cup_name == cup).count(), 0)
+        self.assertIsNone(Config.get_value(f'crawl_enabled:{cup}'))
+        self.assertIsNone(Config.get_value(f'crawl_status:{cup}'))
+
+        # Raw crawl data remains available for a future re-import, but no
+        # longer contributes to this deleted season.
+        self.assertIsNone(Match.get(Match.match_id == match_id).cup_name)
+        self.assertIsNone(MatchPlayer.get(MatchPlayer.match_id == match_id).cup_name)
+
+    def test_admin_delete_season_validates_auth_and_existence(self):
+        response = self.client.post('/api/admin/season/delete', json={'cup': 'missing'})
+        self.assertEqual(response.status_code, 401)
+
+        with self.client.session_transaction() as session:
+            session['admin_user'] = 'admin'
+        response = self.client.post('/api/admin/season/delete', json={'cup': 'missing'})
+        self.assertEqual(response.status_code, 404)
+
+    def test_admin_cannot_delete_a_running_season(self):
+        cup = 'season-running-delete-test'
+        Season.create(
+            cup_name=cup, cup_alias='采集中赛季', name='采集中赛季',
+            start_date=datetime(2025, 1, 1), end_date=datetime(2099, 2, 1),
+            status='active', match_type='custom',
+        )
+        set_crawl_status(
+            cup,
+            state='running',
+            heartbeat_at=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        )
+        try:
+            with self.client.session_transaction() as session:
+                session['admin_user'] = 'admin'
+            response = self.client.post('/api/admin/season/delete', json={'cup': cup})
+            self.assertEqual(response.status_code, 409)
+            self.assertIsNotNone(Season.get_by_cup(cup))
+        finally:
+            Season.delete_with_related_data(cup)
 
 
 if __name__ == '__main__':

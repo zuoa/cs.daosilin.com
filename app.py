@@ -700,6 +700,35 @@ def api_admin_season_save():
     return success("赛季已保存")
 
 
+@app.route('/api/admin/season/delete', methods=['POST', 'DELETE'])
+def api_admin_season_delete():
+    if not _admin_authed():
+        return error(403, "无权限访问")
+    payload = request.get_json(silent=True) or {}
+    cup = (payload.get('cup') or request.args.get('cup') or '').strip()
+    if not cup:
+        return error(400, "参数 cup 不能为空"), 400
+
+    with _crawl_lock:
+        if cup in _crawl_running or crawl_is_running(cup):
+            return error(409, "该赛季正在采集，请等待本轮完成后再删除"), 409
+        if not Season.get_by_cup(cup):
+            return error(404, "赛季不存在"), 404
+        set_auto_crawl_enabled(cup, False)
+        deleted = Season.delete_with_related_data(cup)
+
+    try:
+        cache.clear()
+    except Exception:
+        pass
+    logger.info(f"赛季 {cup} 已删除: {deleted}")
+    return success({
+        'message': '赛季已删除',
+        'cup_name': cup,
+        'deleted': deleted,
+    })
+
+
 @app.route('/api/admin/season/roster/get')
 def api_admin_season_roster_get():
     if not _admin_authed():
@@ -762,6 +791,8 @@ def api_admin_season_crawl():
     with _crawl_lock:
         if cup in _crawl_running:
             return error(409, "该赛季正在采集")
+        if not Season.get_by_cup(cup):
+            return error(404, "赛季不存在"), 404
         _crawl_running.add(cup)
 
     def _run():

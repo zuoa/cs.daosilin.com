@@ -416,7 +416,7 @@
       :eyebrow="editingExisting ? 'EDIT TOURNAMENT' : 'NEW TOURNAMENT'"
       description="设置公开标识、统计时间范围与比赛纳入规则。"
       size="large"
-      :persistent="savingSeason"
+      :persistent="savingSeason || deletingSeason"
       @close="closeSeasonModal"
     >
       <form class="stack-form" @submit.prevent="saveSeason">
@@ -472,8 +472,19 @@
           <small>关闭后仍采集并展示比赛、选手数据与排名，不运行冠军判断任务。</small>
         </label>
         <div class="form-actions">
-          <button class="button subtle" type="button" :disabled="savingSeason" @click="closeSeasonModal">取消</button>
-          <button class="button primary" type="submit" :disabled="savingSeason">
+          <button
+            v-if="editingExisting"
+            class="button danger-ghost season-delete-button"
+            type="button"
+            :disabled="savingSeason || deletingSeason"
+            @click="deleteSeason"
+          >
+            <span v-if="deletingSeason" class="button-spinner dark"></span>
+            <AppIcon v-else name="trash" />
+            {{ deletingSeason ? '删除中…' : '删除杯赛' }}
+          </button>
+          <button class="button subtle" type="button" :disabled="savingSeason || deletingSeason" @click="closeSeasonModal">取消</button>
+          <button class="button primary" type="submit" :disabled="savingSeason || deletingSeason">
             <span v-if="savingSeason" class="button-spinner"></span>
             <AppIcon v-else name="save" />
             {{ savingSeason ? '保存中…' : '保存杯赛' }}
@@ -512,6 +523,7 @@ const checked = ref([])
 const toast = ref({ message: '', type: 'success' })
 const seasonLoading = ref(false)
 const savingSeason = ref(false)
+const deletingSeason = ref(false)
 const seasonModalOpen = ref(false)
 const savingRoster = ref(false)
 const matchLoading = ref(false)
@@ -665,7 +677,7 @@ function show(message, type = 'success') {
 }
 function resetForm() { form.value = defaultForm() }
 function closeSeasonModal() {
-  if (savingSeason.value) return
+  if (savingSeason.value || deletingSeason.value) return
   seasonModalOpen.value = false
   resetForm()
 }
@@ -731,6 +743,44 @@ async function saveSeason() {
     show(e.message, 'error')
   } finally {
     savingSeason.value = false
+  }
+}
+async function deleteSeason() {
+  const cup = form.value.cup.trim()
+  const season = seasons.value.find((item) => item.cup_name === cup)
+  if (!season) return show('赛季不存在或已被删除', 'error')
+  const name = displaySeason(season)
+  const confirmed = window.confirm(
+    `确认删除「${name}」？\n\n赛季配置、种子名单、比赛纳入记录、称号和冠军结果将被移除。原始比赛数据会保留但解除赛季关联。此操作无法撤销。`,
+  )
+  if (!confirmed) return
+
+  deletingSeason.value = true
+  try {
+    const data = await api.post('/api/admin/season/delete', { cup })
+    const deletedCurrent = currentCup.value === cup
+    seasonModalOpen.value = false
+    resetForm()
+    if (deletedCurrent) {
+      currentCup.value = ''
+      checked.value = []
+      matches.value = []
+      seedChecked.value = []
+      rosterRaw.value = ''
+      closeMatch()
+      if (crawlTimer) {
+        clearInterval(crawlTimer)
+        crawlTimer = null
+      }
+      applyCrawl({ state: 'idle', message: '选择杯赛后可执行采集' })
+    }
+    await loadSeasons()
+    if (deletedCurrent && seasons.value.length) await selectCup(seasons.value[0].cup_name)
+    show(data?.message || '赛季已删除')
+  } catch (e) {
+    show(e.message, 'error')
+  } finally {
+    deletingSeason.value = false
   }
 }
 async function loadLibrary() {

@@ -26,6 +26,7 @@ const icons = {
   search: [['circle', { cx: '11', cy: '11', r: '7' }], ['path', { d: 'm20 20-4-4' }]],
   shield: [['path', { d: 'M12 3 4 6v5c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10V6Z' }], ['path', { d: 'm9 12 2 2 4-4' }]],
   target: [['circle', { cx: '12', cy: '12', r: '9' }], ['circle', { cx: '12', cy: '12', r: '4' }], ['path', { d: 'M12 1v4M12 19v4M1 12h4M19 12h4' }]],
+  trash: [['path', { d: 'M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 11v6M14 11v6' }]],
   trophy: [['path', { d: 'M8 4h8v5a4 4 0 0 1-8 0Z' }], ['path', { d: 'M8 6H4v2a4 4 0 0 0 4 4M16 6h4v2a4 4 0 0 1-4 4M12 13v5M8 21h8M9 18h6' }]],
   userPlus: [['circle', { cx: '9', cy: '8', r: '4' }], ['path', { d: 'M3 21v-2a6 6 0 0 1 12 0v2M19 8v6M16 11h6' }]],
   users: [['circle', { cx: '9', cy: '8', r: '4' }], ['path', { d: 'M3 21v-2a6 6 0 0 1 12 0v2M16 4.5a4 4 0 0 1 0 7.5M17 15a6 6 0 0 1 4 6' }]],

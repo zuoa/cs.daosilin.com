@@ -124,7 +124,9 @@ input::placeholder, textarea::placeholder { color: var(--color-muted); }
 .label-line { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .label-line span, .label-line output { color: var(--ink-500); font-family: var(--font-body); font-size: 0.69rem; }
 .form-actions { display: flex; align-items: center; justify-content: flex-end; gap: 9px; padding-top: 2px; }
+.season-delete-button { margin-right: auto; }
 .button-spinner { width: 15px; height: 15px; border: 2px solid var(--color-white-a45); border-top-color: var(--color-surface); border-radius: 50%; animation: spin .75s linear infinite; }
+.button-spinner.dark { border-color: var(--color-danger-line); border-top-color: var(--danger-dark); }
 
 .switch-row { position: relative; display: flex; min-height: 64px; align-items: center; justify-content: space-between; gap: 14px; border: 1px solid var(--line); border-radius: 11px; padding: 11px 13px; background: var(--surface-soft); cursor: pointer; }
 .switch-row > span:first-child { display: flex; flex: 1; flex-direction: column; }

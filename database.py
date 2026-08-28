@@ -1037,6 +1037,46 @@ class Season(BaseModel, CRUDMixin):
         rec['display_name'] = rec.get('cup_alias') or rec.get('name') or rec.get('cup_name')
         return rec
 
+    @classmethod
+    def delete_with_related_data(cls, cup_name: str) -> Optional[Dict[str, int]]:
+        """Delete a season and its derived data while retaining raw match rows.
+
+        Match and MatchPlayer are the reusable raw crawl result.  They are
+        detached from the deleted season so recreating the same cup does not
+        accidentally expose stale statistics.
+        """
+        season = cls.get_or_none(cls.cup_name == cup_name)
+        if season is None:
+            return None
+
+        with db.atomic():
+            counts = {
+                'rosters': SeasonRoster.delete().where(
+                    SeasonRoster.season_cup_name == cup_name
+                ).execute(),
+                'selections': MatchSelection.delete().where(
+                    MatchSelection.season_cup_name == cup_name
+                ).execute(),
+                'titles': PlayerTitle.delete().where(
+                    PlayerTitle.cup_name == cup_name
+                ).execute(),
+                'champions': CupDayChampion.delete().where(
+                    CupDayChampion.cup_name == cup_name
+                ).execute(),
+                'match_players_detached': MatchPlayer.update(cup_name=None).where(
+                    MatchPlayer.cup_name == cup_name
+                ).execute(),
+                'matches_detached': Match.update(cup_name=None).where(
+                    Match.cup_name == cup_name
+                ).execute(),
+                'crawl_configs': Config.delete().where(Config.key.in_([
+                    f'crawl_enabled:{cup_name}',
+                    f'crawl_status:{cup_name}',
+                ])).execute(),
+            }
+            counts['seasons'] = cls.delete().where(cls.cup_name == cup_name).execute()
+        return counts
+
 
 class SeasonRoster(BaseModel, CRUDMixin):
     """赛季名单（白名单 player_id）"""
