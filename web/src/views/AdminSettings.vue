@@ -51,7 +51,7 @@
                 <strong>{{ status.configured ? '轮换凭证' : '创建凭证' }}</strong>
                 <p>系统生成 256-bit 随机 token，数据库仅保存单向哈希。</p>
               </div>
-              <button class="button primary" type="button" :disabled="busy" @click="generateToken">
+              <button class="button primary" type="button" :disabled="Boolean(busy)" @click="generateToken">
                 <span v-if="busy === 'generate'" class="button-spinner"></span>
                 <AppIcon v-else name="refresh" />{{ status.configured ? '生成并替换' : '生成 token' }}
               </button>
