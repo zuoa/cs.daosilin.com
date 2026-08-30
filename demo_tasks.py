@@ -33,7 +33,15 @@ def _safe_error(exc, secrets=()):
     for secret in secrets:
         if secret:
             message = message.replace(str(secret), '[REDACTED]')
-    message = re.sub(r'(?i)(access_token=)[^&\s]+', r'\1[REDACTED]', message)
+    sensitive_query_keys = (
+        'access_token|signature|ossaccesskeyid|x-oss-signature|'
+        'x-oss-credential|x-oss-security-token'
+    )
+    message = re.sub(
+        rf'(?i)((?:[?&])(?:{sensitive_query_keys})=)[^&\s]+',
+        r'\1[REDACTED]',
+        message,
+    )
     return message[:2000]
 
 
@@ -87,13 +95,20 @@ def schedule_demo_analysis(match_id: str, force=False):
                       error_message='REDIS_URL 未配置')
     job_id = _demo_job_id(row.id, match_id, DEMO_METRIC_VERSION)
     existing = queue.fetch_job(job_id)
-    if existing and existing.get_status(refresh=True) in ('queued', 'started', 'deferred', 'scheduled'):
-        return row
     if existing:
+        existing_status = existing.get_status(refresh=True)
+        if existing_status == 'started':
+            return row
+        if not force and existing_status in ('queued', 'deferred', 'scheduled'):
+            return row
         try:
+            # A manual retry must replace an interval-based retry in
+            # ScheduledJobRegistry instead of silently waiting for it.
+            if existing_status in ('queued', 'deferred', 'scheduled'):
+                existing.cancel()
             existing.delete()
-        except Exception:
-            pass
+        except Exception as exc:
+            raise RuntimeError('无法清理已有 Demo 队列任务，请稍后重试') from exc
     from rq import Retry
     queue.enqueue(
         run_demo_analysis,

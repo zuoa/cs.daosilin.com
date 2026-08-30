@@ -5,12 +5,13 @@ import tempfile
 import unittest
 import bz2
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from cryptography.fernet import Fernet
 from peewee import BooleanField, DoubleField, FloatField, IntegerField
 
 from app import app
+import demo_worker
 from database import (Config, DemoAnalysis, DemoCredential, DemoPlayerStats,
                       MatchPlayer, Player, create_tables, db)
 from demo_service import (attach_demo_stats, demo_analysis_enabled,
@@ -190,14 +191,66 @@ class DemoAnalysisTest(unittest.TestCase):
         self.assertEqual(row.status, 'blocked_credentials')
         self.assertEqual(row.error_code, 'credentials_missing')
 
+    def test_manual_retry_replaces_scheduled_rq_retry(self):
+        set_demo_analysis_enabled(True)
+        existing = MagicMock()
+        existing.get_status.return_value = 'scheduled'
+        queue = MagicMock()
+        queue.fetch_job.return_value = existing
+
+        with patch('demo_tasks.has_demo_credential', return_value=True), \
+                patch('demo_tasks._queue', return_value=queue):
+            row = schedule_demo_analysis('PVP@manual-retry', force=True)
+
+        existing.cancel.assert_called_once_with()
+        existing.delete.assert_called_once_with()
+        queue.enqueue.assert_called_once()
+        self.assertEqual(row.status, 'queued')
+        self.assertIsNone(row.error_message)
+
+    def test_automatic_scheduling_keeps_existing_scheduled_retry(self):
+        set_demo_analysis_enabled(True)
+        existing = MagicMock()
+        existing.get_status.return_value = 'scheduled'
+        queue = MagicMock()
+        queue.fetch_job.return_value = existing
+
+        with patch('demo_tasks.has_demo_credential', return_value=True), \
+                patch('demo_tasks._queue', return_value=queue):
+            row = schedule_demo_analysis('PVP@automatic-retry')
+
+        existing.cancel.assert_not_called()
+        existing.delete.assert_not_called()
+        queue.enqueue.assert_not_called()
+        self.assertEqual(row.status, 'pending')
+
     def test_sensitive_query_values_are_redacted_from_errors(self):
         token = 'secret-token-value'
+        oss_key = 'LTAI-secret-key'
+        signature = 'signed-secret-value'
         message = _safe_error(
-            RuntimeError(f'https://example.test/demo?access_token={token}&match_id=1'),
+            RuntimeError(
+                f'https://example.test/demo?access_token={token}&match_id=1'
+                f'&OSSAccessKeyId={oss_key}&Signature={signature}'
+            ),
             (token,),
         )
         self.assertNotIn(token, message)
+        self.assertNotIn(oss_key, message)
+        self.assertNotIn(signature, message)
         self.assertIn('[REDACTED]', message)
+
+    def test_demo_worker_runs_scheduler_for_interval_retries(self):
+        connection = MagicMock()
+        worker = MagicMock()
+        with patch.object(demo_worker, 'REDIS_URL', 'redis://example.test/0'), \
+                patch.object(demo_worker.Redis, 'from_url', return_value=connection), \
+                patch.object(demo_worker, 'Queue') as queue_class, \
+                patch.object(demo_worker, 'Worker', return_value=worker):
+            demo_worker.main()
+
+        queue_class.assert_called_once()
+        worker.work.assert_called_once_with(with_scheduler=True)
 
     def test_bzip_demo_is_bounded_extracted_and_header_checked(self):
         root = Path(self.temp_dir)
