@@ -3,7 +3,8 @@ from datetime import datetime
 
 from ajlog import logger
 from config import ADMIN_PASSWORD, ADMIN_USERNAME
-from database import (AdminUser, SchemaMigration, _add_column, _column_exists, _table_exists,
+from database import (AdminUser, DemoAnalysis, DemoCredential, DemoPlayerStats,
+                      SchemaMigration, _add_column, _column_exists, _table_exists,
                       db, is_postgres)
 
 
@@ -122,6 +123,11 @@ def _m010_advanced_match_stats():
     logger.info('比赛原始详情、补枪、道具伤害与对位击杀字段已补齐')
 
 
+def _m011_demo_analysis():
+    db.create_tables([DemoCredential, DemoAnalysis, DemoPlayerStats], safe=True)
+    logger.info('Demo 凭证、任务状态与选手事件统计表已创建')
+
+
 MIGRATIONS = [
     ('001_player_in_library', _m001_player_in_library),
     ('002_season_hit_ratio', _m002_season_hit_ratio),
@@ -133,6 +139,7 @@ MIGRATIONS = [
     ('008_player_avatar_sources', _m008_player_avatar_sources),
     ('009_player_perfect_rank', _m009_player_perfect_rank),
     ('010_advanced_match_stats', _m010_advanced_match_stats),
+    ('011_demo_analysis', _m011_demo_analysis),
 ]
 
 

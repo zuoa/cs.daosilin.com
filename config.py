@@ -25,6 +25,23 @@ ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', '')
 # administrator can configure a database-backed token from the control panel.
 EXTERNAL_API_TOKEN = (os.getenv('EXTERNAL_API_TOKEN') or '').strip()
 
+# Demo analysis is isolated from the normal crawl path. A Fernet key is
+# required before the admin panel is allowed to persist a PWA access token.
+DEMO_ANALYSIS_ENABLED = (os.getenv('DEMO_ANALYSIS_ENABLED', '0').strip().lower()
+                         in ('1', 'true', 'yes', 'on'))
+DEMO_CREDENTIAL_ENCRYPTION_KEY = (
+    os.getenv('DEMO_CREDENTIAL_ENCRYPTION_KEY') or ''
+).strip()
+DEMO_STORAGE_PATH = os.getenv(
+    'DEMO_STORAGE_PATH',
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'demos'),
+)
+DEMO_MAX_BYTES = int(os.getenv('DEMO_MAX_BYTES', str(1024 * 1024 * 1024)))
+DEMO_ANALYZER_PATH = os.getenv('DEMO_ANALYZER_PATH', '/usr/local/bin/cs-demo-analyzer')
+DEMO_ANALYZER_TIMEOUT = int(os.getenv('DEMO_ANALYZER_TIMEOUT', '840'))
+DEMO_METRIC_VERSION = os.getenv('DEMO_METRIC_VERSION', 'v1').strip() or 'v1'
+DEMO_BACKFILL_DAYS = int(os.getenv('DEMO_BACKFILL_DAYS', '30'))
+
 # 完美段位每天定时刷新。Cron 小时列表使用逗号分隔，例如 2,8,14,20。
 PERFECT_RANK_REFRESH_HOURS = (
     os.getenv('PERFECT_RANK_REFRESH_HOURS') or '2,8,14,20'

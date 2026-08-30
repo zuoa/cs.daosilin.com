@@ -6,6 +6,7 @@ from urllib.parse import urlsplit
 
 from flask import Flask, request, send_from_directory
 from flask_caching import Cache
+from peewee import fn
 
 import title_service
 from ajlog import logger
@@ -16,10 +17,14 @@ from auth import (captcha_ok, captcha_response, clear_login_fail, current_admin,
                   revoke_database_external_api_token, save_external_api_token,
                   verify_password)
 from champion_service import judge_champion
-from config import (ADMIN_PASSWORD, ADMIN_USERNAME, EXTERNAL_API_TOKEN, REDIS_URL,
+from config import (ADMIN_PASSWORD, ADMIN_USERNAME, DEMO_ANALYSIS_ENABLED,
+                    DEMO_BACKFILL_DAYS, EXTERNAL_API_TOKEN, REDIS_URL,
                     SECRET_KEY, SITE_NAME)
-from database import (AdminUser, MatchPlayer, Player, CupDayChampion, create_tables, Config, PlayerTitle,
-                      Match, Season, SeasonRoster, MatchSelection, import_history_sql)
+from database import (AdminUser, DemoAnalysis, MatchPlayer, Player, CupDayChampion,
+                      create_tables, Config, PlayerTitle, Match, Season, SeasonRoster,
+                      MatchSelection, import_history_sql)
+from demo_service import (demo_credential_status, revoke_demo_credential,
+                          save_demo_credential)
 from live_service import (LiveRoomError, fetch_live_avatar, normalize_live_room,
                           resolve_live_room)
 from scheduler import (crawl_season_with_status, get_crawl_status,
@@ -201,10 +206,22 @@ def _player_detail_payload(player_id, cup, day=None):
             except StopIteration:
                 player_rankings[field] = len(all_players_data)
     match_records = MatchPlayer.get_player_match_records(cup, player_id, day)
+    analysis_by_match = {
+        row.match_id: row
+        for row in DemoAnalysis.select().where(
+            DemoAnalysis.match_id.in_([record['match_id'] for record in match_records])
+        )
+    } if match_records else {}
     for record in match_records:
         record['start_time'] = _iso_dt(record.get('start_time'))
         record['end_time'] = _iso_dt(record.get('end_time'))
         record['mvp'] = bool(record.get('mvp'))
+        analysis = analysis_by_match.get(record['match_id'])
+        record['demo_analysis'] = ({
+            'status': analysis.status,
+            'metric_version': analysis.metric_version,
+            'updated_at': _iso_dt(analysis.updated_at),
+        } if analysis else {'status': 'pending'})
 
     return {
         'player': player,
@@ -1178,6 +1195,89 @@ def api_admin_external_api_token():
                    if status['environment_locked'] else 'API token 已撤销')
         return _external_token_admin_response({'message': message})
     return error(400, "action 只能是 generate、save 或 revoke"), 400
+
+
+def _demo_admin_status(extra=None):
+    payload = demo_credential_status()
+    counts = {
+        row.status: row.count
+        for row in (DemoAnalysis
+                    .select(DemoAnalysis.status, fn.COUNT(DemoAnalysis.id).alias('count'))
+                    .group_by(DemoAnalysis.status))
+    }
+    payload.update({
+        'enabled': DEMO_ANALYSIS_ENABLED,
+        'backfill_days': DEMO_BACKFILL_DAYS,
+        'job_counts': counts,
+    })
+    if extra:
+        payload.update(extra)
+    response = success(payload)
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate'
+    return response
+
+
+@app.route('/api/admin/demo-settings', methods=['GET', 'POST'])
+def api_admin_demo_settings():
+    if request.method == 'GET':
+        return _demo_admin_status()
+    data = request.get_json(silent=True) or {}
+    action = str(data.get('action') or 'save').strip().lower()
+    if action == 'save':
+        try:
+            save_demo_credential(data.get('steam_id'), data.get('access_token'))
+        except ValueError as exc:
+            return error(400, str(exc)), 400
+        try:
+            from demo_tasks import reconcile_demo_jobs
+            result = reconcile_demo_jobs()
+        except Exception as exc:
+            logger.error(f'Demo 凭证保存后入队失败: {exc}')
+            result = {'scheduled': 0}
+        return _demo_admin_status({'message': f'Demo 凭证已加密保存，已调度 {result.get("scheduled", 0)} 场'})
+    if action == 'revoke':
+        revoke_demo_credential()
+        return _demo_admin_status({'message': 'Demo 凭证已删除，已排队任务将进入凭证阻塞状态'})
+    if action == 'backfill':
+        from demo_tasks import reconcile_demo_jobs
+        result = reconcile_demo_jobs()
+        return _demo_admin_status({'message': f'已扫描 {result["eligible"]} 场，调度 {result["scheduled"]} 场'})
+    return error(400, 'action 只能是 save、revoke 或 backfill'), 400
+
+
+@app.route('/api/admin/demo-jobs')
+def api_admin_demo_jobs():
+    status = (request.args.get('status') or '').strip()
+    try:
+        limit = min(max(int(request.args.get('limit') or 50), 1), 200)
+    except ValueError:
+        return error(400, 'limit 必须是整数'), 400
+    query = DemoAnalysis.select().order_by(DemoAnalysis.updated_at.desc())
+    if status:
+        query = query.where(DemoAnalysis.status == status)
+    jobs = []
+    for row in query.limit(limit):
+        item = row.to_dict()
+        for key, value in list(item.items()):
+            if isinstance(value, datetime):
+                item[key] = value.isoformat(timespec='seconds')
+        # Filesystem locations are operational details, not admin API data.
+        item.pop('archive_path', None)
+        item.pop('raw_result_path', None)
+        jobs.append(item)
+    return success({'jobs': jobs, 'count': len(jobs)})
+
+
+@app.route('/api/admin/demo-jobs/<path:match_id>/retry', methods=['POST'])
+def api_admin_demo_job_retry(match_id):
+    if not Match.select().where(Match.match_id == match_id).exists():
+        return error(404, '比赛不存在'), 404
+    try:
+        from demo_tasks import schedule_demo_analysis
+        row = schedule_demo_analysis(match_id, force=True)
+    except Exception as exc:
+        return error(503, f'任务入队失败：{exc}'), 503
+    return success({'match_id': match_id, 'status': row.status})
 
 
 @app.route('/api/admin/login', methods=['POST'])

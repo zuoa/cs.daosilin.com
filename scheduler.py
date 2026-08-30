@@ -10,7 +10,8 @@ from dotenv import load_dotenv
 
 from ajlog import logger
 from champion_service import judge_champion
-from config import PERFECT_RANK_REFRESH_HOURS, PERFECT_RANK_REQUEST_INTERVAL
+from config import (DEMO_ANALYSIS_ENABLED, PERFECT_RANK_REFRESH_HOURS,
+                    PERFECT_RANK_REQUEST_INTERVAL)
 
 from database import (create_tables, Match, MatchPlayer, Player, Config,
                       Season, SeasonRoster, MatchSelection)
@@ -196,6 +197,13 @@ def _store_match(match_data, assigned_cup_name=None, play_day=None, match_id=Non
             Player.create(**player_model)
             logger.info(f"玩家 {player_id} 已保存（非库内）")
 
+    if DEMO_ANALYSIS_ENABLED:
+        try:
+            from demo_tasks import schedule_demo_analysis
+            schedule_demo_analysis(match_id)
+        except Exception as exc:
+            # Demo is a second-stage enrichment and must never block the crawl.
+            logger.error(f'Demo 任务入队失败 match={match_id}: {exc}')
     return match_id
 
 
@@ -635,6 +643,20 @@ def create_scheduler():
     logger.info(
         f'完美段位任务已添加：每天 {PERFECT_RANK_REFRESH_HOURS} 点的 15 分执行，启动后立即执行一次'
     )
+
+    if DEMO_ANALYSIS_ENABLED:
+        from demo_tasks import reconcile_demo_jobs
+        scheduler.add_job(
+            func=reconcile_demo_jobs,
+            trigger=CronTrigger(minute='*/5'),
+            id='demo_analysis_reconcile',
+            name='Demo 分析任务对账与近 30 天回填',
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            next_run_time=datetime.datetime.now() + datetime.timedelta(seconds=30),
+        )
+        logger.info('Demo 分析对账任务已添加：每 5 分钟执行，首次启动回填近 30 天')
 
     return scheduler
 

@@ -2,7 +2,7 @@
   <AdminLayout
     eyebrow="SECURITY"
     title="API 与安全"
-    description="管理对外 Player 数据接口的访问凭证。后台生成的凭证只会显示一次。"
+    description="管理对外 Player API 与异步 Demo 分析所需的访问凭证。"
   >
     <div v-if="loading" class="loading-state"><span class="loader"></span><p>正在读取 API 配置…</p></div>
 
@@ -119,6 +119,57 @@
       </aside>
     </div>
 
+    <section v-if="!loading" class="panel token-panel" aria-labelledby="demo-title" style="margin-top: 24px">
+      <div class="panel-header">
+        <div><h2 id="demo-title">Demo Analysis</h2><p>独立 Worker · 新比赛与近 30 天自动回填</p></div>
+        <span class="status-badge" :class="demo.configured && demo.enabled ? 'success' : 'neutral'">
+          <span class="status-dot"></span>{{ demo.enabled ? (demo.configured ? '运行中' : '待配置') : '功能未启用' }}
+        </span>
+      </div>
+      <div class="token-content">
+        <div class="token-status-card">
+          <span class="metric-icon" :class="demo.configured ? 'green' : 'slate'"><AppIcon name="database" /></span>
+          <div><small>PWA 下载凭证</small><strong>{{ demo.token_hint || '尚未保存 access token' }}</strong><span>{{ demo.steam_id || '需要 SteamID64' }}</span></div>
+        </div>
+        <div v-if="!demo.encryption_ready" class="inline-alert" role="alert">
+          <AppIcon name="shield" /><span><strong>缺少加密密钥</strong>请先配置 DEMO_CREDENTIAL_ENCRYPTION_KEY；后台不会明文保存 token。</span>
+        </div>
+        <form class="custom-token-form" @submit.prevent="saveDemoCredential">
+          <div class="field-group">
+            <label for="demo-steam-id">PWA SteamID64</label>
+            <input id="demo-steam-id" v-model="demoSteamId" autocomplete="off" placeholder="7656119…" :disabled="Boolean(demoBusy)">
+          </div>
+          <div class="field-group">
+            <label for="demo-token">PWA access token</label>
+            <div class="token-input-line">
+              <input id="demo-token" v-model="demoToken" type="password" autocomplete="new-password" placeholder="仅在保存时传输" :disabled="Boolean(demoBusy)">
+              <button class="button primary" type="submit" :disabled="Boolean(demoBusy) || !demo.encryption_ready || !demoSteamId || demoToken.length < 16"><AppIcon name="save" />加密保存</button>
+            </div>
+            <small>token 只会在 Worker 内存中解密；日志、接口与任务记录均不返回明文或签名 URL。</small>
+          </div>
+        </form>
+        <div class="token-actions">
+          <div><strong>任务概况</strong><p>{{ demoJobSummary }}</p></div>
+          <button class="button subtle" type="button" :disabled="Boolean(demoBusy) || !demo.configured" @click="demoAction('backfill')"><AppIcon name="refresh" />扫描近 30 天</button>
+          <button v-if="demo.configured" class="button danger-ghost" type="button" :disabled="Boolean(demoBusy)" @click="revokeDemo"><AppIcon name="archive" />删除凭证</button>
+        </div>
+      </div>
+    </section>
+
+    <section v-if="!loading && demoJobs.length" class="panel" style="margin-top: 24px">
+      <div class="panel-header"><div><h2>最近 Demo 任务</h2></div><span class="result-count">{{ demoJobs.length }} 条</span></div>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead><tr><th>比赛</th><th>状态</th><th>尝试</th><th>更新时间</th><th>说明</th><th></th></tr></thead>
+          <tbody><tr v-for="job in demoJobs" :key="job.match_id">
+            <td><code>{{ job.match_id }}</code></td><td><span class="status-badge" :class="job.status === 'completed' ? 'success' : 'neutral'">{{ job.status }}</span></td>
+            <td>{{ job.attempt_count }}</td><td>{{ job.updated_at?.replace('T', ' ') }}</td><td>{{ job.error_message || '—' }}</td>
+            <td><button v-if="!['completed', 'downloading', 'parsing'].includes(job.status)" class="button subtle small" type="button" @click="retryDemo(job.match_id)">重试</button></td>
+          </tr></tbody>
+        </table>
+      </div>
+    </section>
+
     <div v-if="toast.message" class="toast" :class="toast.type" :role="toast.type === 'error' ? 'alert' : 'status'">
       <AppIcon :name="toast.type === 'error' ? 'alert' : 'check'" />{{ toast.message }}
     </div>
@@ -136,6 +187,11 @@ const busy = ref('')
 const customToken = ref('')
 const revealedToken = ref('')
 const status = ref({ configured: false, source: 'none', hint: '', environment_locked: false })
+const demo = ref({ configured: false, enabled: false, encryption_ready: false, job_counts: {} })
+const demoJobs = ref([])
+const demoSteamId = ref('')
+const demoToken = ref('')
+const demoBusy = ref('')
 const toast = ref({ message: '', type: 'success' })
 let toastTimer
 
@@ -145,6 +201,7 @@ const sourceLabel = computed(() => ({
   none: '生成后即可调用对外接口',
 }[status.value.source] || ''))
 const canRevoke = computed(() => status.value.source === 'database' || status.value.database_fallback_configured)
+const demoJobSummary = computed(() => Object.entries(demo.value.job_counts || {}).map(([key, value]) => `${key} ${value}`).join(' · ') || '暂无任务')
 
 function show(message, type = 'success') {
   clearTimeout(toastTimer)
@@ -155,7 +212,13 @@ function show(message, type = 'success') {
 async function load() {
   loading.value = true
   try {
-    status.value = await api.get('/api/admin/external-api-token')
+    const [tokenStatus, demoStatus, jobs] = await Promise.all([
+      api.get('/api/admin/external-api-token'), api.get('/api/admin/demo-settings'), api.get('/api/admin/demo-jobs?limit=30'),
+    ])
+    status.value = tokenStatus
+    demo.value = demoStatus
+    demoSteamId.value = demoStatus.steam_id || ''
+    demoJobs.value = jobs.jobs || []
   } catch (error) {
     show(error.message, 'error')
   } finally {
@@ -194,6 +257,24 @@ function saveCustomToken() {
 function revokeToken() {
   if (!window.confirm('确认撤销数据库中保存的 API token？')) return
   mutate('revoke')
+}
+
+async function demoAction(action, extra = {}) {
+  demoBusy.value = action
+  try {
+    demo.value = await api.post('/api/admin/demo-settings', { action, ...extra })
+    demoToken.value = ''
+    const jobs = await api.get('/api/admin/demo-jobs?limit=30')
+    demoJobs.value = jobs.jobs || []
+    show(demo.value.message || 'Demo 配置已更新')
+  } catch (error) { show(error.message, 'error') } finally { demoBusy.value = '' }
+}
+function saveDemoCredential() { demoAction('save', { steam_id: demoSteamId.value.trim(), access_token: demoToken.value.trim() }) }
+function revokeDemo() { if (window.confirm('确认删除 PWA Demo 凭证？')) demoAction('revoke') }
+async function retryDemo(matchId) {
+  demoBusy.value = 'retry'
+  try { await api.post(`/api/admin/demo-jobs/${encodeURIComponent(matchId)}/retry`, {}); show('任务已重新排队'); await load() }
+  catch (error) { show(error.message, 'error') } finally { demoBusy.value = '' }
 }
 
 async function copyToken() {

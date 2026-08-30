@@ -62,6 +62,16 @@ GET /api/v1/external/players/<URL 编码后的赛季名>
 
 所有比率字段为 `0.0-1.0`，例如 `win_rate: 0.625` 表示 62.5%。WMPVP 当前的 `flash`（闪光投掷数）始终为 0，无法作为成功率分母，因此兼容字段 `flash_success_ratio` 与 `flash_teammate_ratio` 固定返回 `0.0`，新接入方不应使用它们。
 
+启用 Demo 分析后，每个选手还会返回：
+
+- `platform_data`：未经 Demo 替换的原平台聚合，便于审计与兼容。
+- `demo_data`：只聚合已完成 Demo 的事件指标，缺失比赛不会补 0。
+- `demo_coverage`：`completed / total / ratio` 覆盖率。
+- `demo_analysis`：解析器、固定 commit、指标版本和实验性 Rating 标记。
+- `metric_source`：`platform`、`mixed` 或 `demo`。扁平通用字段是逐场选择数据源后的有效值；Demo 专属字段只在存在 Demo 样本时出现。
+
+Demo 闪光指标应使用 `flash_thrown`、`enemies_flashed`、`friends_flashed`、`enemy_flash_seconds`、`average_enemy_flash_seconds`、`enemies_per_flash` 与 `team_flash_share`，不要再使用旧的伪成功率字段。
+
 ## 查询单个选手
 
 接口：`GET /api/v1/external/player`

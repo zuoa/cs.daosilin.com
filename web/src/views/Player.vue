@@ -33,6 +33,7 @@
                     large
                   />
                   <span v-if="day" class="status-badge neutral">{{ day }}</span>
+                  <span v-if="stats.demo_coverage" class="status-badge" :class="stats.demo_coverage.completed ? 'success' : 'neutral'">Demo {{ stats.demo_coverage.completed }}/{{ stats.demo_coverage.total }}</span>
                   <a
                     v-if="player.live_url"
                     class="button primary small profile-live-link"
@@ -140,7 +141,7 @@
               <tbody>
                 <tr v-for="match in matchRecords" :key="match.match_id">
                   <td class="player-match-time"><strong>{{ formatMatchDate(match) }}</strong><small>{{ formatMatchClock(match.start_time) }}</small></td>
-                  <td><strong>{{ match.map_name || '未知地图' }}</strong><small>{{ match.game_mode || match.map_name_en || '—' }}</small></td>
+                  <td><strong>{{ match.map_name || '未知地图' }}</strong><small>{{ match.game_mode || match.map_name_en || '—' }} · Demo {{ match.demo_analysis?.status || 'pending' }}</small></td>
                   <td>
                     <div class="player-match-score">
                       <span>{{ match.team1_name || '队伍 A' }}</span>
@@ -194,6 +195,20 @@
               </dl>
             </article>
           </div>
+        </section>
+
+        <section v-if="stats.demo_data" class="panel player-section detailed-stats-panel">
+          <div class="panel-header">
+            <div><h2>Demo 事件分析</h2><p>仅以已完成 Demo 为分母；缺失比赛不会按 0 计入。</p></div>
+            <span class="result-count">覆盖 {{ stats.demo_coverage.completed }}/{{ stats.demo_coverage.total }} · v{{ stats.demo_analysis.metric_version }}</span>
+          </div>
+          <div class="detail-stat-groups">
+            <article v-for="group in demoGroups" :key="group.title">
+              <div class="stat-group-title"><AppIcon :name="group.icon" /><h3>{{ group.title }}</h3></div>
+              <dl><div v-for="item in group.items" :key="item.label"><dt>{{ item.label }}</dt><dd>{{ item.value }}</dd></div></dl>
+            </article>
+          </div>
+          <p class="player-update-note">Demo Rating 为实验性近似 Rating 3.0，不替代平台 PWR。</p>
         </section>
 
         <section v-if="killMatchups.length" class="panel player-section">
@@ -311,6 +326,35 @@ const statGroups = computed(() => {
     { title: '团队协作', icon: 'users', items: [
       { label: '补枪击杀', value: s.total_trade_frags || 0 }, { label: '补枪击杀占比', value: pct(s.trade_kill_share) },
       { label: '总道具伤害', value: s.total_utility_damage || 0 },
+    ] },
+  ]
+})
+const demoGroups = computed(() => {
+  const s = stats.value?.demo_data || {}
+  return [
+    { title: '闪光质量', icon: 'layers', items: [
+      { label: '闪光投掷', value: s.flash_thrown || 0 }, { label: '敌方致盲事件', value: s.enemies_flashed || 0 },
+      { label: '去重敌方致盲时长', value: `${n2(s.enemy_flash_seconds)}s` }, { label: '平均敌方致盲', value: `${n2(s.average_enemy_flash_seconds)}s` },
+      { label: '每颗闪光致盲敌人', value: n2(s.enemies_per_flash) }, { label: '队友致盲占比', value: pct(s.team_flash_share) },
+      { label: '闪光助攻', value: s.flash_assists || 0 },
+    ] },
+    { title: '道具效率', icon: 'database', items: [
+      { label: '投掷物', value: s.grenades_thrown || 0 }, { label: 'HE / 烟 / 火', value: `${s.he_thrown || 0} / ${s.smoke_thrown || 0} / ${(s.molotov_thrown || 0) + (s.incendiary_thrown || 0)}` },
+      { label: 'HE / 火焰伤害', value: `${s.he_damage || 0} / ${s.fire_damage || 0}` }, { label: '道具伤害/投掷', value: n2(s.utility_damage_per_throw) },
+      { label: '阵亡未用道具价值', value: `$${s.unused_utility_value || 0}` },
+    ] },
+    { title: '事件与协作', icon: 'users', items: [
+      { label: '补枪击杀', value: s.total_trade_frags || 0 }, { label: '被补枪死亡', value: s.total_deaths_traded || 0 },
+      { label: '被补枪率', value: pct(s.death_trade_rate) }, { label: '残局胜利', value: s.total_clutches_won || 0 },
+      { label: '开局击杀转回合胜率', value: pct(s.opening_round_conversion) }, { label: '队友击杀', value: s.total_team_kills || 0 },
+    ] },
+    { title: '分边表现', icon: 'activity', items: [
+      { label: 'CT / T 回合', value: `${s.ct_rounds || 0} / ${s.t_rounds || 0}` }, { label: 'CT / T 击杀', value: `${s.ct_kills || 0} / ${s.t_kills || 0}` },
+      { label: 'CT / T ADR', value: `${n2(s.ct_adr)} / ${n2(s.t_adr)}` }, { label: 'CT / T KAST', value: `${pct(s.ct_kast)} / ${pct(s.t_kast)}` },
+    ] },
+    { title: '实验性 Rating', icon: 'target', items: [
+      { label: 'Demo Rating', value: n2(s.demo_rating) }, { label: '击杀 / 伤害', value: `${n2(s.rating_kills)} / ${n2(s.rating_damage)}` },
+      { label: '生存 / eKAST', value: `${n2(s.rating_survival)} / ${n2(s.rating_kast)}` }, { label: '多杀 / 回合影响', value: `${n2(s.rating_multi_kill)} / ${n2(s.rating_round_swing)}` },
     ] },
   ]
 })

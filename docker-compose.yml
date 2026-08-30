@@ -28,6 +28,11 @@ services:
         condition: service_started
     ports:
       - "5001:5001"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://127.0.0.1:5001/api/v1/meta', timeout=3).raise_for_status()"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
     volumes:
       - ./data:/data
     environment:
@@ -41,6 +46,31 @@ services:
       EXTERNAL_API_TOKEN: ${EXTERNAL_API_TOKEN:-}
       PERFECT_RANK_REFRESH_HOURS: ${PERFECT_RANK_REFRESH_HOURS:-2,8,14,20}
       PERFECT_RANK_REQUEST_INTERVAL: ${PERFECT_RANK_REQUEST_INTERVAL:-0.2}
+      DEMO_ANALYSIS_ENABLED: ${DEMO_ANALYSIS_ENABLED:-0}
+      DEMO_CREDENTIAL_ENCRYPTION_KEY: ${DEMO_CREDENTIAL_ENCRYPTION_KEY:-}
+      DEMO_STORAGE_PATH: /data/demos
+
+  demo-worker:
+    image: ghcr.io/zuoa/cs.daosilin.com:main
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      app:
+        condition: service_healthy
+    command: ["python", "demo_worker.py"]
+    entrypoint: []
+    volumes:
+      - ./data:/data
+    environment:
+      TZ: Asia/Shanghai
+      DATABASE_URL: postgresql://cs:cs@db:5432/cs
+      REDIS_URL: redis://redis:6379/0
+      DEMO_ANALYSIS_ENABLED: ${DEMO_ANALYSIS_ENABLED:-0}
+      DEMO_CREDENTIAL_ENCRYPTION_KEY: ${DEMO_CREDENTIAL_ENCRYPTION_KEY:-}
+      DEMO_STORAGE_PATH: /data/demos
 
 volumes:
   pgdata:

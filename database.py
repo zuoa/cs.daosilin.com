@@ -673,7 +673,10 @@ class MatchPlayer(BaseModel, CRUDMixin):
                 'flash_success_ratio': 0.0,
                 'flash_teammate_ratio': 0.0,
             })
-            return data
+            # Demo analysis is a second stage. Its namespace and effective
+            # source metadata are attached lazily to avoid a module cycle.
+            from demo_service import attach_demo_stats
+            return attach_demo_stats(data, cup_name, player_id, play_day)
 
         except cls.DoesNotExist:
             logger.info("No records found for the given criteria")
@@ -846,7 +849,8 @@ class MatchPlayer(BaseModel, CRUDMixin):
                     'live_room_id': '',
                     'in_library': False,
                 })
-            result.append(row)
+            from demo_service import attach_demo_stats
+            result.append(attach_demo_stats(row, cup_names, row['player_id']))
 
         result.sort(key=lambda item: (-item['avg_rating'], item['player_id']))
         return result
@@ -1092,6 +1096,115 @@ class MatchPlayer(BaseModel, CRUDMixin):
         table_name = 'match_player'
 
         ## 联合主键
+        indexes = (
+            (('match_id', 'player_id'), True),
+        )
+
+
+class DemoCredential(BaseModel, CRUDMixin):
+    """Encrypted credential used only by the asynchronous PWA demo downloader."""
+    source = CharField(max_length=32, unique=True, default='pwa')
+    steam_id = CharField(max_length=64)
+    encrypted_access_token = TextField()
+    token_hint = CharField(max_length=32, null=True)
+    last_validated_at = DateTimeField(null=True)
+    last_error = TextField(null=True)
+
+    class Meta:
+        table_name = 'demo_credential'
+
+
+class DemoAnalysis(BaseModel, CRUDMixin):
+    """Durable state machine for one match's asynchronous demo analysis."""
+    match_id = CharField(max_length=64, unique=True)
+    source = CharField(max_length=32, default='pwa')
+    source_match_id = CharField(max_length=128, null=True)
+    status = CharField(max_length=32, default='pending', index=True)
+    attempt_count = IntegerField(default=0)
+    error_code = CharField(max_length=64, null=True)
+    error_message = TextField(null=True)
+    demo_sha256 = CharField(max_length=64, null=True)
+    demo_size = BigIntegerField(null=True)
+    archive_path = TextField(null=True)
+    raw_result_path = TextField(null=True)
+    parser_name = CharField(max_length=64, null=True)
+    parser_version = CharField(max_length=128, null=True)
+    metric_version = CharField(max_length=32, default='v1')
+    queued_at = DateTimeField(null=True)
+    started_at = DateTimeField(null=True)
+    finished_at = DateTimeField(null=True)
+    heartbeat_at = DateTimeField(null=True)
+    next_retry_at = DateTimeField(null=True)
+
+    class Meta:
+        table_name = 'demo_analysis'
+
+
+class DemoPlayerStats(BaseModel, CRUDMixin):
+    """Versioned event metrics extracted from a single match demo."""
+    match_id = CharField(max_length=64)
+    player_id = CharField(max_length=64)
+    nickname = CharField(max_length=128, null=True)
+    team_id = IntegerField(default=0)
+    rounds_total = IntegerField(default=0)
+    rounds_ct = IntegerField(default=0)
+    rounds_t = IntegerField(default=0)
+    kills = IntegerField(default=0)
+    deaths = IntegerField(default=0)
+    assists = IntegerField(default=0)
+    headshots = IntegerField(default=0)
+    team_kills = IntegerField(default=0)
+    damage_given = IntegerField(default=0)
+    kast_rounds = DoubleField(default=0)
+    mvps = IntegerField(default=0)
+    aces = IntegerField(default=0)
+    two_kill = IntegerField(default=0)
+    three_kill = IntegerField(default=0)
+    four_kill = IntegerField(default=0)
+    five_kill = IntegerField(default=0)
+    clutches_won = IntegerField(default=0)
+    trade_kills = IntegerField(default=0)
+    deaths_traded = IntegerField(default=0)
+    opening_kills = IntegerField(default=0)
+    opening_deaths = IntegerField(default=0)
+    opening_round_wins = DoubleField(default=0)
+    flash_assists = IntegerField(default=0)
+    enemies_flashed = IntegerField(default=0)
+    friends_flashed = IntegerField(default=0)
+    enemy_flash_seconds = DoubleField(default=0)
+    grenades_thrown = IntegerField(default=0)
+    flash_thrown = IntegerField(default=0)
+    smoke_thrown = IntegerField(default=0)
+    he_thrown = IntegerField(default=0)
+    molotov_thrown = IntegerField(default=0)
+    incendiary_thrown = IntegerField(default=0)
+    decoy_thrown = IntegerField(default=0)
+    utility_damage = IntegerField(default=0)
+    he_damage = IntegerField(default=0)
+    fire_damage = IntegerField(default=0)
+    unused_utility_value = IntegerField(default=0)
+    ct_kills = IntegerField(default=0)
+    t_kills = IntegerField(default=0)
+    ct_deaths = IntegerField(default=0)
+    t_deaths = IntegerField(default=0)
+    ct_damage = DoubleField(default=0)
+    t_damage = DoubleField(default=0)
+    ct_kast_rounds = DoubleField(default=0)
+    t_kast_rounds = DoubleField(default=0)
+    demo_rating = DoubleField(default=0)
+    rating_kills = DoubleField(default=0)
+    rating_damage = DoubleField(default=0)
+    rating_survival = DoubleField(default=0)
+    rating_kast = DoubleField(default=0)
+    rating_multi_kill = DoubleField(default=0)
+    rating_round_swing = DoubleField(default=0)
+    approx_ekast_percent = DoubleField(default=0)
+    approx_round_swing_percent = DoubleField(default=0)
+    weapon_kills = TextField(null=True)
+    raw_stats = TextField(null=True)
+
+    class Meta:
+        table_name = 'demo_player_stats'
         indexes = (
             (('match_id', 'player_id'), True),
         )
@@ -1469,5 +1582,6 @@ def create_tables():
     """Create database tables if they don't exist, then apply migrations."""
     with db:
         db.create_tables([Config, Match, MatchPlayer, Player, CupDayChampion, PlayerTitle,
-                          Season, SeasonRoster, MatchSelection, AdminUser, SchemaMigration], safe=True)
+                          DemoCredential, DemoAnalysis, DemoPlayerStats, Season, SeasonRoster,
+                          MatchSelection, AdminUser, SchemaMigration], safe=True)
     migrate_schema()
