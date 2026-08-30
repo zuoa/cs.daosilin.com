@@ -385,6 +385,7 @@ input::placeholder, textarea::placeholder { color: var(--color-muted); }
 .scoreboard-table { min-width: 860px; }
 .scoreboard-table th.num, .scoreboard-table td.num { text-align: right; font-family: var(--font-outlier); }
 .scoreboard-table tr.mvp td { background: var(--gold-soft); }
+.scoreboard-table tr.current-player td:first-child { box-shadow: inset 3px 0 0 var(--signal); }
 .scoreboard-table .rating-cell { color: var(--signal-dark); font-weight: 800; }
 .scoreboard-table .positive { color: var(--signal-dark); }
 .scoreboard-table .negative { color: var(--danger-dark); }
@@ -642,7 +643,9 @@ img.player-monogram { object-fit: cover; }
 .detail-stat-groups dt { color: var(--ink-500); font-size: .68rem; }
 .detail-stat-groups dd { font-family: var(--font-body); font-size: .7rem; font-weight: 700; text-align: right; }
 .player-update-note { display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 23px; color: var(--ink-500); font-family: var(--font-body); font-size: .62rem; }
-.player-match-table { min-width: 990px; }
+.player-match-table { min-width: 1060px; }
+.player-match-table tbody tr.player-match-row { cursor: pointer; }
+.player-match-table tbody tr.player-match-row:focus-visible { outline: 2px solid var(--signal); outline-offset: -2px; }
 .player-match-time strong, .player-match-time small { display: block; white-space: nowrap; }
 .player-match-time small { margin-top: 3px; color: var(--ink-500); font-family: var(--font-body); font-variant-numeric: tabular-nums; }
 .data-table th.player-match-score-heading { text-align: center; }
@@ -651,6 +654,8 @@ img.player-monogram { object-fit: cover; }
 .player-match-score span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .player-match-score span:first-child { text-align: right; }
 .player-match-score strong { display: block; font-family: var(--font-body); font-variant-numeric: tabular-nums; text-align: center; white-space: nowrap; }
+.player-match-open-heading, .player-match-open { width: 72px; text-align: right; }
+.player-match-open .button { gap: 2px; white-space: nowrap; }
 .match-result { display: inline-flex; min-width: 30px; min-height: 26px; align-items: center; justify-content: center; border-radius: 7px; font-size: .68rem; font-weight: 800; }
 .match-result.win { background: var(--signal-soft); color: var(--signal-dark); }
 .match-result.loss { background: var(--danger-soft); color: var(--danger-dark); }

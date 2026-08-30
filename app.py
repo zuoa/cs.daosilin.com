@@ -658,6 +658,21 @@ def _match_detail_payload(cup, match_id):
     }
 
 
+@app.route('/api/v1/match')
+def api_match_detail():
+    """Return details for a match that is already part of a public season."""
+    cup = (request.args.get('cup') or '').strip()
+    match_id = (request.args.get('match_id') or '').strip()
+    if not cup:
+        return error(400, "参数 cup 不能为空"), 400
+    if not match_id:
+        return error(400, "参数 match_id 不能为空"), 400
+    payload = _match_detail_payload(cup, match_id)
+    if not payload or payload.get('status') != 'approved':
+        return error(404, "未找到该比赛"), 404
+    return success(payload)
+
+
 @app.route('/api/admin/season/list')
 def api_admin_season_list():
     if not _admin_authed():

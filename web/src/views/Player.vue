@@ -33,7 +33,6 @@
                     large
                   />
                   <span v-if="day" class="status-badge neutral">{{ day }}</span>
-                  <span v-if="stats.demo_coverage" class="status-badge" :class="stats.demo_coverage.completed ? 'success' : 'neutral'">Demo {{ stats.demo_coverage.completed }}/{{ stats.demo_coverage.total }}</span>
                   <a
                     v-if="player.live_url"
                     class="button primary small profile-live-link"
@@ -43,7 +42,7 @@
                   ><AppIcon name="external" />进入直播间</a>
                 </div>
               </div>
-              <p><code>{{ player.player_id }}</code><span>{{ cupAlias }}</span></p>
+              <p><span>{{ cupAlias }}</span></p>
             </div>
           </div>
           <div class="player-profile-proof">
@@ -160,11 +159,20 @@
               <thead>
                 <tr>
                   <th>比赛时间</th><th>地图</th><th class="player-match-score-heading">对阵 / 比分</th><th>结果</th>
-                  <th class="num">K / D / A</th><th class="num">Rating</th><th class="num">ADR</th><th class="num">KAST</th>
+                  <th class="num">K / D / A</th><th class="num">Rating</th><th class="num">ADR</th><th class="num">KAST</th><th class="player-match-open-heading"><span class="sr-only">查看详情</span></th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="match in matchRecords" :key="match.match_id">
+                <tr
+                  v-for="match in matchRecords"
+                  :key="match.match_id"
+                  class="player-match-row"
+                  tabindex="0"
+                  title="查看比赛详情"
+                  @click="openMatch(match)"
+                  @keydown.enter.prevent="openMatch(match)"
+                  @keydown.space.prevent="openMatch(match)"
+                >
                   <td class="player-match-time"><strong>{{ formatMatchDate(match) }}</strong><small>{{ formatMatchClock(match.start_time) }}</small></td>
                   <td><strong>{{ match.map_name || '未知地图' }}</strong><small>{{ match.game_mode || match.map_name_en || '—' }} · Demo {{ match.demo_analysis?.status || 'pending' }}</small></td>
                   <td class="player-match-score-cell">
@@ -179,6 +187,11 @@
                   <td class="num"><strong class="rating-value">{{ n2(match.pw_rating || match.rating) }}</strong></td>
                   <td class="num mono-data">{{ Number(match.adpr || 0).toFixed(0) }}</td>
                   <td class="num mono-data">{{ pct(match.kast_ratio) }}</td>
+                  <td class="player-match-open">
+                    <button class="button text-button small" type="button" :aria-label="`查看 ${match.map_name || '比赛'} 详情`" @click.stop="openMatch(match)">
+                      详情<AppIcon name="chevronRight" />
+                    </button>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -257,6 +270,101 @@
         <p v-if="lastCrawl" class="player-update-note"><AppIcon name="activity" />数据更新于 {{ formatTime(lastCrawl) }}</p>
       </template>
     </main>
+
+    <AppModal
+      :open="matchDetailOpen"
+      :title="matchDetailTitle"
+      eyebrow="MATCH REPORT"
+      :description="matchDetailSubtitle"
+      size="wide"
+      @close="closeMatch"
+    >
+      <div v-if="matchDetail" class="match-detail public-match-detail">
+        <section
+          class="match-scoreboard"
+          :style="matchDetail.map_url ? { '--map-image': `url(${matchDetail.map_url})` } : {}"
+        >
+          <div class="scoreboard-meta">
+            <span>{{ matchDetail.map_name_en || matchDetail.game_mode || 'MATCH' }}</span>
+            <span>{{ cupAlias || cup }}</span>
+          </div>
+          <div class="scoreboard-line">
+            <div class="scoreboard-team">
+              <span>{{ matchDetail.team1_name || '队伍 A' }}</span>
+              <small v-if="Number(matchDetail.win_team) === 1">胜方</small>
+            </div>
+            <strong class="scoreboard-score">{{ matchDetail.team1_score ?? '—' }} : {{ matchDetail.team2_score ?? '—' }}</strong>
+            <div class="scoreboard-team away">
+              <span>{{ matchDetail.team2_name || '队伍 B' }}</span>
+              <small v-if="Number(matchDetail.win_team) === 2">胜方</small>
+            </div>
+          </div>
+          <p class="scoreboard-footnote">
+            {{ matchDetail.map_name || '未知地图' }} · {{ matchDetail.game_mode || '未知模式' }}
+            <template v-if="matchDetail.team1_half_score != null || matchDetail.team2_half_score != null">
+              · 半场 {{ matchDetail.team1_half_score ?? '—' }}:{{ matchDetail.team2_half_score ?? '—' }}
+            </template>
+            <template v-if="matchDetail.team1_extra_score || matchDetail.team2_extra_score">
+              · 加时 {{ matchDetail.team1_extra_score ?? 0 }}:{{ matchDetail.team2_extra_score ?? 0 }}
+            </template>
+          </p>
+        </section>
+
+        <div class="match-detail-facts">
+          <div><span>比赛日</span><strong>{{ formatPlayDay(matchDetail.play_day) }}</strong></div>
+          <div><span>开赛时间</span><strong>{{ formatDateTime(matchDetail.start_time) }}</strong></div>
+          <div><span>比赛时长</span><strong>{{ formatDuration(matchDetail.duration) }}</strong></div>
+          <div><span>比赛模式</span><strong>{{ matchDetail.game_mode || '—' }}</strong></div>
+        </div>
+
+        <div v-if="matchDetailLoading" class="loading-state compact"><span class="loader"></span><p>正在读取比赛详情…</p></div>
+        <div v-else-if="matchDetailError" class="inline-alert error" role="alert">
+          <AppIcon name="alert" />
+          <span><strong>无法读取比赛详情</strong>{{ matchDetailError }}</span>
+        </div>
+        <template v-else>
+          <section v-for="board in matchTeamBoards" :key="board.team" class="team-board" :class="{ winner: board.winner }">
+            <div class="team-board-header">
+              <div><h3>{{ board.name }}</h3><small>{{ board.players.length }} 名选手{{ board.winner ? ' · 胜方' : '' }}</small></div>
+              <strong>{{ board.score ?? '—' }}</strong>
+            </div>
+            <div class="table-scroll">
+              <table class="data-table scoreboard-table">
+                <thead>
+                  <tr>
+                    <th>选手</th><th class="num">K</th><th class="num">D</th><th class="num">A</th><th class="num">+/-</th>
+                    <th class="num">ADR</th><th class="num">Rating</th><th class="num">KAST</th><th class="num">HS%</th><th class="num">FK</th><th>MVP</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="p in board.players" :key="p.player_id" :class="{ mvp: p.mvp, 'current-player': String(p.player_id) === String(player?.player_id) }">
+                    <td>
+                      <div class="identity-cell">
+                        <img v-if="p.avatar" class="player-monogram small match-avatar" :src="avatarUrl(p.avatar)" :alt="`${matchPlayerName(p)} 头像`">
+                        <span v-else class="player-monogram small">{{ matchPlayerName(p).slice(0, 1).toUpperCase() }}</span>
+                        <span><strong>{{ matchPlayerName(p) }}</strong><small v-if="String(p.player_id) === String(player?.player_id)">当前选手</small></span>
+                      </div>
+                    </td>
+                    <td class="num">{{ p.kill ?? 0 }}</td>
+                    <td class="num">{{ p.death ?? 0 }}</td>
+                    <td class="num">{{ p.assist ?? 0 }}</td>
+                    <td class="num" :class="diffClass(p)">{{ formatDiff(p) }}</td>
+                    <td class="num">{{ formatStat(p.adpr, 0) }}</td>
+                    <td class="num rating-cell">{{ formatStat(p.pw_rating || p.rating, 2) }}</td>
+                    <td class="num">{{ formatDetailRatio(p.kast_ratio) }}</td>
+                    <td class="num">{{ formatDetailRatio(p.headshot_ratio) }}</td>
+                    <td class="num">{{ p.entry_kill ?? 0 }}</td>
+                    <td>{{ p.mvp ? 'MVP' : '—' }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+          <div v-if="!matchTeamBoards.length" class="empty-state compact"><span><AppIcon name="database" /></span><h3>暂无选手数据</h3><p>这场比赛暂时没有可展示的详细数据。</p></div>
+        </template>
+      </div>
+    </AppModal>
+
     <footer class="public-footer"><router-link :to="cup ? `/${cup}/` : '/'">返回 {{ cupAlias || '赛季榜单' }}</router-link><span>PLAYER INTELLIGENCE · 熊掌CS Major</span></footer>
   </div>
 </template>
@@ -268,7 +376,8 @@ import * as echarts from 'echarts/core'
 import { LineChart, RadarChart } from 'echarts/charts'
 import { GridComponent, RadarComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
-import { api } from '../api'
+import { api, avatarUrl } from '../api'
+import AppModal from '../components/AppModal.vue'
 import AppIcon from '../components/AppIcon.vue'
 import PlayerAvatar from '../components/PlayerAvatar.vue'
 import PerfectRankBadge from '../components/PerfectRankBadge.vue'
@@ -291,6 +400,10 @@ const mapStats = ref([])
 const matchRecords = ref([])
 const killMatchups = ref([])
 const seasonSummary = ref(null)
+const matchDetailOpen = ref(false)
+const matchDetail = ref(null)
+const matchDetailLoading = ref(false)
+const matchDetailError = ref('')
 const lastCrawl = ref('')
 const error = ref('')
 const loading = ref(true)
@@ -298,8 +411,31 @@ const radarEl = ref(null)
 const lineEl = ref(null)
 let radarChart
 let lineChart
+let matchDetailRequest = 0
 
 const playerName = computed(() => player.value?.alias_name || player.value?.nickname || player.value?.player_id || '选手')
+const matchDetailTitle = computed(() => matchDetail.value?.map_name || '比赛详情')
+const matchDetailSubtitle = computed(() => {
+  if (!matchDetail.value) return '查看双方选手的当场数据。'
+  return [formatPlayDay(matchDetail.value.play_day), formatMatchClock(matchDetail.value.start_time)].filter((item) => item && item !== '—' && item !== '时间未知').join(' · ')
+})
+const matchTeamBoards = computed(() => {
+  const match = matchDetail.value
+  if (!match) return []
+  const grouped = { 1: [], 2: [], other: [] }
+  for (const matchPlayer of match.players || []) {
+    const team = Number(matchPlayer.team)
+    if (team === 1 || team === 2) grouped[team].push(matchPlayer)
+    else grouped.other.push(matchPlayer)
+  }
+  const sorted = (list) => [...list].sort((a, b) => Number(b.pw_rating || b.rating || 0) - Number(a.pw_rating || a.rating || 0))
+  const boards = [
+    { team: 1, name: match.team1_name || '队伍 A', score: match.team1_score, winner: Number(match.win_team) === 1, players: sorted(grouped[1]) },
+    { team: 2, name: match.team2_name || '队伍 B', score: match.team2_score, winner: Number(match.win_team) === 2, players: sorted(grouped[2]) },
+  ]
+  if (grouped.other.length) boards.push({ team: 0, name: '未分队', score: null, winner: false, players: sorted(grouped.other) })
+  return boards.filter((board) => board.players.length)
+})
 const primaryTitle = computed(() => titles.value[0] || null)
 const secondaryTitles = computed(() => titles.value.slice(1, 3))
 const titleCategories = {
@@ -403,6 +539,68 @@ function formatMatchClock(value) {
   const text = formatTime(value)
   return text.length >= 16 ? text.slice(11, 16) : '时间未知'
 }
+function formatPlayDay(value) {
+  const raw = String(value || '').replace(/\D/g, '')
+  if (raw.length === 8) return `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`
+  return value || '—'
+}
+function formatDateTime(value) {
+  return value ? String(value).replace('T', ' ').slice(0, 16) : '—'
+}
+function formatDuration(value) {
+  const number = Number(value)
+  if (!Number.isFinite(number) || number <= 0) return '—'
+  if (number < 180) return `${Math.round(number)} 分钟`
+  const total = Math.round(number)
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  return hours ? `${hours} 小时 ${minutes} 分钟` : `${minutes} 分钟`
+}
+function matchPlayerName(matchPlayer) {
+  return matchPlayer?.alias_name || matchPlayer?.nickname || '未知选手'
+}
+function formatStat(value, digits = 0) {
+  const number = Number(value)
+  return Number.isFinite(number) ? number.toFixed(digits) : '—'
+}
+function formatDetailRatio(value) {
+  const number = Number(value)
+  if (!Number.isFinite(number)) return '—'
+  return `${Math.round(number <= 1 ? number * 100 : number)}%`
+}
+function formatDiff(matchPlayer) {
+  const diff = Number(matchPlayer?.kill || 0) - Number(matchPlayer?.death || 0)
+  return diff > 0 ? `+${diff}` : String(diff)
+}
+function diffClass(matchPlayer) {
+  const diff = Number(matchPlayer?.kill || 0) - Number(matchPlayer?.death || 0)
+  if (diff > 0) return 'positive'
+  if (diff < 0) return 'negative'
+  return ''
+}
+async function openMatch(match) {
+  if (!match?.match_id || !cup.value) return
+  const requestId = ++matchDetailRequest
+  matchDetailOpen.value = true
+  matchDetail.value = match
+  matchDetailLoading.value = true
+  matchDetailError.value = ''
+  try {
+    const detail = await api.match(match.match_id, cup.value)
+    if (requestId === matchDetailRequest) matchDetail.value = detail
+  } catch (e) {
+    if (requestId === matchDetailRequest) matchDetailError.value = e.message
+  } finally {
+    if (requestId === matchDetailRequest) matchDetailLoading.value = false
+  }
+}
+function closeMatch() {
+  matchDetailRequest += 1
+  matchDetailOpen.value = false
+  matchDetail.value = null
+  matchDetailLoading.value = false
+  matchDetailError.value = ''
+}
 function uniqueTitles(list) {
   const seen = new Set()
   return (list || []).filter((title) => {
@@ -462,6 +660,7 @@ function drawCharts() {
 }
 function resizeCharts() { radarChart?.resize(); lineChart?.resize() }
 async function load() {
+  closeMatch()
   radarChart?.dispose()
   lineChart?.dispose()
   radarChart = null

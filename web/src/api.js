@@ -32,6 +32,7 @@ export const api = {
     const qs = q.toString()
     return request(`/api/v1/player/${encodeURIComponent(id)}${qs ? `?${qs}` : ''}`)
   },
+  match: (matchId, cup) => request(`/api/v1/match?${new URLSearchParams({ match_id: matchId, cup })}`),
   login: (body) => request('/api/admin/login', { method: 'POST', body: JSON.stringify(body) }),
   logout: () => request('/api/admin/logout', { method: 'POST' }),
   me: () => request('/api/admin/me'),

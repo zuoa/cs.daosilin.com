@@ -361,6 +361,29 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(matchups[0]['player_id'], 'p2')
         self.assertEqual(matchups[0]['kills'], 3)
 
+    def test_public_match_detail_only_exposes_approved_matches(self):
+        response = self.client.get('/api/v1/match?cup=season-two&match_id=m2')
+        self.assertEqual(response.status_code, 200)
+        detail = response.get_json()['data']
+        self.assertEqual(detail['map_name'], '炼狱小镇')
+        self.assertEqual(detail['team1_name'], 'Alpha')
+        self.assertEqual(detail['players'][0]['alias_name'], 'One')
+        self.assertEqual(detail['players'][0]['kast_ratio'], 0.75)
+
+        hidden = MatchSelection.create(
+            match_id='m-hidden', season_cup_name='season-two', status='rejected',
+            source_type='custom', play_day='20250101', roster_hit_count=0,
+        )
+        try:
+            response = self.client.get('/api/v1/match?cup=season-two&match_id=m-hidden')
+            self.assertEqual(response.status_code, 404)
+        finally:
+            hidden.delete_instance()
+
+    def test_public_match_detail_validates_required_parameters(self):
+        self.assertEqual(self.client.get('/api/v1/match?match_id=m2').status_code, 400)
+        self.assertEqual(self.client.get('/api/v1/match?cup=season-two').status_code, 400)
+
     def test_admin_match_list_exposes_exact_start_time(self):
         with self.client.session_transaction() as session:
             session['admin_user'] = 'admin'
