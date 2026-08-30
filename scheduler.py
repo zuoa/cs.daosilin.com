@@ -10,8 +10,8 @@ from dotenv import load_dotenv
 
 from ajlog import logger
 from champion_service import judge_champion
-from config import (DEMO_ANALYSIS_ENABLED, PERFECT_RANK_REFRESH_HOURS,
-                    PERFECT_RANK_REQUEST_INTERVAL)
+from config import (PERFECT_RANK_REFRESH_HOURS, PERFECT_RANK_REQUEST_INTERVAL,
+                    WMPVP_ACCESS_TOKEN, WMPVP_STEAM_ID)
 
 from database import (create_tables, Match, MatchPlayer, Player, Config,
                       Season, SeasonRoster, MatchSelection)
@@ -197,13 +197,14 @@ def _store_match(match_data, assigned_cup_name=None, play_day=None, match_id=Non
             Player.create(**player_model)
             logger.info(f"玩家 {player_id} 已保存（非库内）")
 
-    if DEMO_ANALYSIS_ENABLED:
-        try:
+    try:
+        from demo_service import demo_analysis_enabled
+        if demo_analysis_enabled():
             from demo_tasks import schedule_demo_analysis
             schedule_demo_analysis(match_id)
-        except Exception as exc:
-            # Demo is a second-stage enrichment and must never block the crawl.
-            logger.error(f'Demo 任务入队失败 match={match_id}: {exc}')
+    except Exception as exc:
+        # Demo is a second-stage enrichment and must never block the crawl.
+        logger.error(f'Demo 任务入队失败 match={match_id}: {exc}')
     return match_id
 
 
@@ -233,7 +234,7 @@ def _in_season_window(season, match_end_time):
 
 
 def _new_wm():
-    return WMAPI(token='c27dd7695e6913c414a018601470e48426c96805', token_steam_id='76561198256708927')
+    return WMAPI(token=WMPVP_ACCESS_TOKEN, token_steam_id=WMPVP_STEAM_ID)
 
 
 def _library_hit(player_ids, library_ids):
@@ -350,6 +351,21 @@ def expire_auto_crawl(season):
     )
 
 
+def _schedule_player_summaries(cup_name):
+    """Best-effort enrichment; an LLM outage must never fail season crawling."""
+    try:
+        from player_summary_tasks import reconcile_player_summaries
+        result = reconcile_player_summaries(cup_name=cup_name)
+        logger.info(
+            f'AI 点评对账完成 cup={cup_name} eligible={result.get("eligible", 0)} '
+            f'scheduled={result.get("scheduled", 0)}'
+        )
+        return result
+    except Exception as exc:
+        logger.error(f'AI 点评调度失败 cup={cup_name}: {exc}')
+        return {'eligible': 0, 'scheduled': 0, 'error': str(exc)}
+
+
 def crawl_season_with_status(cup_name, manual=False):
     """采集一个赛季；manual=True 时允许对已截止/未开始赛季按既定时间窗补采。"""
     season = Season.get_by_cup(cup_name)
@@ -387,6 +403,7 @@ def crawl_season_with_status(cup_name, manual=False):
                 stats=stats,
             )
             Config.set_value("last_crawl_time", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            _schedule_player_summaries(cup_name)
             return stats
         keep_scheduled = is_auto_crawl_enabled(cup_name) and not manual
         set_crawl_status(
@@ -402,6 +419,7 @@ def crawl_season_with_status(cup_name, manual=False):
             stats=stats,
         )
         Config.set_value("last_crawl_time", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        _schedule_player_summaries(cup_name)
         return stats
     except Exception as e:
         set_crawl_status(
@@ -644,19 +662,31 @@ def create_scheduler():
         f'完美段位任务已添加：每天 {PERFECT_RANK_REFRESH_HOURS} 点的 15 分执行，启动后立即执行一次'
     )
 
-    if DEMO_ANALYSIS_ENABLED:
-        from demo_tasks import reconcile_demo_jobs
-        scheduler.add_job(
-            func=reconcile_demo_jobs,
-            trigger=CronTrigger(minute='*/5'),
-            id='demo_analysis_reconcile',
-            name='Demo 分析任务对账与近 30 天回填',
-            replace_existing=True,
-            coalesce=True,
-            max_instances=1,
-            next_run_time=datetime.datetime.now() + datetime.timedelta(seconds=30),
-        )
-        logger.info('Demo 分析对账任务已添加：每 5 分钟执行，首次启动回填近 30 天')
+    from demo_tasks import reconcile_demo_jobs
+    scheduler.add_job(
+        func=reconcile_demo_jobs,
+        trigger=CronTrigger(minute='*/5'),
+        id='demo_analysis_reconcile',
+        name='Demo 分析任务对账与近 30 天回填',
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        next_run_time=datetime.datetime.now() + datetime.timedelta(seconds=30),
+    )
+    logger.info('Demo 分析对账任务已添加：后台开启后每 5 分钟执行并回填近 30 天')
+
+    from player_summary_tasks import reconcile_player_summaries
+    scheduler.add_job(
+        func=reconcile_player_summaries,
+        trigger=CronTrigger(minute='3,13,23,33,43,53'),
+        id='player_summary_reconcile',
+        name='选手赛季 AI 点评增量对账',
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        next_run_time=datetime.datetime.now() + datetime.timedelta(seconds=45),
+    )
+    logger.info('选手赛季 AI 点评对账任务已添加：每 10 分钟增量检查')
 
     return scheduler
 

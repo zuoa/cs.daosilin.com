@@ -4,12 +4,24 @@ from datetime import datetime
 
 from cryptography.fernet import Fernet, InvalidToken
 
-from config import DEMO_CREDENTIAL_ENCRYPTION_KEY, DEMO_METRIC_VERSION
-from database import DemoAnalysis, DemoCredential, DemoPlayerStats, MatchPlayer, Player, fn
+from config import (DEMO_CREDENTIAL_ENCRYPTION_KEY, DEMO_METRIC_VERSION,
+                    WMPVP_ACCESS_TOKEN, WMPVP_STEAM_ID)
+from database import (Config, DemoAnalysis, DemoCredential, DemoPlayerStats,
+                      MatchPlayer, Player, fn)
 
 
 PARSER_NAME = 'cs2-analyser-tool'
 PARSER_VERSION = '88cb54ea0267fc8f4a8ae8d03987b50aec2a0653'
+
+
+def demo_analysis_enabled():
+    return str(Config.get_value('demo_analysis_enabled') or '').strip().lower() \
+        in ('1', 'true', 'yes', 'on')
+
+
+def set_demo_analysis_enabled(enabled: bool):
+    Config.set_value('demo_analysis_enabled', '1' if enabled else '0')
+    return bool(enabled)
 
 
 def _fernet() -> Fernet:
@@ -45,12 +57,15 @@ def save_demo_credential(steam_id: str, access_token: str) -> DemoCredential:
 def load_demo_credential():
     row = DemoCredential.get_or_none(DemoCredential.source == 'pwa')
     if not row:
+        if WMPVP_ACCESS_TOKEN and WMPVP_STEAM_ID:
+            return {'steam_id': WMPVP_STEAM_ID, 'access_token': WMPVP_ACCESS_TOKEN,
+                    'source': 'wmpvp_default'}
         return None
     try:
         token = _fernet().decrypt(row.encrypted_access_token.encode()).decode()
     except (InvalidToken, ValueError) as exc:
         raise ValueError('Demo 凭证无法解密，请在后台重新保存') from exc
-    return {'steam_id': row.steam_id, 'access_token': token}
+    return {'steam_id': row.steam_id, 'access_token': token, 'source': 'database'}
 
 
 def revoke_demo_credential() -> int:
@@ -59,14 +74,22 @@ def revoke_demo_credential() -> int:
 
 def demo_credential_status():
     row = DemoCredential.get_or_none(DemoCredential.source == 'pwa')
+    fallback_configured = bool(WMPVP_ACCESS_TOKEN and WMPVP_STEAM_ID)
     return {
-        'configured': bool(row),
+        'configured': bool(row) or fallback_configured,
+        'database_configured': bool(row),
+        'source': 'database' if row else 'wmpvp_default' if fallback_configured else 'none',
         'encryption_ready': bool(DEMO_CREDENTIAL_ENCRYPTION_KEY),
-        'steam_id': row.steam_id if row else '',
-        'token_hint': row.token_hint if row else '',
+        'steam_id': row.steam_id if row else WMPVP_STEAM_ID if fallback_configured else '',
+        'token_hint': row.token_hint if row else '复用现有采集凭证' if fallback_configured else '',
         'last_validated_at': row.last_validated_at.isoformat() if row and row.last_validated_at else None,
         'last_error': row.last_error if row else None,
     }
+
+
+def has_demo_credential():
+    return (DemoCredential.select().where(DemoCredential.source == 'pwa').exists()
+            or bool(WMPVP_ACCESS_TOKEN and WMPVP_STEAM_ID))
 
 
 def _side_count(value, key='total'):

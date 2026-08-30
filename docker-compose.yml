@@ -44,9 +44,15 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-vane1005}
       SITE_NAME: ${SITE_NAME:-熊掌CS Major}
       EXTERNAL_API_TOKEN: ${EXTERNAL_API_TOKEN:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
+      LLM_MODEL_NAME: ${LLM_MODEL_NAME:-deepseek-v4-flash}
+      LLM_REQUEST_TIMEOUT: ${LLM_REQUEST_TIMEOUT:-45}
+      PLAYER_SUMMARY_PROMPT_VERSION: ${PLAYER_SUMMARY_PROMPT_VERSION:-v1}
+      WMPVP_ACCESS_TOKEN: ${WMPVP_ACCESS_TOKEN:-}
+      WMPVP_STEAM_ID: ${WMPVP_STEAM_ID:-}
       PERFECT_RANK_REFRESH_HOURS: ${PERFECT_RANK_REFRESH_HOURS:-2,8,14,20}
       PERFECT_RANK_REQUEST_INTERVAL: ${PERFECT_RANK_REQUEST_INTERVAL:-0.2}
-      DEMO_ANALYSIS_ENABLED: ${DEMO_ANALYSIS_ENABLED:-0}
       DEMO_CREDENTIAL_ENCRYPTION_KEY: ${DEMO_CREDENTIAL_ENCRYPTION_KEY:-}
       DEMO_STORAGE_PATH: /data/demos
 
@@ -68,9 +74,32 @@ services:
       TZ: Asia/Shanghai
       DATABASE_URL: postgresql://cs:cs@db:5432/cs
       REDIS_URL: redis://redis:6379/0
-      DEMO_ANALYSIS_ENABLED: ${DEMO_ANALYSIS_ENABLED:-0}
+      WMPVP_ACCESS_TOKEN: ${WMPVP_ACCESS_TOKEN:-}
+      WMPVP_STEAM_ID: ${WMPVP_STEAM_ID:-}
       DEMO_CREDENTIAL_ENCRYPTION_KEY: ${DEMO_CREDENTIAL_ENCRYPTION_KEY:-}
       DEMO_STORAGE_PATH: /data/demos
+
+  player-summary-worker:
+    image: ghcr.io/zuoa/cs.daosilin.com:main
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      app:
+        condition: service_healthy
+    command: ["python", "player_summary_worker.py"]
+    entrypoint: []
+    environment:
+      TZ: Asia/Shanghai
+      DATABASE_URL: postgresql://cs:cs@db:5432/cs
+      REDIS_URL: redis://redis:6379/0
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
+      LLM_MODEL_NAME: ${LLM_MODEL_NAME:-deepseek-v4-flash}
+      LLM_REQUEST_TIMEOUT: ${LLM_REQUEST_TIMEOUT:-45}
+      PLAYER_SUMMARY_PROMPT_VERSION: ${PLAYER_SUMMARY_PROMPT_VERSION:-v1}
 
 volumes:
   pgdata:

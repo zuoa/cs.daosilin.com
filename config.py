@@ -18,6 +18,16 @@ REDIS_URL = (os.getenv('REDIS_URL') or '').strip()
 SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-change-me')
 SITE_NAME = os.getenv('SITE_NAME', '熊掌CS Major')
 
+# DeepSeek-backed player season summaries. Credentials stay in the deployment
+# environment and are never persisted by the application.
+LLM_API_KEY = (os.getenv('LLM_API_KEY') or '').strip()
+LLM_BASE_URL = (os.getenv('LLM_BASE_URL') or 'https://api.deepseek.com').strip()
+LLM_MODEL_NAME = (os.getenv('LLM_MODEL_NAME') or 'deepseek-v4-flash').strip()
+LLM_REQUEST_TIMEOUT = int(os.getenv('LLM_REQUEST_TIMEOUT', '45'))
+PLAYER_SUMMARY_PROMPT_VERSION = (
+    os.getenv('PLAYER_SUMMARY_PROMPT_VERSION') or 'v1'
+).strip()
+
 ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'admin')
 ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', '')
 
@@ -25,10 +35,13 @@ ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', '')
 # administrator can configure a database-backed token from the control panel.
 EXTERNAL_API_TOKEN = (os.getenv('EXTERNAL_API_TOKEN') or '').strip()
 
+# WMPVP crawl credential from .env. A database-encrypted credential saved in
+# the admin panel takes precedence for Demo downloading.
+WMPVP_ACCESS_TOKEN = (os.getenv('WMPVP_ACCESS_TOKEN') or '').strip()
+WMPVP_STEAM_ID = (os.getenv('WMPVP_STEAM_ID') or '').strip()
+
 # Demo analysis is isolated from the normal crawl path. A Fernet key is
 # required before the admin panel is allowed to persist a PWA access token.
-DEMO_ANALYSIS_ENABLED = (os.getenv('DEMO_ANALYSIS_ENABLED', '0').strip().lower()
-                         in ('1', 'true', 'yes', 'on'))
 DEMO_CREDENTIAL_ENCRYPTION_KEY = (
     os.getenv('DEMO_CREDENTIAL_ENCRYPTION_KEY') or ''
 ).strip()

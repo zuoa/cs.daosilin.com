@@ -1,10 +1,12 @@
-import os
 import time
 from datetime import datetime, timedelta
 
 from flask import jsonify
 from flask.cli import load_dotenv
 from openai import OpenAI
+
+from config import (LLM_API_KEY, LLM_BASE_URL, LLM_MODEL_NAME,
+                    LLM_REQUEST_TIMEOUT)
 
 load_dotenv()
 
@@ -29,30 +31,26 @@ def json_datetime_handler(obj):
 
 
 def llm_chat(prompt):
-    llm_base_url = os.environ.get('LLM_BASE_URL', 'https://api.deepseek.com/v1')
-    llm_model_name = os.environ.get('LLM_MODEL_NAME', 'deepseek-chat')
-    llm_api_key = os.environ.get('LLM_API_KEY', '')
-
     messages = []
     messages.append({"role": "user", "content": prompt})
 
     data = {
-        "model": llm_model_name,
+        "model": LLM_MODEL_NAME,
         "messages": messages,
         "stream": False
     }
-    print(data)
     try:
         client = OpenAI(
-            base_url=llm_base_url,
-            api_key=llm_api_key,
+            base_url=LLM_BASE_URL,
+            api_key=LLM_API_KEY,
+            timeout=LLM_REQUEST_TIMEOUT,
         )
 
         chat_completion = client.chat.completions.create(**data)
         return chat_completion.choices[0].message.content
 
-    except Exception as e:
-        print(e)
+    except Exception:
+        pass
 
     return ''
 
@@ -97,4 +95,3 @@ def success(data=None):
 
 def error(code, message):
     return resp_data(code=code, message=message)
-

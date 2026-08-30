@@ -122,17 +122,29 @@
     <section v-if="!loading" class="panel token-panel" aria-labelledby="demo-title" style="margin-top: 24px">
       <div class="panel-header">
         <div><h2 id="demo-title">Demo Analysis</h2><p>独立 Worker · 新比赛与近 30 天自动回填</p></div>
-        <span class="status-badge" :class="demo.configured && demo.enabled ? 'success' : 'neutral'">
-          <span class="status-dot"></span>{{ demo.enabled ? (demo.configured ? '运行中' : '待配置') : '功能未启用' }}
-        </span>
+        <div class="demo-header-actions">
+          <span class="status-badge" :class="demo.configured && demo.enabled ? 'success' : 'neutral'">
+            <span class="status-dot"></span>{{ demo.enabled ? (demo.configured ? '运行中' : '待配置') : '功能未启用' }}
+          </span>
+          <button
+            class="button small"
+            :class="demo.enabled ? 'danger-ghost' : 'primary'"
+            type="button"
+            :disabled="Boolean(demoBusy) || (!demo.enabled && !demo.configured)"
+            @click="demoAction(demo.enabled ? 'disable' : 'enable')"
+          >
+            <span v-if="['enable', 'disable'].includes(demoBusy)" class="button-spinner"></span>
+            <AppIcon v-else :name="demo.enabled ? 'archive' : 'play'" />{{ demo.enabled ? '关闭分析' : '开启分析' }}
+          </button>
+        </div>
       </div>
       <div class="token-content">
         <div class="token-status-card">
           <span class="metric-icon" :class="demo.configured ? 'green' : 'slate'"><AppIcon name="database" /></span>
-          <div><small>PWA 下载凭证</small><strong>{{ demo.token_hint || '尚未保存 access token' }}</strong><span>{{ demo.steam_id || '需要 SteamID64' }}</span></div>
+          <div><small>PWA 下载凭证</small><strong>{{ demo.token_hint || '尚未保存 access token' }}</strong><span>{{ demo.steam_id || '需要 SteamID64' }} · {{ demo.source === 'database' ? '后台覆盖' : demo.source === 'wmpvp_default' ? '默认采集凭证' : '未配置' }}</span></div>
         </div>
         <div v-if="!demo.encryption_ready" class="inline-alert" role="alert">
-          <AppIcon name="shield" /><span><strong>缺少加密密钥</strong>请先配置 DEMO_CREDENTIAL_ENCRYPTION_KEY；后台不会明文保存 token。</span>
+          <AppIcon name="shield" /><span><strong>默认采集凭证仍可使用</strong>只有在后台保存覆盖凭证时，才需要配置 DEMO_CREDENTIAL_ENCRYPTION_KEY。</span>
         </div>
         <form class="custom-token-form" @submit.prevent="saveDemoCredential">
           <div class="field-group">
@@ -151,7 +163,7 @@
         <div class="token-actions">
           <div><strong>任务概况</strong><p>{{ demoJobSummary }}</p></div>
           <button class="button subtle" type="button" :disabled="Boolean(demoBusy) || !demo.configured" @click="demoAction('backfill')"><AppIcon name="refresh" />扫描近 30 天</button>
-          <button v-if="demo.configured" class="button danger-ghost" type="button" :disabled="Boolean(demoBusy)" @click="revokeDemo"><AppIcon name="archive" />删除凭证</button>
+          <button v-if="demo.database_configured" class="button danger-ghost" type="button" :disabled="Boolean(demoBusy)" @click="revokeDemo"><AppIcon name="archive" />删除覆盖凭证</button>
         </div>
       </div>
     </section>
@@ -168,6 +180,48 @@
           </tr></tbody>
         </table>
       </div>
+    </section>
+
+    <section v-if="!loading" class="panel ai-summary-admin" aria-labelledby="ai-summary-title" style="margin-top: 24px">
+      <div class="panel-header">
+        <div><h2 id="ai-summary-title">DeepSeek 赛季球探报告</h2><p>独立 Worker · 数据变化后增量生成</p></div>
+        <span class="status-badge" :class="summaryStatus.configured && summaryStatus.redis_configured ? 'success' : 'neutral'">
+          <span class="status-dot"></span>{{ summaryStatus.configured && summaryStatus.redis_configured ? summaryStatus.model : '待配置' }}
+        </span>
+      </div>
+      <div class="token-content">
+        <div v-if="!summaryStatus.configured || !summaryStatus.redis_configured" class="inline-alert" role="alert">
+          <AppIcon name="shield" /><span><strong>部署配置不完整</strong>需要在服务端设置 LLM_API_KEY 和 REDIS_URL；密钥不会保存到数据库。</span>
+        </div>
+        <div class="summary-admin-toolbar">
+          <label class="field-group">
+            <span>赛季</span>
+            <select v-model="summaryCup" @change="loadSummaries">
+              <option value="">全部赛季</option>
+              <option v-for="season in seasons" :key="season.cup_name" :value="season.cup_name">{{ season.cup_alias || season.name || season.cup_name }}</option>
+            </select>
+          </label>
+          <div class="summary-counts"><span v-for="(count, key) in summaryStatus.counts" :key="key"><b>{{ key }}</b> {{ count }}</span><span v-if="!Object.keys(summaryStatus.counts || {}).length">暂无任务</span></div>
+          <button class="button primary" type="button" :disabled="Boolean(summaryBusy) || !summaryCup || !summaryStatus.configured || !summaryStatus.redis_configured" @click="rebuildSummary()">
+            <span v-if="summaryBusy === 'season'" class="button-spinner"></span><AppIcon v-else name="refresh" />重算该赛季
+          </button>
+        </div>
+      </div>
+      <div v-if="summaryStatus.items?.length" class="table-scroll">
+        <table class="data-table summary-admin-table">
+          <thead><tr><th>赛季 / 选手</th><th>标题</th><th>状态</th><th>模型 / Token</th><th>更新时间</th><th>说明</th><th></th></tr></thead>
+          <tbody><tr v-for="item in summaryStatus.items" :key="item.id">
+            <td><strong>{{ item.cup_name }}</strong><small>{{ item.player_name }} · {{ item.player_id }}</small></td>
+            <td>{{ item.headline || '—' }}</td>
+            <td><span class="status-badge" :class="item.status === 'completed' ? 'success' : 'neutral'">{{ item.status }}</span></td>
+            <td><small>{{ item.model_name || '—' }}</small><strong>{{ item.total_tokens ?? '—' }}</strong></td>
+            <td>{{ item.updated_at?.replace('T', ' ').slice(0, 16) || '—' }}</td>
+            <td class="summary-error-cell">{{ item.error_message || '—' }}</td>
+            <td><button class="button subtle small" type="button" :disabled="Boolean(summaryBusy)" @click="rebuildSummary(item.player_id, item.cup_name)">重算</button></td>
+          </tr></tbody>
+        </table>
+      </div>
+      <div v-else class="empty-state compact"><span><AppIcon name="activity" /></span><h3>暂无 AI 点评记录</h3><p>选择赛季并点击重算，或等待自动采集后的增量任务。</p></div>
     </section>
 
     <div v-if="toast.message" class="toast" :class="toast.type" :role="toast.type === 'error' ? 'alert' : 'status'">
@@ -192,6 +246,10 @@ const demoJobs = ref([])
 const demoSteamId = ref('')
 const demoToken = ref('')
 const demoBusy = ref('')
+const summaryStatus = ref({ configured: false, redis_configured: false, counts: {}, items: [] })
+const seasons = ref([])
+const summaryCup = ref('')
+const summaryBusy = ref('')
 const toast = ref({ message: '', type: 'success' })
 let toastTimer
 
@@ -212,13 +270,16 @@ function show(message, type = 'success') {
 async function load() {
   loading.value = true
   try {
-    const [tokenStatus, demoStatus, jobs] = await Promise.all([
+    const [tokenStatus, demoStatus, jobs, summaries, seasonData] = await Promise.all([
       api.get('/api/admin/external-api-token'), api.get('/api/admin/demo-settings'), api.get('/api/admin/demo-jobs?limit=30'),
+      api.get('/api/admin/player-summaries?page_size=30'), api.get('/api/admin/season/list'),
     ])
     status.value = tokenStatus
     demo.value = demoStatus
     demoSteamId.value = demoStatus.steam_id || ''
     demoJobs.value = jobs.jobs || []
+    summaryStatus.value = summaries
+    seasons.value = seasonData.seasons || []
   } catch (error) {
     show(error.message, 'error')
   } finally {
@@ -275,6 +336,26 @@ async function retryDemo(matchId) {
   demoBusy.value = 'retry'
   try { await api.post(`/api/admin/demo-jobs/${encodeURIComponent(matchId)}/retry`, {}); show('任务已重新排队'); await load() }
   catch (error) { show(error.message, 'error') } finally { demoBusy.value = '' }
+}
+
+async function loadSummaries() {
+  try {
+    const query = new URLSearchParams({ page_size: '30' })
+    if (summaryCup.value) query.set('cup', summaryCup.value)
+    summaryStatus.value = await api.get(`/api/admin/player-summaries?${query}`)
+  } catch (error) { show(error.message, 'error') }
+}
+
+async function rebuildSummary(playerId = '', cupName = '') {
+  const cup = cupName || summaryCup.value
+  if (!cup) return show('请先选择一个赛季', 'error')
+  if (!playerId && !window.confirm('确认重新生成该赛季全部选手的 AI 点评？')) return
+  summaryBusy.value = playerId || 'season'
+  try {
+    const result = await api.post('/api/admin/player-summaries/rebuild', { cup, player_id: playerId })
+    show(result.message || 'AI 点评已重新调度')
+    await loadSummaries()
+  } catch (error) { show(error.message, 'error') } finally { summaryBusy.value = '' }
 }
 
 async function copyToken() {

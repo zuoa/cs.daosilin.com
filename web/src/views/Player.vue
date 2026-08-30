@@ -60,6 +60,31 @@
           </div>
         </section>
 
+        <section v-if="seasonSummary" class="panel player-season-summary" aria-labelledby="season-summary-title">
+          <div v-if="seasonSummary.status === 'pending'" class="season-summary-pending" aria-live="polite">
+            <span class="loader small"></span>
+            <div><strong>AI 球探报告整理中</strong><p>正在根据完整赛季的有效数据生成，不会把缺失指标当作 0。</p></div>
+          </div>
+          <template v-else>
+            <div class="season-summary-heading">
+              <span class="summary-kicker"><AppIcon name="activity" />DEEPSEEK SCOUTING</span>
+              <span class="result-count">整季样本 · {{ seasonSummary.sample?.比赛场次 ?? stats.match_count }} 场</span>
+            </div>
+            <div class="season-summary-body">
+              <div class="season-summary-lead">
+                <h2 id="season-summary-title">{{ seasonSummary.headline }}</h2>
+                <p>{{ seasonSummary.overview }}</p>
+                <small v-if="seasonSummary.refreshing">数据已更新，新版报告生成中；当前展示上一版。</small>
+              </div>
+              <dl class="season-summary-points">
+                <div><dt>优势</dt><dd>{{ seasonSummary.strength }}</dd></div>
+                <div><dt>观察项</dt><dd>{{ seasonSummary.weakness }}</dd></div>
+                <div><dt>打法画像</dt><dd>{{ seasonSummary.style }}</dd></div>
+              </dl>
+            </div>
+          </template>
+        </section>
+
         <nav class="day-navigation player-day-nav" aria-label="选手比赛日筛选">
           <span class="day-nav-label">统计范围</span>
           <div class="day-scroll">
@@ -134,7 +159,7 @@
             <table class="data-table player-match-table">
               <thead>
                 <tr>
-                  <th>比赛时间</th><th>地图</th><th>对阵 / 比分</th><th>结果</th>
+                  <th>比赛时间</th><th>地图</th><th class="player-match-score-heading">对阵 / 比分</th><th>结果</th>
                   <th class="num">K / D / A</th><th class="num">Rating</th><th class="num">ADR</th><th class="num">KAST</th>
                 </tr>
               </thead>
@@ -142,7 +167,7 @@
                 <tr v-for="match in matchRecords" :key="match.match_id">
                   <td class="player-match-time"><strong>{{ formatMatchDate(match) }}</strong><small>{{ formatMatchClock(match.start_time) }}</small></td>
                   <td><strong>{{ match.map_name || '未知地图' }}</strong><small>{{ match.game_mode || match.map_name_en || '—' }} · Demo {{ match.demo_analysis?.status || 'pending' }}</small></td>
-                  <td>
+                  <td class="player-match-score-cell">
                     <div class="player-match-score">
                       <span>{{ match.team1_name || '队伍 A' }}</span>
                       <strong>{{ match.team1_score ?? '—' }} : {{ match.team2_score ?? '—' }}</strong>
@@ -265,6 +290,7 @@ const history = ref([])
 const mapStats = ref([])
 const matchRecords = ref([])
 const killMatchups = ref([])
+const seasonSummary = ref(null)
 const lastCrawl = ref('')
 const error = ref('')
 const loading = ref(true)
@@ -455,6 +481,7 @@ async function load() {
     mapStats.value = data.map_stats || []
     matchRecords.value = data.match_records || []
     killMatchups.value = data.kill_matchups || []
+    seasonSummary.value = data.season_summary || null
     lastCrawl.value = data.last_crawl_time || ''
     document.title = `${playerName.value} · ${cupAlias.value} · 熊掌CS Major`
     loading.value = false

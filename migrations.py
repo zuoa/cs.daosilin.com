@@ -4,6 +4,7 @@ from datetime import datetime
 from ajlog import logger
 from config import ADMIN_PASSWORD, ADMIN_USERNAME
 from database import (AdminUser, DemoAnalysis, DemoCredential, DemoPlayerStats,
+                      PlayerSeasonSummary,
                       SchemaMigration, _add_column, _column_exists, _table_exists,
                       db, is_postgres)
 
@@ -128,6 +129,11 @@ def _m011_demo_analysis():
     logger.info('Demo 凭证、任务状态与选手事件统计表已创建')
 
 
+def _m012_player_season_summary():
+    db.create_tables([PlayerSeasonSummary], safe=True)
+    logger.info('选手赛季 AI 点评表已创建')
+
+
 MIGRATIONS = [
     ('001_player_in_library', _m001_player_in_library),
     ('002_season_hit_ratio', _m002_season_hit_ratio),
@@ -140,6 +146,7 @@ MIGRATIONS = [
     ('009_player_perfect_rank', _m009_player_perfect_rank),
     ('010_advanced_match_stats', _m010_advanced_match_stats),
     ('011_demo_analysis', _m011_demo_analysis),
+    ('012_player_season_summary', _m012_player_season_summary),
 ]
 
 

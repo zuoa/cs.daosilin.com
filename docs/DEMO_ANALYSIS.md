@@ -10,23 +10,30 @@
 
 ## 部署
 
-1. 生成专用 Fernet key：
+1. 在 `.env` 配置 WMPVP 采集及 Demo 下载的默认凭证：
+
+   ```text
+   WMPVP_ACCESS_TOKEN=<PWA access token>
+   WMPVP_STEAM_ID=<SteamID64>
+   ```
+
+2. 登录管理后台，在「API 与安全」中开启 Demo 分析。启停状态保存在数据库中，不需要配置启用环境变量。
+
+3. 如果需要在后台保存另一套覆盖凭证，再生成专用 Fernet key：
 
    ```bash
    python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
    ```
 
-2. 在部署环境设置：
+   并在部署环境设置：
 
    ```text
-   DEMO_ANALYSIS_ENABLED=1
    DEMO_CREDENTIAL_ENCRYPTION_KEY=<Fernet key>
    ```
 
-3. 使用同一镜像启动 `app` 与 `demo-worker`。`docker-compose.yml` 已为两者挂载同一个 `/data`，归档默认写入 `/data/demos`。
-4. 登录管理后台保存 PWA SteamID64 和 access token。保存后会自动扫描新比赛和最近 30 天。
+4. 使用同一镜像启动 `app` 与 `demo-worker`。`docker-compose.yml` 已为两者挂载同一个 `/data`，归档默认写入 `/data/demos`。后台开启后会自动扫描新比赛和最近 30 天。
 
-没有加密 key 时后台拒绝保存；access token 只以 Fernet 密文落库，不进入日志、任务参数、下载归档或 API 返回。PWA token 过期后需要管理员重新保存。
+凭证优先级为“管理后台加密凭证 → `.env` 中的 `WMPVP_ACCESS_TOKEN` / `WMPVP_STEAM_ID`”。没有加密 key 时后台拒绝保存覆盖凭证；access token 不进入日志、任务参数、下载归档或 API 返回。数据库中没有保存凭证时，Worker 自动回退到 `.env`。
 
 ## 下载与校验
 

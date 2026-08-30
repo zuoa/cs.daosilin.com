@@ -3,6 +3,8 @@ import time
 
 import requests
 
+from config import WMPVP_ACCESS_TOKEN, WMPVP_STEAM_ID
+
 from ajlog import logger
 
 
@@ -124,7 +126,7 @@ class WMAPI:
 
 
 if __name__ == '__main__':
-    wm = WMAPI(token='c27dd7695e6913c414a018601470e48426c96805', token_steam_id='76561198256708927')
+    wm = WMAPI(token=WMPVP_ACCESS_TOKEN, token_steam_id=WMPVP_STEAM_ID)
     match_list_data = wm.get_match_list( to_steamid64("1079185706"))
     print(match_list_data)
     for match in match_list_data:

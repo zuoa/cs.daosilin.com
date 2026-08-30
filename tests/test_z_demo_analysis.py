@@ -11,10 +11,11 @@ from cryptography.fernet import Fernet
 from peewee import BooleanField, DoubleField, FloatField, IntegerField
 
 from app import app
-from database import (DemoAnalysis, DemoCredential, DemoPlayerStats, MatchPlayer,
-                      Player, create_tables, db)
-from demo_service import (attach_demo_stats, load_demo_credential, persist_analysis,
-                          save_demo_credential)
+from database import (Config, DemoAnalysis, DemoCredential, DemoPlayerStats,
+                      MatchPlayer, Player, create_tables, db)
+from demo_service import (attach_demo_stats, demo_analysis_enabled,
+                          load_demo_credential, persist_analysis,
+                          save_demo_credential, set_demo_analysis_enabled)
 from demo_tasks import _extract_demo, _safe_error, schedule_demo_analysis
 
 
@@ -109,6 +110,7 @@ class DemoAnalysisTest(unittest.TestCase):
         DemoCredential.delete().execute()
         MatchPlayer.delete().execute()
         Player.delete().execute()
+        Config.delete().where(Config.key == 'demo_analysis_enabled').execute()
 
     def test_credentials_are_encrypted_and_round_trip(self):
         key = Fernet.generate_key().decode()
@@ -118,6 +120,36 @@ class DemoAnalysisTest(unittest.TestCase):
             row = DemoCredential.get()
             self.assertNotIn(token, row.encrypted_access_token)
             self.assertEqual(load_demo_credential()['access_token'], token)
+            self.assertEqual(load_demo_credential()['source'], 'database')
+
+    def test_existing_wmpvp_credential_is_the_default_fallback(self):
+        with patch('demo_service.WMPVP_ACCESS_TOKEN', 'existing-wmpvp-token'), \
+                patch('demo_service.WMPVP_STEAM_ID', '76561198000000001'):
+            credential = load_demo_credential()
+        self.assertEqual(credential, {
+            'steam_id': '76561198000000001',
+            'access_token': 'existing-wmpvp-token',
+            'source': 'wmpvp_default',
+        })
+
+    def test_database_credential_takes_precedence_over_env_fallback(self):
+        key = Fernet.generate_key().decode()
+        with patch('demo_service.DEMO_CREDENTIAL_ENCRYPTION_KEY', key), \
+                patch('demo_service.WMPVP_ACCESS_TOKEN', 'env-token'), \
+                patch('demo_service.WMPVP_STEAM_ID', '76561198000000001'):
+            save_demo_credential('76561198000000002', 'database-access-token')
+            credential = load_demo_credential()
+        self.assertEqual(credential['steam_id'], '76561198000000002')
+        self.assertEqual(credential['access_token'], 'database-access-token')
+        self.assertEqual(credential['source'], 'database')
+
+    def test_demo_enabled_switch_is_stored_in_database(self):
+        self.assertFalse(demo_analysis_enabled())
+        set_demo_analysis_enabled(True)
+        self.assertTrue(demo_analysis_enabled())
+        self.assertEqual(Config.get_value('demo_analysis_enabled'), '1')
+        set_demo_analysis_enabled(False)
+        self.assertFalse(demo_analysis_enabled())
 
     def test_admin_api_never_echoes_demo_access_token(self):
         key = Fernet.generate_key().decode()
@@ -141,7 +173,9 @@ class DemoAnalysisTest(unittest.TestCase):
         self.assertEqual(DemoCredential.select().count(), 0)
 
     def test_missing_credentials_produce_explicit_blocked_state(self):
-        with patch('demo_tasks.DEMO_ANALYSIS_ENABLED', True):
+        set_demo_analysis_enabled(True)
+        with patch('demo_service.WMPVP_ACCESS_TOKEN', ''), \
+                patch('demo_service.WMPVP_STEAM_ID', ''):
             row = schedule_demo_analysis('PVP@123')
         self.assertEqual(row.status, 'blocked_credentials')
         self.assertEqual(row.error_code, 'credentials_missing')

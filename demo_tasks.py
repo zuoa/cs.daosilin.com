@@ -15,11 +15,12 @@ import requests
 import zstandard
 
 from ajlog import logger
-from config import (DEMO_ANALYSIS_ENABLED, DEMO_ANALYZER_PATH, DEMO_ANALYZER_TIMEOUT,
-                    DEMO_BACKFILL_DAYS, DEMO_MAX_BYTES, DEMO_METRIC_VERSION,
-                    DEMO_STORAGE_PATH, REDIS_URL)
+from config import (DEMO_ANALYZER_PATH, DEMO_ANALYZER_TIMEOUT, DEMO_BACKFILL_DAYS,
+                    DEMO_MAX_BYTES, DEMO_METRIC_VERSION, DEMO_STORAGE_PATH,
+                    REDIS_URL)
 from database import DemoAnalysis, DemoCredential, Match, db
-from demo_service import (PARSER_NAME, PARSER_VERSION, load_demo_credential,
+from demo_service import (PARSER_NAME, PARSER_VERSION, demo_analysis_enabled,
+                          has_demo_credential, load_demo_credential,
                           persist_analysis)
 
 
@@ -67,11 +68,11 @@ def schedule_demo_analysis(match_id: str, force=False):
         defaults={'source_match_id': match_id.removeprefix('PVP@'),
                   'metric_version': DEMO_METRIC_VERSION},
     )
-    if not DEMO_ANALYSIS_ENABLED:
+    if not demo_analysis_enabled():
         return row
     if row.status == 'completed' and row.metric_version == DEMO_METRIC_VERSION and not force:
         return row
-    if not DemoCredential.select().where(DemoCredential.source == 'pwa').exists():
+    if not has_demo_credential():
         return _state(match_id, 'blocked_credentials', error_code='credentials_missing',
                       error_message='尚未配置 PWA Demo 凭证', next_retry_at=None)
     queue = _queue()
@@ -103,7 +104,7 @@ def schedule_demo_analysis(match_id: str, force=False):
 
 def reconcile_demo_jobs(days=None):
     """Backfill recent matches and recover pending or stale queue states."""
-    if not DEMO_ANALYSIS_ENABLED:
+    if not demo_analysis_enabled():
         return {'eligible': 0, 'scheduled': 0, 'disabled': True}
     cutoff = datetime.now() - timedelta(days=days or DEMO_BACKFILL_DAYS)
     matches = Match.select(Match.match_id).where(Match.end_time >= cutoff)
@@ -250,6 +251,10 @@ def run_demo_analysis(match_id: str):
     """Download, validate, parse and atomically publish one match analysis."""
     if db.is_closed():
         db.connect(reuse_if_open=True)
+    if not demo_analysis_enabled():
+        row = _state(match_id, 'pending', error_code='analysis_disabled',
+                     error_message='Demo 分析已在管理后台关闭', next_retry_at=None)
+        return {'status': row.status, 'disabled': True}
     row = _state(match_id, 'downloading', started_at=datetime.now(), heartbeat_at=datetime.now(),
                  attempt_count=(DemoAnalysis.get(DemoAnalysis.match_id == match_id).attempt_count or 0) + 1,
                  error_code=None, error_message=None, finished_at=None, next_retry_at=None)

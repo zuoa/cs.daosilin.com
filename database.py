@@ -419,6 +419,59 @@ class PlayerTitle(BaseModel, CRUDMixin):
             return False
 
 
+class PlayerSeasonSummary(BaseModel, CRUDMixin):
+    """Durable DeepSeek summary for one player in one whole season."""
+    player_id = CharField(max_length=64)
+    cup_name = CharField(max_length=128)
+    status = CharField(max_length=32, default='pending', index=True)
+    headline = CharField(max_length=128, null=True)
+    overview = TextField(null=True)
+    strength = TextField(null=True)
+    weakness = TextField(null=True)
+    style = TextField(null=True)
+    sample_info = TextField(null=True)
+    input_snapshot = TextField(null=True)
+    source_hash = CharField(max_length=64, null=True)
+    requested_hash = CharField(max_length=64, null=True)
+    prompt_version = CharField(max_length=32, null=True)
+    model_name = CharField(max_length=128, null=True)
+    prompt_tokens = IntegerField(null=True)
+    completion_tokens = IntegerField(null=True)
+    total_tokens = IntegerField(null=True)
+    attempt_count = IntegerField(default=0)
+    error_message = TextField(null=True)
+    generated_at = DateTimeField(null=True)
+
+    class Meta:
+        table_name = 'player_season_summary'
+        indexes = (
+            (('player_id', 'cup_name'), True),
+        )
+
+    def public_payload(self) -> Dict[str, Any]:
+        """Expose content/status without leaking prompts or operational errors."""
+        if not self.overview or not self.headline:
+            return ({'status': 'pending'}
+                    if self.status in ('pending', 'queued', 'generating') else None)
+        sample = {}
+        try:
+            sample = json.loads(self.sample_info or '{}')
+        except (TypeError, ValueError):
+            pass
+        return {
+            'status': 'completed',
+            'headline': self.headline,
+            'overview': self.overview,
+            'strength': self.strength,
+            'weakness': self.weakness,
+            'style': self.style,
+            'sample': sample,
+            'generated_at': self.generated_at.isoformat() if self.generated_at else None,
+            'refreshing': self.status in ('queued', 'generating'),
+            'stale': self.status == 'failed' or self.source_hash != self.requested_hash,
+        }
+
+
 class CupDayChampion(BaseModel, CRUDMixin):
     cup_name = CharField(max_length=128)  # 杯赛名称
     day = CharField(max_length=64)  # 日期
@@ -1294,6 +1347,9 @@ class Season(BaseModel, CRUDMixin):
                 'titles': PlayerTitle.delete().where(
                     PlayerTitle.cup_name == cup_name
                 ).execute(),
+                'player_summaries': PlayerSeasonSummary.delete().where(
+                    PlayerSeasonSummary.cup_name == cup_name
+                ).execute(),
                 'champions': CupDayChampion.delete().where(
                     CupDayChampion.cup_name == cup_name
                 ).execute(),
@@ -1582,6 +1638,7 @@ def create_tables():
     """Create database tables if they don't exist, then apply migrations."""
     with db:
         db.create_tables([Config, Match, MatchPlayer, Player, CupDayChampion, PlayerTitle,
+                          PlayerSeasonSummary,
                           DemoCredential, DemoAnalysis, DemoPlayerStats, Season, SeasonRoster,
                           MatchSelection, AdminUser, SchemaMigration], safe=True)
     migrate_schema()

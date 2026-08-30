@@ -17,14 +17,15 @@ from auth import (captcha_ok, captcha_response, clear_login_fail, current_admin,
                   revoke_database_external_api_token, save_external_api_token,
                   verify_password)
 from champion_service import judge_champion
-from config import (ADMIN_PASSWORD, ADMIN_USERNAME, DEMO_ANALYSIS_ENABLED,
-                    DEMO_BACKFILL_DAYS, EXTERNAL_API_TOKEN, REDIS_URL,
+from config import (ADMIN_PASSWORD, ADMIN_USERNAME, DEMO_BACKFILL_DAYS,
+                    EXTERNAL_API_TOKEN, LLM_MODEL_NAME, REDIS_URL,
                     SECRET_KEY, SITE_NAME)
 from database import (AdminUser, DemoAnalysis, MatchPlayer, Player, CupDayChampion,
                       create_tables, Config, PlayerTitle, Match, Season, SeasonRoster,
-                      MatchSelection, import_history_sql)
-from demo_service import (demo_credential_status, revoke_demo_credential,
-                          save_demo_credential)
+                      MatchSelection, PlayerSeasonSummary, import_history_sql)
+from demo_service import (demo_analysis_enabled, demo_credential_status,
+                          revoke_demo_credential, save_demo_credential,
+                          set_demo_analysis_enabled)
 from live_service import (LiveRoomError, fetch_live_avatar, normalize_live_room,
                           resolve_live_room)
 from scheduler import (crawl_season_with_status, get_crawl_status,
@@ -32,6 +33,8 @@ from scheduler import (crawl_season_with_status, get_crawl_status,
                        set_auto_crawl_enabled, set_crawl_status)
 from steam_service import SteamAvatarError, fetch_steam_avatar
 from title_service import title_service
+from player_summary_service import (admin_row as player_summary_admin_row,
+                                    get_public_summary, llm_configured)
 from utils import success, error
 
 app = Flask(__name__)
@@ -233,6 +236,8 @@ def _player_detail_payload(player_id, cup, day=None):
         'map_stats': MatchPlayer.get_player_map_stats(cup, player_id, day),
         'match_records': match_records,
         'kill_matchups': MatchPlayer.get_player_kill_matchups(cup, player_id, day),
+        # This report remains season-scoped when the detail page filters a day.
+        'season_summary': get_public_summary(cup, player_id),
         'cup': cup,
         'cup_alias': Season.display_name(cup),
         'day': day,
@@ -1206,7 +1211,7 @@ def _demo_admin_status(extra=None):
                     .group_by(DemoAnalysis.status))
     }
     payload.update({
-        'enabled': DEMO_ANALYSIS_ENABLED,
+        'enabled': demo_analysis_enabled(),
         'backfill_days': DEMO_BACKFILL_DAYS,
         'job_counts': counts,
     })
@@ -1223,6 +1228,18 @@ def api_admin_demo_settings():
         return _demo_admin_status()
     data = request.get_json(silent=True) or {}
     action = str(data.get('action') or 'save').strip().lower()
+    if action == 'enable':
+        set_demo_analysis_enabled(True)
+        try:
+            from demo_tasks import reconcile_demo_jobs
+            result = reconcile_demo_jobs()
+        except Exception as exc:
+            logger.error(f'Demo 分析开启后入队失败: {exc}')
+            result = {'scheduled': 0}
+        return _demo_admin_status({'message': f'Demo 分析已开启，已调度 {result.get("scheduled", 0)} 场'})
+    if action == 'disable':
+        set_demo_analysis_enabled(False)
+        return _demo_admin_status({'message': 'Demo 分析已关闭；平台数据采集继续运行'})
     if action == 'save':
         try:
             save_demo_credential(data.get('steam_id'), data.get('access_token'))
@@ -1237,12 +1254,12 @@ def api_admin_demo_settings():
         return _demo_admin_status({'message': f'Demo 凭证已加密保存，已调度 {result.get("scheduled", 0)} 场'})
     if action == 'revoke':
         revoke_demo_credential()
-        return _demo_admin_status({'message': 'Demo 凭证已删除，已排队任务将进入凭证阻塞状态'})
+        return _demo_admin_status({'message': 'Demo 覆盖凭证已删除，已恢复使用默认 WMPVP 采集凭证'})
     if action == 'backfill':
         from demo_tasks import reconcile_demo_jobs
         result = reconcile_demo_jobs()
         return _demo_admin_status({'message': f'已扫描 {result["eligible"]} 场，调度 {result["scheduled"]} 场'})
-    return error(400, 'action 只能是 save、revoke 或 backfill'), 400
+    return error(400, 'action 只能是 enable、disable、save、revoke 或 backfill'), 400
 
 
 @app.route('/api/admin/demo-jobs')
@@ -1278,6 +1295,75 @@ def api_admin_demo_job_retry(match_id):
     except Exception as exc:
         return error(503, f'任务入队失败：{exc}'), 503
     return success({'match_id': match_id, 'status': row.status})
+
+
+@app.route('/api/admin/player-summaries')
+def api_admin_player_summaries():
+    cup = (request.args.get('cup') or '').strip()
+    status = (request.args.get('status') or '').strip()
+    try:
+        page = max(1, int(request.args.get('page') or 1))
+        page_size = min(100, max(1, int(request.args.get('page_size') or 30)))
+    except (TypeError, ValueError):
+        return error(400, 'page 和 page_size 必须是整数'), 400
+    query = PlayerSeasonSummary.select()
+    if cup:
+        query = query.where(PlayerSeasonSummary.cup_name == cup)
+    if status:
+        query = query.where(PlayerSeasonSummary.status == status)
+    total = query.count()
+    rows = list(query.order_by(PlayerSeasonSummary.updated_at.desc())
+                .paginate(page, page_size))
+    count_query = (PlayerSeasonSummary
+                   .select(PlayerSeasonSummary.status,
+                           fn.COUNT(PlayerSeasonSummary.id).alias('count'))
+                   .group_by(PlayerSeasonSummary.status))
+    if cup:
+        count_query = count_query.where(PlayerSeasonSummary.cup_name == cup)
+    counts = {row.status: row.count for row in count_query}
+    return success({
+        'configured': llm_configured(),
+        'redis_configured': bool(REDIS_URL),
+        'model': LLM_MODEL_NAME,
+        'counts': counts,
+        'items': [player_summary_admin_row(row) for row in rows],
+        'total': total,
+        'page': page,
+        'page_size': page_size,
+    })
+
+
+@app.route('/api/admin/player-summaries/rebuild', methods=['POST'])
+def api_admin_player_summaries_rebuild():
+    if not llm_configured():
+        return error(409, '服务端尚未配置 LLM_API_KEY'), 409
+    if not REDIS_URL:
+        return error(409, '服务端尚未配置 REDIS_URL'), 409
+    data = request.get_json(silent=True) or {}
+    cup = str(data.get('cup') or '').strip()
+    player_id = str(data.get('player_id') or '').strip()
+    if not cup:
+        return error(400, '参数 cup 不能为空'), 400
+    if not Season.get_by_cup(cup):
+        return error(404, '赛季不存在'), 404
+    from player_summary_tasks import (reconcile_player_summaries,
+                                      schedule_player_summary)
+    try:
+        if player_id:
+            row, queued = schedule_player_summary(cup, player_id, force=True)
+            if row is None:
+                return error(404, '该选手在此赛季无数据'), 404
+            result = {'eligible': 1, 'scheduled': int(queued),
+                      'skipped': int(not queued)}
+        else:
+            result = reconcile_player_summaries(cup_name=cup, force=True)
+    except Exception as exc:
+        logger.error(f'AI 点评重算入队失败 cup={cup} player={player_id}: {exc}')
+        return error(503, 'AI 点评队列暂时不可用'), 503
+    return success({
+        **result,
+        'message': f'已重新调度 {result.get("scheduled", 0)} 位选手的赛季点评',
+    })
 
 
 @app.route('/api/admin/login', methods=['POST'])
