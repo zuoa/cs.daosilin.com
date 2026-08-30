@@ -18,7 +18,7 @@
           <div><span>选手</span><strong>{{ players.length }}</strong></div>
           <div><span>最高 Rating</span><strong>{{ topRating }}</strong></div>
           <div><span>平均 Rating</span><strong>{{ averageRating }}</strong></div>
-          <div><span>数据更新</span><strong class="summary-time">{{ formatTime(lastCrawl) || '—' }}</strong></div>
+          <div><span>数据更新</span><strong class="summary-time">{{ formatTime(lastCrawl) || '-' }}</strong></div>
         </div>
       </section>
 
@@ -67,8 +67,9 @@
             <span><AppIcon name="alert" :size="25" /></span><h3>无法读取榜单</h3><p>{{ error }}</p>
             <button class="button subtle" type="button" @click="load">重新加载</button>
           </div>
-          <div v-else-if="filteredPlayers.length" class="table-scroll leaderboard-scroll">
-            <table class="data-table leaderboard-table">
+          <div v-else-if="filteredPlayers.length" class="leaderboard-results">
+            <div class="table-scroll leaderboard-scroll">
+              <table class="data-table leaderboard-table">
               <thead>
                 <tr>
                   <th class="rank-cell">排名</th><th>选手</th><th>完美段位</th><th v-if="day">称号</th><th>荣誉</th>
@@ -82,7 +83,12 @@
                     <td>
                       <div class="identity-cell public-player">
                         <PlayerAvatar :src="p.avatar" :name="displayName(p)" class="player-avatar" />
-                        <span><strong>{{ displayName(p) }}</strong><small>{{ p.team_name || p.nickname || '—' }}</small></span>
+                        <span>
+                          <router-link class="player-name-link" :to="playerLink(p)" :aria-label="`查看 ${displayName(p)} 的完整详情`">
+                            {{ displayName(p) }}
+                          </router-link>
+                          <small>{{ p.team_name || p.nickname || '-' }}</small>
+                        </span>
                       </div>
                     </td>
                     <td class="perfect-rank-cell">
@@ -105,10 +111,10 @@
                           :title="t.title_description"
                         >{{ t.title_name }}</span>
                         <span v-if="uniqueTitles(p.titles).length > 2" class="title-more">+{{ uniqueTitles(p.titles).length - 2 }}</span>
-                        <span v-if="!uniqueTitles(p.titles).length" class="muted-cell">—</span>
+                        <span v-if="!uniqueTitles(p.titles).length" class="muted-cell">-</span>
                       </div>
                     </td>
-                    <td><div class="trophy-container"><span v-for="(item, ti) in p.trophy_history || []" :key="ti" :class="item.trophy">{{ item.trophy === 'champion' ? '冠' : '亚' }}</span><span v-if="!p.trophy_history?.length">—</span></div></td>
+                    <td><div class="trophy-container"><span v-for="(item, ti) in p.trophy_history || []" :key="ti" :class="item.trophy">{{ item.trophy === 'champion' ? '冠' : '亚' }}</span><span v-if="!p.trophy_history?.length">-</span></div></td>
                     <td class="mono-data">{{ p.match_count || 0 }}</td>
                     <td><span :class="{ 'stat-positive': p.win_rate >= 0.6 }">{{ pct(p.win_rate) }}</span></td>
                     <td class="mono-data">{{ n2(p.kd_ratio) }}</td>
@@ -157,7 +163,72 @@
                   </tr>
                 </template>
               </tbody>
-            </table>
+              </table>
+            </div>
+
+            <ol class="mobile-leaderboard" aria-label="选手榜单">
+              <li
+                v-for="(p, index) in filteredPlayers"
+                :key="`mobile-${p.player_id}`"
+                class="mobile-player-card"
+                :class="{ expanded: open === p.player_id }"
+              >
+                <div class="mobile-player-main">
+                  <span class="rank-number" :class="{ top: index < 3 }" :aria-label="`第 ${index + 1} 名`">{{ pad(index + 1) }}</span>
+                  <PlayerAvatar :src="p.avatar" :name="displayName(p)" class="player-avatar" />
+                  <div class="mobile-player-identity">
+                    <router-link class="player-name-link" :to="playerLink(p)" :aria-label="`查看 ${displayName(p)} 的完整详情`">
+                      {{ displayName(p) }}
+                      <AppIcon name="arrowRight" :size="14" aria-hidden="true" />
+                    </router-link>
+                    <small>{{ p.team_name || p.nickname || '暂无队伍' }}</small>
+                  </div>
+                  <div class="mobile-rating">
+                    <span>Rating</span>
+                    <strong :class="{ hot: p.avg_pw_rating >= 1.57 }">{{ n2(p.avg_pw_rating) }}</strong>
+                  </div>
+                </div>
+
+                <dl class="mobile-key-stats">
+                  <div><dt>K/D</dt><dd>{{ n2(p.kd_ratio) }}</dd></div>
+                  <div><dt>胜率</dt><dd :class="{ 'stat-positive': p.win_rate >= 0.6 }">{{ pct(p.win_rate) }}</dd></div>
+                  <div><dt>场次</dt><dd>{{ p.match_count || 0 }}</dd></div>
+                  <div><dt>MVP</dt><dd>{{ p.total_mvp || 0 }}</dd></div>
+                </dl>
+
+                <div v-if="open === p.player_id" class="mobile-extra-stats">
+                  <dl>
+                    <div><dt>ADPR</dt><dd>{{ n2(p.avg_adpr) }}</dd></div>
+                    <div><dt>WE</dt><dd>{{ n2(p.avg_we) }}</dd></div>
+                    <div><dt>爆头率</dt><dd>{{ pct(p.avg_headshot_ratio) }}</dd></div>
+                    <div><dt>胜场</dt><dd>{{ p.win_count || 0 }}</dd></div>
+                  </dl>
+                  <div v-if="p.perfect_level" class="mobile-perfect-rank">
+                    <span>完美段位</span>
+                    <PerfectRankBadge
+                      :level="p.perfect_level"
+                      :score="p.perfect_score"
+                      :updated-at="p.perfect_rank_updated_at"
+                      compact
+                    />
+                  </div>
+                  <router-link class="mobile-detail-link" :to="playerLink(p)">
+                    查看完整详情<AppIcon name="arrowRight" :size="15" />
+                  </router-link>
+                </div>
+
+                <button
+                  class="mobile-expand-button"
+                  type="button"
+                  :aria-label="`${open === p.player_id ? '收起' : '展开'} ${displayName(p)} 的更多数据`"
+                  :aria-expanded="open === p.player_id"
+                  @click="togglePlayer(p.player_id)"
+                >
+                  {{ open === p.player_id ? '收起' : '更多数据' }}
+                  <AppIcon name="chevronDown" :size="15" :class="{ rotated: open === p.player_id }" />
+                </button>
+              </li>
+            </ol>
           </div>
           <div v-else class="empty-state public-empty">
             <span><AppIcon name="users" :size="25" /></span><h3>没有匹配的选手</h3><p>调整搜索条件，或切换其他比赛日。</p>
