@@ -6,9 +6,17 @@ from unittest.mock import Mock, patch
 from database import PlayerSeasonSummary
 from player_summary_service import (build_summary_input, generate_summary,
                                     snapshot_hash)
+from player_summary_tasks import _player_summary_job_id
+from rq.job import validate_job_id
 
 
 class PlayerSummaryServiceTest(unittest.TestCase):
+    def test_summary_job_id_is_accepted_by_rq(self):
+        job_id = _player_summary_job_id(12, 'abcdef0123456789' * 4)
+
+        validate_job_id(job_id)
+        self.assertEqual(job_id, 'player-summary-12-abcdef0123456789')
+
     def test_prompt_input_keeps_trusted_zero_and_omits_ambiguous_zero(self):
         stats = {
             'match_count': 2, 'win_count': 0, 'total_rounds': 24,

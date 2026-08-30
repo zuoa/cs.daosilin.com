@@ -61,6 +61,12 @@ def _queue():
                  serializer=JSONSerializer, default_timeout=DEMO_ANALYZER_TIMEOUT + 60)
 
 
+def _demo_job_id(row_id, match_id, metric_version):
+    """Build an RQ-compatible ID without leaking arbitrary match ID characters."""
+    identity = f'{match_id}\0{metric_version}'.encode('utf-8')
+    return f'demo-analysis-{row_id}-{hashlib.sha256(identity).hexdigest()[:16]}'
+
+
 def schedule_demo_analysis(match_id: str, force=False):
     """Create durable state first, then best-effort enqueue an idempotent RQ job."""
     row, _ = DemoAnalysis.get_or_create(
@@ -79,7 +85,7 @@ def schedule_demo_analysis(match_id: str, force=False):
     if queue is None:
         return _state(match_id, 'pending', error_code='redis_unavailable',
                       error_message='REDIS_URL 未配置')
-    job_id = f'demo:{match_id}:{DEMO_METRIC_VERSION}'
+    job_id = _demo_job_id(row.id, match_id, DEMO_METRIC_VERSION)
     existing = queue.fetch_job(job_id)
     if existing and existing.get_status(refresh=True) in ('queued', 'started', 'deferred', 'scheduled'):
         return row

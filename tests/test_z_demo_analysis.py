@@ -16,7 +16,9 @@ from database import (Config, DemoAnalysis, DemoCredential, DemoPlayerStats,
 from demo_service import (attach_demo_stats, demo_analysis_enabled,
                           load_demo_credential, persist_analysis,
                           save_demo_credential, set_demo_analysis_enabled)
-from demo_tasks import _extract_demo, _safe_error, schedule_demo_analysis
+from demo_tasks import (_demo_job_id, _extract_demo, _safe_error,
+                        schedule_demo_analysis)
+from rq.job import validate_job_id
 
 
 def create_platform_row(match_id, player_id, **values):
@@ -111,6 +113,14 @@ class DemoAnalysisTest(unittest.TestCase):
         MatchPlayer.delete().execute()
         Player.delete().execute()
         Config.delete().where(Config.key == 'demo_analysis_enabled').execute()
+
+    def test_demo_job_id_is_accepted_by_rq(self):
+        first = _demo_job_id(7, 'PVP@123:456', 'v1.0/beta')
+        second = _demo_job_id(7, 'PVP@123:456', 'v1.0/beta')
+
+        validate_job_id(first)
+        self.assertEqual(first, second)
+        self.assertRegex(first, r'^demo-analysis-7-[a-f0-9]{16}$')
 
     def test_credentials_are_encrypted_and_round_trip(self):
         key = Fernet.generate_key().decode()

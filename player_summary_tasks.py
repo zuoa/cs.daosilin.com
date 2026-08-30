@@ -38,6 +38,11 @@ def _row(cup_name, player_id):
     return row
 
 
+def _player_summary_job_id(summary_id, digest):
+    """Build an RQ-compatible, deterministic ID for one summary snapshot."""
+    return f'player-summary-{summary_id}-{digest[:16]}'
+
+
 def schedule_player_summary(cup_name, player_id, force=False, snapshot=None):
     """Persist intent first and idempotently enqueue a summary generation."""
     snapshot = snapshot or build_summary_input(cup_name, player_id)
@@ -73,7 +78,7 @@ def schedule_player_summary(cup_name, player_id, force=False, snapshot=None):
         row.save()
         return row, False
 
-    job_id = f'player-summary:{row.id}:{digest[:16]}'
+    job_id = _player_summary_job_id(row.id, digest)
     existing = queue.fetch_job(job_id)
     if existing and existing.get_status(refresh=True) in (
             'queued', 'started', 'deferred', 'scheduled'):
