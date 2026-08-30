@@ -448,7 +448,7 @@ class PlayerSeasonSummary(BaseModel, CRUDMixin):
             (('player_id', 'cup_name'), True),
         )
 
-    def public_payload(self) -> Dict[str, Any]:
+    def public_payload(self) -> Optional[Dict[str, Any]]:
         """Expose content/status without leaking prompts or operational errors."""
         if not self.overview or not self.headline:
             return ({'status': 'pending'}

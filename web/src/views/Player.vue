@@ -63,7 +63,7 @@
         <section v-if="seasonSummary" class="panel player-season-summary" aria-labelledby="season-summary-title">
           <div v-if="seasonSummary.status === 'pending'" class="season-summary-pending" aria-live="polite">
             <span class="loader small"></span>
-            <div><strong>AI 球探报告整理中</strong><p>正在根据完整赛季的有效数据生成，不会把缺失指标当作 0。</p></div>
+            <div><strong id="season-summary-title">AI 球探报告整理中</strong><p>正在根据完整赛季的有效数据生成。</p></div>
           </div>
           <template v-else>
             <div class="season-summary-heading">
