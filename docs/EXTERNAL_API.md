@@ -46,8 +46,21 @@ GET /api/v1/external/players/<URL 编码后的赛季名>
 - `avg_adpr`
 - `avg_rating`
 - `fk_fd_ratio`
+- `avg_kast` / `kast_ratio`
+- `avg_headshot_ratio`
 
-其他统计包括场次/胜率、K/D、击杀/死亡/助攻、首杀/首死、爆头、多杀、1vN、闪光、命中、投掷物、MVP、RWS、KAST、WE 等聚合字段。比率为 `0.0-1.0`，例如 `win_rate: 0.625` 表示 62.5%。
+`avg_adpr` 使用“总生命伤害 / 总回合”，`avg_kast` 使用“KAST 回合数 / 总回合”，`avg_headshot_ratio` 使用“总爆头 / 总击杀”；它们都是跨场次加权口径，不是逐场百分比的算术平均。
+
+可直接使用的扩展指标包括：
+
+- 回合效率：`total_rounds`、`kills_per_round`、`deaths_per_round`、`assists_per_round`。
+- 开局对枪：`opening_duel_win_rate`、`opening_duels_per_round`。
+- 多杀与 MVP：`multi_kill_rounds`、`multi_kill_round_rate`、`mvp_match_rate`。
+- 闪光：`total_flash_success`（敌方致盲事件）、`total_flash_teammate`（队友致盲事件）、`enemy_flashes_per_round`、`team_flashes_per_round`、`team_flash_share`。
+- 团队与道具：`total_trade_frags`、`trade_kill_share`、`total_grenade_damage`、`total_inferno_damage`、`total_utility_damage`、`utility_damage_per_round`、`throws_per_round`。
+- 对位击杀：`kill_matchups`，按对手聚合并按击杀次数降序排列。
+
+所有比率字段为 `0.0-1.0`，例如 `win_rate: 0.625` 表示 62.5%。WMPVP 当前的 `flash`（闪光投掷数）始终为 0，无法作为成功率分母，因此兼容字段 `flash_success_ratio` 与 `flash_teammate_ratio` 固定返回 `0.0`，新接入方不应使用它们。
 
 ## 查询单个选手
 

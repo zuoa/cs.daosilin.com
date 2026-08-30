@@ -107,6 +107,21 @@ def _m009_player_perfect_rank():
     logger.info('player 完美天梯分、段位与更新时间字段已补齐')
 
 
+def _m010_advanced_match_stats():
+    if _table_exists('match') and not _column_exists('match', 'notes'):
+        _add_column('match', 'notes', 'TEXT')
+    if not _table_exists('match_player'):
+        return
+    integer_columns = ('trade_frag_count', 'grenade_damage', 'inferno_damage')
+    for column in integer_columns:
+        if not _column_exists('match_player', column):
+            _add_column('match_player', column, 'INTEGER DEFAULT 0')
+        db.execute_sql(f'UPDATE match_player SET {column} = 0 WHERE {column} IS NULL')
+    if not _column_exists('match_player', 'kill_map'):
+        _add_column('match_player', 'kill_map', 'TEXT')
+    logger.info('比赛原始详情、补枪、道具伤害与对位击杀字段已补齐')
+
+
 MIGRATIONS = [
     ('001_player_in_library', _m001_player_in_library),
     ('002_season_hit_ratio', _m002_season_hit_ratio),
@@ -117,6 +132,7 @@ MIGRATIONS = [
     ('007_season_champion_enabled', _m007_season_champion_enabled),
     ('008_player_avatar_sources', _m008_player_avatar_sources),
     ('009_player_perfect_rank', _m009_player_perfect_rank),
+    ('010_advanced_match_stats', _m010_advanced_match_stats),
 ]
 
 

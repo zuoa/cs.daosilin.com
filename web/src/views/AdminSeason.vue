@@ -384,7 +384,7 @@
                     <td class="num" :class="diffClass(p)">{{ formatDiff(p) }}</td>
                     <td class="num">{{ formatStat(p.adpr, 0) }}</td>
                     <td class="num rating-cell">{{ formatStat(p.pw_rating || p.rating, 2) }}</td>
-                    <td class="num">{{ formatRatio(p.kast) }}</td>
+                    <td class="num">{{ formatRatio(p.kast_ratio) }}</td>
                     <td class="num">{{ formatRatio(p.headshot_ratio) }}</td>
                     <td class="num">{{ p.entry_kill ?? 0 }}</td>
                     <td>{{ p.mvp ? 'MVP' : '—' }}</td>

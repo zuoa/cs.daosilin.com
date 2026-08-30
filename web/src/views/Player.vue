@@ -152,7 +152,7 @@
                   <td class="num mono-data">{{ match.kill ?? 0 }} / {{ match.death ?? 0 }} / {{ match.assist ?? 0 }}</td>
                   <td class="num"><strong class="rating-value">{{ n2(match.pw_rating || match.rating) }}</strong></td>
                   <td class="num mono-data">{{ Number(match.adpr || 0).toFixed(0) }}</td>
-                  <td class="num mono-data">{{ ratioDisplay(match.kast) }}</td>
+                  <td class="num mono-data">{{ pct(match.kast_ratio) }}</td>
                 </tr>
               </tbody>
             </table>
@@ -196,6 +196,24 @@
           </div>
         </section>
 
+        <section v-if="killMatchups.length" class="panel player-section">
+          <div class="panel-header">
+            <h2>对位击杀</h2>
+            <span class="result-count">按击杀次数排序</span>
+          </div>
+          <div class="table-scroll">
+            <table class="data-table">
+              <thead><tr><th>对手</th><th class="num">击杀次数</th></tr></thead>
+              <tbody>
+                <tr v-for="opponent in killMatchups.slice(0, 10)" :key="opponent.player_id">
+                  <td><strong>{{ opponent.nickname || opponent.player_id }}</strong><small>{{ opponent.player_id }}</small></td>
+                  <td class="num mono-data"><strong>{{ opponent.kills }}</strong></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
         <p v-if="lastCrawl" class="player-update-note"><AppIcon name="activity" />数据更新于 {{ formatTime(lastCrawl) }}</p>
       </template>
     </main>
@@ -231,6 +249,7 @@ const cupAlias = ref('')
 const history = ref([])
 const mapStats = ref([])
 const matchRecords = ref([])
+const killMatchups = ref([])
 const lastCrawl = ref('')
 const error = ref('')
 const loading = ref(true)
@@ -264,24 +283,34 @@ const statGroups = computed(() => {
   return [
     { title: '基础数据', icon: 'activity', items: [
       { label: '比赛场次', value: s.match_count || 0 }, { label: '胜场', value: s.win_count || 0 }, { label: '胜率', value: pct(s.win_rate) },
-      { label: '总击杀', value: s.total_kills || 0 }, { label: '总死亡', value: s.total_deaths || 0 }, { label: '总助攻', value: s.total_assists || 0 },
+      { label: '总回合', value: s.total_rounds || 0 }, { label: '每回合击杀', value: n2(s.kills_per_round) }, { label: '每回合死亡', value: n2(s.deaths_per_round) },
+      { label: '每回合助攻', value: n2(s.assists_per_round) }, { label: '总击杀', value: s.total_kills || 0 }, { label: '总助攻', value: s.total_assists || 0 },
     ] },
     { title: '击杀效率', icon: 'target', items: [
       { label: '首杀 / 首死', value: `${s.total_first_kills || 0} / ${s.total_first_deaths || 0}` }, { label: 'FK / FD', value: n2(s.fk_fd_ratio) },
+      { label: '开局对枪胜率', value: pct(s.opening_duel_win_rate) }, { label: '开局对枪/回合', value: n2(s.opening_duels_per_round) },
       { label: '爆头数', value: s.total_headshots || 0 }, { label: '爆头率', value: pct(s.avg_headshot_ratio) }, { label: 'K / D', value: n2(s.kd_ratio) },
     ] },
     { title: '多杀与残局', icon: 'trophy', items: [
       { label: '2K / 3K', value: `${s.total_2k || 0} / ${s.total_3k || 0}` }, { label: '4K / 5K', value: `${s.total_4k || 0} / ${s.total_5k || 0}` },
-      { label: '多杀总数', value: s.total_multi_kills || 0 }, { label: '1V2 / 1V3', value: `${s.total_1v2 || 0} / ${s.total_1v3 || 0}` },
-      { label: '1V4 / 1V5', value: `${s.total_1v4 || 0} / ${s.total_1v5 || 0}` },
+      { label: '多杀回合', value: s.multi_kill_rounds || 0 }, { label: '多杀回合率', value: pct(s.multi_kill_round_rate) },
+      { label: '1V1 / 1V2', value: `${s.total_1v1 || 0} / ${s.total_1v2 || 0}` }, { label: '1V3 / 1V4 / 1V5', value: `${s.total_1v3 || 0} / ${s.total_1v4 || 0} / ${s.total_1v5 || 0}` },
     ] },
     { title: '高级数据', icon: 'database', items: [
       { label: 'PWR Rating', value: n2(s.avg_pw_rating) }, { label: 'RWS', value: n2(s.avg_rws) }, { label: 'WE', value: n2(s.avg_we) },
-      { label: 'ADPR', value: n2(s.avg_adpr) }, { label: 'KAST', value: ratioDisplay(s.avg_kast) }, { label: '比赛 MVP', value: s.match_mvp_count || 0 },
+      { label: 'ADR（回合加权）', value: n2(s.avg_adpr) }, { label: 'KAST', value: pct(s.avg_kast) }, { label: '比赛 MVP', value: s.match_mvp_count || 0 },
+      { label: 'MVP 场次占比', value: pct(s.mvp_match_rate) }, { label: '狙击击杀', value: s.total_snipe_num || 0 },
     ] },
     { title: '投掷物', icon: 'layers', items: [
-      { label: '闪光弹', value: s.total_flashes || 0 }, { label: '成功闪光', value: s.total_flash_success || 0 }, { label: '队友闪光', value: s.total_flash_teammate || 0 },
-      { label: '闪光成功率', value: ratioDisplay(s.flash_success_ratio) }, { label: '投掷物总数', value: s.total_throws_count || 0 }, { label: '狙击击杀', value: s.total_snipe_num || 0 },
+      { label: '敌方致盲', value: s.total_flash_success || 0 }, { label: '敌方致盲/回合', value: n2(s.enemy_flashes_per_round) },
+      { label: '队友致盲', value: s.total_flash_teammate || 0 }, { label: '队友致盲占比', value: pct(s.team_flash_share) },
+      { label: '投掷物总数', value: s.total_throws_count || 0 }, { label: '投掷物/回合', value: n2(s.throws_per_round) },
+      { label: '手雷伤害', value: s.total_grenade_damage || 0 }, { label: '燃烧伤害', value: s.total_inferno_damage || 0 },
+      { label: '道具伤害/回合', value: n2(s.utility_damage_per_round) },
+    ] },
+    { title: '团队协作', icon: 'users', items: [
+      { label: '补枪击杀', value: s.total_trade_frags || 0 }, { label: '补枪击杀占比', value: pct(s.trade_kill_share) },
+      { label: '总道具伤害', value: s.total_utility_damage || 0 },
     ] },
   ]
 })
@@ -293,7 +322,6 @@ function titleCategory(title) { return titleMeta(title).label }
 function titleIcon(title) { return titleMeta(title).icon }
 function titleSummary(title) { return title?.title_summary || '由本赛季有效样本计算得出' }
 function normalizeRatio(value) { const number = Number(value || 0); return number > 1 ? number : number * 100 }
-function ratioDisplay(value) { return `${normalizeRatio(value).toFixed(1)}%` }
 function pad(value) { return String(value || 0).padStart(2, '0') }
 function formatTime(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '' }
 function formatMatchDate(match) {
@@ -382,6 +410,7 @@ async function load() {
     history.value = data.historical_data || []
     mapStats.value = data.map_stats || []
     matchRecords.value = data.match_records || []
+    killMatchups.value = data.kill_matchups || []
     lastCrawl.value = data.last_crawl_time || ''
     document.title = `${playerName.value} · ${cupAlias.value} · 熊掌CS Major`
     loading.value = false

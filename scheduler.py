@@ -92,9 +92,13 @@ def _store_match(match_data, assigned_cup_name=None, play_day=None, match_id=Non
     if not existing:
         Match.create(**match_model)
         logger.info(f"比赛 {match_id} 已保存")
-    elif assigned_cup_name and existing.get('cup_name') != assigned_cup_name:
-        Match.update(cup_name=assigned_cup_name).where(Match.match_id == match_id).execute()
-        MatchPlayer.update(cup_name=assigned_cup_name).where(MatchPlayer.match_id == match_id).execute()
+    else:
+        match_updates = dict(match_model)
+        if not assigned_cup_name:
+            match_updates.pop('cup_name', None)
+        Match.update(**match_updates).where(Match.match_id == match_id).execute()
+        if assigned_cup_name and existing.get('cup_name') != assigned_cup_name:
+            MatchPlayer.update(cup_name=assigned_cup_name).where(MatchPlayer.match_id == match_id).execute()
 
     players = match_data.get('players', [])
     for match_player in players:
@@ -160,6 +164,10 @@ def _store_match(match_data, assigned_cup_name=None, play_day=None, match_id=Non
             'cup_name': match_model.get('cup_name'),
             'win': 1 if match_model.get("win_team") == match_player.get('team') else 0,
             'game_count': match_model.get('team1_score') + match_model.get('team2_score'),
+            'trade_frag_count': match_player.get('tradeFragCount') or 0,
+            'grenade_damage': match_player.get('grenadeDamage') or 0,
+            'inferno_damage': match_player.get('infernoDamage') or 0,
+            'kill_map': json.dumps(match_player.get('killMap') or {}, ensure_ascii=False),
         }
 
         if match_model.get("play_day") is not None:
@@ -167,6 +175,13 @@ def _store_match(match_data, assigned_cup_name=None, play_day=None, match_id=Non
 
         if not MatchPlayer.is_exist(match_id, player_id):
             MatchPlayer.create(**match_player_model)
+        else:
+            player_updates = dict(match_player_model)
+            if not assigned_cup_name:
+                player_updates.pop('cup_name', None)
+            (MatchPlayer.update(**player_updates)
+             .where(MatchPlayer.match_id == match_id, MatchPlayer.player_id == player_id)
+             .execute())
 
         player_model = {
             "player_id": player_id,

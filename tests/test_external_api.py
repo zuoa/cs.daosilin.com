@@ -2,6 +2,7 @@ import os
 import shutil
 import tempfile
 import unittest
+import json
 from datetime import datetime
 from unittest.mock import patch
 
@@ -76,11 +77,18 @@ class ExternalPlayersApiTest(unittest.TestCase):
         )
         create_match_player(
             'm1', 'p1', 'season-one', kill=10, death=5, entry_kill=2,
-            first_death=2, rating=1.0, adpr=80.0, win=1,
+            first_death=2, rating=1.0, adpr=80.0, dmg_health=800,
+            game_count=10, kast=7, headshot=4, flash_success=5,
+            flash_teammate=1, throws_count=10, trade_frag_count=2,
+            grenade_damage=50, inferno_damage=30, win=1,
         )
         create_match_player(
             'm2', 'p1', 'season-two', kill=20, death=10, entry_kill=3,
-            first_death=1, rating=2.0, adpr=100.0, win=0,
+            first_death=1, rating=2.0, adpr=100.0, dmg_health=2000,
+            game_count=20, kast=15, headshot=10, flash_success=8,
+            flash_teammate=2, throws_count=16, trade_frag_count=6,
+            grenade_damage=40, inferno_damage=60, kill_map=json.dumps({'p2': 3}),
+            win=0,
         )
         Match.create(
             match_id='m2', map_name='炼狱小镇', map_name_en='de_inferno',
@@ -96,7 +104,8 @@ class ExternalPlayersApiTest(unittest.TestCase):
         )
         create_match_player(
             'm3', 'p2', 'current-season', kill=30, death=10, entry_kill=4,
-            first_death=2, rating=3.0, adpr=120.0, win=1,
+            first_death=2, rating=3.0, adpr=120.0, dmg_health=2880,
+            game_count=24, kast=18, win=1,
         )
 
     @classmethod
@@ -128,6 +137,12 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(payload['player_count'], 1)
         player = payload['players'][0]
         self.assertEqual(player['avg_adpr'], 100.0)
+        self.assertEqual(player['avg_kast'], 0.75)
+        self.assertEqual(player['avg_headshot_ratio'], 0.5)
+        self.assertEqual(player['enemy_flashes_per_round'], 0.4)
+        self.assertEqual(player['team_flash_share'], 0.2)
+        self.assertEqual(player['trade_kill_share'], 0.3)
+        self.assertEqual(player['utility_damage_per_round'], 5.0)
         self.assertEqual(player['avg_rating'], 2.0)
         self.assertEqual(player['fk_fd_ratio'], 3.0)
 
@@ -143,7 +158,12 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(p1['match_count'], 2)
         self.assertEqual(p1['total_kills'], 30)
         self.assertEqual(p1['avg_rating'], 1.5)
-        self.assertEqual(p1['avg_adpr'], 90.0)
+        self.assertEqual(p1['avg_adpr'], 93.3333)
+        self.assertEqual(p1['avg_kast'], 0.7333)
+        self.assertEqual(p1['avg_headshot_ratio'], 0.4667)
+        self.assertEqual(p1['throws_per_round'], 0.8667)
+        self.assertEqual(p1['kill_matchups'][0]['nickname'], '选手二')
+        self.assertEqual(p1['kill_matchups'][0]['kills'], 3)
         self.assertEqual(p1['fk_fd_ratio'], 1.6667)
         self.assertEqual(p1['live_room_id'], 'DOUYU_731778')
 
@@ -335,6 +355,11 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(records[0]['start_time'], '2025-02-03T20:15:30')
         self.assertEqual(records[0]['kill'], 20)
         self.assertEqual(records[0]['team1_name'], 'Alpha')
+        self.assertEqual(records[0]['round_count'], 20)
+        self.assertEqual(records[0]['kast_ratio'], 0.75)
+        matchups = response.get_json()['data']['kill_matchups']
+        self.assertEqual(matchups[0]['player_id'], 'p2')
+        self.assertEqual(matchups[0]['kills'], 3)
 
     def test_admin_match_list_exposes_exact_start_time(self):
         with self.client.session_transaction() as session:

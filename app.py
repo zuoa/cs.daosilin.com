@@ -215,6 +215,7 @@ def _player_detail_payload(player_id, cup, day=None):
         'player_rankings': player_rankings,
         'map_stats': MatchPlayer.get_player_map_stats(cup, player_id, day),
         'match_records': match_records,
+        'kill_matchups': MatchPlayer.get_player_kill_matchups(cup, player_id, day),
         'cup': cup,
         'cup_alias': Season.display_name(cup),
         'day': day,
@@ -571,8 +572,9 @@ _MATCH_PLAYER_DETAIL_FIELDS = (
     'kill', 'death', 'assist', 'rating', 'pw_rating', 'adpr', 'kast',
     'headshot', 'headshot_ratio', 'entry_kill', 'first_death',
     'mvp', 'two_kill', 'three_kill', 'four_kill', 'five_kill',
-    'awp_kill', 'rws', 'damage', 'flash', 'flash_success',
-    'vs2', 'vs3', 'vs4', 'vs5', 'win',
+    'awp_kill', 'rws', 'damage', 'flash', 'flash_success', 'flash_teammate',
+    'throws_count', 'trade_frag_count', 'grenade_damage', 'inferno_damage',
+    'vs1', 'vs2', 'vs3', 'vs4', 'vs5', 'win', 'game_count',
 )
 
 
@@ -597,6 +599,7 @@ def _match_detail_payload(cup, match_id):
     players = []
     for row in player_rows:
         item = {field: getattr(row, field, None) for field in _MATCH_PLAYER_DETAIL_FIELDS}
+        item['kast_ratio'] = round(float(row.kast or 0) / row.game_count, 4) if row.game_count else 0.0
         item['in_library'] = row.player_id in library_set
         item['alias_name'] = alias_map.get(row.player_id) or ''
         players.append(item)

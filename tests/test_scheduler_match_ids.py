@@ -44,6 +44,35 @@ class MatchIdNormalizationTest(unittest.TestCase):
         )
         match_player_model.is_exist.assert_not_called()
 
+    @patch('scheduler.Player')
+    @patch('scheduler.MatchPlayer')
+    @patch('scheduler.Match')
+    def test_store_maps_non_demo_advanced_stats(
+        self, match_model, match_player_model, player_model,
+    ):
+        match_model.get_by_match_id.return_value = None
+        match_player_model.is_exist.return_value = False
+        player_model.is_exist.return_value = True
+        match_data = {
+            'base': {
+                'matchId': '123', 'map': 'de_mirage', 'mapEn': 'de_mirage',
+                'score1': 13, 'score2': 8, 'winTeam': 1,
+            },
+            'players': [{
+                'playerId': 'p1', 'nickName': 'One', 'team': 1,
+                'tradeFragCount': 4, 'grenadeDamage': 37, 'infernoDamage': 52,
+                'killMap': {'p2': 3},
+            }],
+        }
+
+        _store_match(match_data, assigned_cup_name='season-one')
+
+        saved = match_player_model.create.call_args.kwargs
+        self.assertEqual(saved['trade_frag_count'], 4)
+        self.assertEqual(saved['grenade_damage'], 37)
+        self.assertEqual(saved['inferno_damage'], 52)
+        self.assertEqual(saved['kill_map'], '{"p2": 3}')
+
     @patch('scheduler.time.sleep')
     @patch('scheduler.clear_perfect_rank_cache')
     @patch('scheduler.Config')
