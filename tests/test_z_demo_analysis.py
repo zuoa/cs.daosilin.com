@@ -280,9 +280,35 @@ class DemoAnalysisTest(unittest.TestCase):
         self.assertEqual(result['total_kills'], 35)  # 15 Demo + 20 fallback
         self.assertEqual(result['total_deaths'], 15)  # 5 Demo + 10 fallback
         self.assertEqual(result['demo_data']['enemies_flashed'], 6)
+        self.assertEqual(result['demo_data']['avg_flash_thrown_per_match'], 4)
+        self.assertEqual(result['demo_data']['avg_enemies_flashed_per_match'], 6)
+        self.assertEqual(result['demo_data']['avg_grenades_thrown_per_match'], 12)
+        self.assertEqual(result['demo_data']['avg_unused_utility_value_per_match'], 600)
+        self.assertEqual(result['demo_data']['avg_trade_frags_per_match'], 3)
+        self.assertEqual(result['demo_data']['ct_kills_per_round'], 1.6)
+        self.assertEqual(result['demo_data']['t_kills_per_round'], 1.4)
         self.assertEqual(result['demo_coverage'], {'completed': 1, 'total': 2, 'ratio': 0.5})
         self.assertEqual(result['metric_source'], 'mixed')
         self.assertEqual(result['platform_data']['total_kills'], 25)
+
+    def test_demo_event_counts_expose_per_match_averages(self):
+        steam_id = '76561198000000001'
+        Player.create(player_id='average-player', nickname='Player', steam_id=steam_id)
+        for match_id in ('m-average-1', 'm-average-2'):
+            create_platform_row(match_id, 'average-player')
+            DemoAnalysis.create(match_id=match_id, status='completed', metric_version='v1')
+            persist_analysis(match_id, parsed_payload(steam_id))
+
+        result = attach_demo_stats({'match_count': 2}, 'demo-cup', 'average-player')
+        demo = result['demo_data']
+
+        self.assertEqual(demo['flash_thrown'], 8)
+        self.assertEqual(demo['avg_flash_thrown_per_match'], 4)
+        self.assertEqual(demo['enemies_flashed'], 12)
+        self.assertEqual(demo['avg_enemies_flashed_per_match'], 6)
+        self.assertEqual(demo['unused_utility_value'], 1200)
+        self.assertEqual(demo['avg_unused_utility_value_per_match'], 600)
+        self.assertEqual(result['demo_coverage'], {'completed': 2, 'total': 2, 'ratio': 1.0})
 
     def test_roster_mismatch_is_rejected_without_partial_rows(self):
         Player.create(player_id='platform-player', nickname='Player', steam_id='76561198000000009')

@@ -224,8 +224,8 @@
 
         <section v-if="stats.demo_data" class="panel player-section detailed-stats-panel">
           <div class="panel-header">
-            <div><h2>Demo 事件分析</h2><p>仅以已完成 Demo 为分母；缺失比赛不会按 0 计入。</p></div>
-            <span class="result-count">覆盖 {{ stats.demo_coverage.completed }}/{{ stats.demo_coverage.total }} · v{{ stats.demo_analysis.metric_version }}</span>
+            <div><h2>高级分析数据</h2><p>基于已完成比赛；次数类指标展示场均，效率类指标按实际回合或事件计算。</p></div>
+            <span class="result-count">已分析 {{ stats.demo_coverage.completed }}/{{ stats.demo_coverage.total }} 场</span>
           </div>
           <div class="detail-stat-groups">
             <article v-for="group in demoGroups" :key="group.title">
@@ -233,7 +233,7 @@
               <dl><div v-for="item in group.items" :key="item.label"><dt>{{ item.label }}</dt><dd>{{ item.value }}</dd></div></dl>
             </article>
           </div>
-          <p class="player-update-note">Demo Rating 为实验性近似 Rating 3.0，不替代平台 PWR。</p>
+          <p class="player-update-note">高级 Rating 为实验性估算值，按回合加权计算，不替代平台 PWR。</p>
         </section>
 
         <section v-if="killMatchups.length" class="panel player-section">
@@ -359,27 +359,27 @@ const demoGroups = computed(() => {
   const s = stats.value?.demo_data || {}
   return [
     { title: '闪光质量', icon: 'layers', items: [
-      { label: '闪光投掷', value: s.flash_thrown || 0 }, { label: '敌方致盲事件', value: s.enemies_flashed || 0 },
-      { label: '去重敌方致盲时长', value: `${n2(s.enemy_flash_seconds)}s` }, { label: '平均敌方致盲', value: `${n2(s.average_enemy_flash_seconds)}s` },
+      { label: '场均闪光投掷', value: n2(s.avg_flash_thrown_per_match) }, { label: '场均敌方致盲', value: n2(s.avg_enemies_flashed_per_match) },
+      { label: '平均单次致盲', value: `${n2(s.average_enemy_flash_seconds)}s` },
       { label: '每颗闪光致盲敌人', value: n2(s.enemies_per_flash) }, { label: '队友致盲占比', value: pct(s.team_flash_share) },
-      { label: '闪光助攻', value: s.flash_assists || 0 },
+      { label: '场均闪光助攻', value: n2(s.avg_flash_assists_per_match) },
     ] },
     { title: '道具效率', icon: 'database', items: [
-      { label: '投掷物', value: s.grenades_thrown || 0 }, { label: 'HE / 烟 / 火', value: `${s.he_thrown || 0} / ${s.smoke_thrown || 0} / ${(s.molotov_thrown || 0) + (s.incendiary_thrown || 0)}` },
-      { label: 'HE / 火焰伤害', value: `${s.he_damage || 0} / ${s.fire_damage || 0}` }, { label: '道具伤害/投掷', value: n2(s.utility_damage_per_throw) },
-      { label: '阵亡未用道具价值', value: `$${s.unused_utility_value || 0}` },
+      { label: '场均投掷物', value: n2(s.avg_grenades_thrown_per_match) }, { label: '场均 HE / 烟 / 火', value: `${n2(s.avg_he_thrown_per_match)} / ${n2(s.avg_smoke_thrown_per_match)} / ${n2(s.avg_fire_thrown_per_match)}` },
+      { label: '道具伤害/回合', value: n2(s.utility_damage_per_round) }, { label: '道具伤害/投掷', value: n2(s.utility_damage_per_throw) },
+      { label: '场均未用道具价值', value: `$${n2(s.avg_unused_utility_value_per_match)}` },
     ] },
     { title: '事件与协作', icon: 'users', items: [
-      { label: '补枪击杀', value: s.total_trade_frags || 0 }, { label: '被补枪死亡', value: s.total_deaths_traded || 0 },
-      { label: '被补枪率', value: pct(s.death_trade_rate) }, { label: '残局胜利', value: s.total_clutches_won || 0 },
-      { label: '开局击杀转回合胜率', value: pct(s.opening_round_conversion) }, { label: '队友击杀', value: s.total_team_kills || 0 },
+      { label: '场均补枪击杀', value: n2(s.avg_trade_frags_per_match) }, { label: '场均被补枪死亡', value: n2(s.avg_deaths_traded_per_match) },
+      { label: '被补枪率', value: pct(s.death_trade_rate) }, { label: '场均残局胜利', value: n2(s.avg_clutches_won_per_match) },
+      { label: '开局击杀转回合胜率', value: pct(s.opening_round_conversion) }, { label: '场均队友击杀', value: n2(s.avg_team_kills_per_match) },
     ] },
     { title: '分边表现', icon: 'activity', items: [
-      { label: 'CT / T 回合', value: `${s.ct_rounds || 0} / ${s.t_rounds || 0}` }, { label: 'CT / T 击杀', value: `${s.ct_kills || 0} / ${s.t_kills || 0}` },
+      { label: 'CT / T 样本回合', value: `${s.ct_rounds || 0} / ${s.t_rounds || 0}` }, { label: 'CT / T 每回合击杀', value: `${n2(s.ct_kills_per_round)} / ${n2(s.t_kills_per_round)}` },
       { label: 'CT / T ADR', value: `${n2(s.ct_adr)} / ${n2(s.t_adr)}` }, { label: 'CT / T KAST', value: `${pct(s.ct_kast)} / ${pct(s.t_kast)}` },
     ] },
-    { title: '实验性 Rating', icon: 'target', items: [
-      { label: 'Demo Rating', value: n2(s.demo_rating) }, { label: '击杀 / 伤害', value: `${n2(s.rating_kills)} / ${n2(s.rating_damage)}` },
+    { title: '回合加权 Rating', icon: 'target', items: [
+      { label: '高级 Rating', value: n2(s.demo_rating) }, { label: '击杀 / 伤害', value: `${n2(s.rating_kills)} / ${n2(s.rating_damage)}` },
       { label: '生存 / eKAST', value: `${n2(s.rating_survival)} / ${n2(s.rating_kast)}` }, { label: '多杀 / 回合影响', value: `${n2(s.rating_multi_kill)} / ${n2(s.rating_round_swing)}` },
     ] },
   ]
