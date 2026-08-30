@@ -322,6 +322,46 @@ class Player(BaseModel, CRUDMixin):
             existing.save()
 
 
+class PlayerPerfectRankHistory(BaseModel, CRUDMixin):
+    """One successful Perfect World rank lookup for a player."""
+    player_id = CharField(max_length=64)
+    score = IntegerField()
+    level = CharField(max_length=16)
+    sampled_at = DateTimeField(default=datetime.now)
+
+    class Meta:
+        table_name = 'player_perfect_rank_history'
+        indexes = (
+            (('player_id', 'sampled_at'), False),
+        )
+
+    @classmethod
+    def get_player_history(cls, player_id: str) -> List[Dict[str, Any]]:
+        query = (cls.select(cls.score, cls.level, cls.sampled_at)
+                 .where(cls.player_id == player_id)
+                 .order_by(cls.sampled_at.asc(), cls.id.asc()))
+        return list(query.dicts())
+
+
+def backfill_current_perfect_rank_history() -> int:
+    """Use the last known rank as the initial sample for an empty history table."""
+    if PlayerPerfectRankHistory.select().exists():
+        return 0
+    players = (Player.select()
+               .where(Player.perfect_score.is_null(False),
+                      Player.perfect_rank_updated_at.is_null(False)))
+    created = 0
+    for player in players:
+        PlayerPerfectRankHistory.create(
+            player_id=player.player_id,
+            score=player.perfect_score,
+            level=player.perfect_level or '未定级',
+            sampled_at=player.perfect_rank_updated_at,
+        )
+        created += 1
+    return created
+
+
 class Config(BaseModel, CRUDMixin):
     """全局配置模型"""
     key = CharField(max_length=64, unique=True)  # 配置键
@@ -1620,6 +1660,7 @@ def import_history_sql(sql_path: str = None) -> Dict[str, Any]:
                 "UPDATE player SET wanmei_avatar = avatar, avatar_source = 'wanmei' "
                 "WHERE avatar IS NOT NULL AND wanmei_avatar IS NULL"
             )
+        backfill_current_perfect_rank_history()
         imported = SchemaMigration.select().where(
             SchemaMigration.version == HISTORY_IMPORT_VERSION
         ).exists()
@@ -1637,7 +1678,8 @@ def import_history_sql(sql_path: str = None) -> Dict[str, Any]:
 def create_tables():
     """Create database tables if they don't exist, then apply migrations."""
     with db:
-        db.create_tables([Config, Match, MatchPlayer, Player, CupDayChampion, PlayerTitle,
+        db.create_tables([Config, Match, MatchPlayer, Player, PlayerPerfectRankHistory,
+                          CupDayChampion, PlayerTitle,
                           PlayerSeasonSummary,
                           DemoCredential, DemoAnalysis, DemoPlayerStats, Season, SeasonRoster,
                           MatchSelection, AdminUser, SchemaMigration], safe=True)

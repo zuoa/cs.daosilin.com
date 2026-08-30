@@ -78,9 +78,11 @@ class MatchIdNormalizationTest(unittest.TestCase):
     @patch('scheduler.Config')
     @patch('scheduler.get_perfect_rank')
     @patch('scheduler.resolve_steam_id64')
+    @patch('scheduler.PlayerPerfectRankHistory')
     @patch('scheduler.Player')
     def test_refresh_perfect_ranks_persists_successful_lookup(
-        self, player_model, resolve_steam_id, get_rank, config_model, clear_cache, sleep,
+        self, player_model, rank_history_model, resolve_steam_id, get_rank,
+        config_model, clear_cache, sleep,
     ):
         player = SimpleNamespace(
             player_id='76561199039451434',
@@ -99,6 +101,12 @@ class MatchIdNormalizationTest(unittest.TestCase):
         self.assertEqual(saved['perfect_score'], 1513)
         self.assertEqual(saved['perfect_level'], 'B')
         self.assertIn('perfect_rank_updated_at', saved)
+        rank_history_model.create.assert_called_once_with(
+            player_id=player.player_id,
+            score=1513,
+            level='B',
+            sampled_at=saved['perfect_rank_updated_at'],
+        )
         config_model.set_value.assert_any_call('perfect_rank_refresh_stats', ANY)
         clear_cache.assert_called_once_with()
         sleep.assert_not_called()

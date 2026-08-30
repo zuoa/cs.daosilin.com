@@ -20,7 +20,8 @@ from champion_service import judge_champion
 from config import (ADMIN_PASSWORD, ADMIN_USERNAME, DEMO_BACKFILL_DAYS,
                     EXTERNAL_API_TOKEN, LLM_MODEL_NAME, REDIS_URL,
                     SECRET_KEY, SITE_NAME)
-from database import (AdminUser, DemoAnalysis, MatchPlayer, Player, CupDayChampion,
+from database import (AdminUser, DemoAnalysis, MatchPlayer, Player, PlayerPerfectRankHistory,
+                      CupDayChampion,
                       create_tables, Config, PlayerTitle, Match, Season, SeasonRoster,
                       MatchSelection, PlayerSeasonSummary, import_history_sql)
 from demo_service import (demo_analysis_enabled, demo_credential_status,
@@ -228,6 +229,14 @@ def _player_detail_payload(player_id, cup, day=None):
 
     return {
         'player': player,
+        'perfect_rank_history': [
+            {
+                'score': sample['score'],
+                'level': sample['level'],
+                'sampled_at': _iso_dt(sample['sampled_at']),
+            }
+            for sample in PlayerPerfectRankHistory.get_player_history(player_id)
+        ],
         'player_data': player_data,
         'titles': titles,
         'trophy_history': trophy_history,

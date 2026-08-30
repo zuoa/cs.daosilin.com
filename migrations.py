@@ -4,9 +4,9 @@ from datetime import datetime
 from ajlog import logger
 from config import ADMIN_PASSWORD, ADMIN_USERNAME
 from database import (AdminUser, DemoAnalysis, DemoCredential, DemoPlayerStats,
-                      PlayerSeasonSummary,
+                      PlayerPerfectRankHistory, PlayerSeasonSummary,
                       SchemaMigration, _add_column, _column_exists, _table_exists,
-                      db, is_postgres)
+                      backfill_current_perfect_rank_history, db, is_postgres)
 
 
 def _applied(version: str) -> bool:
@@ -134,6 +134,12 @@ def _m012_player_season_summary():
     logger.info('选手赛季 AI 点评表已创建')
 
 
+def _m013_player_perfect_rank_history():
+    db.create_tables([PlayerPerfectRankHistory], safe=True)
+    backfilled = backfill_current_perfect_rank_history()
+    logger.info(f'选手完美天梯分历史采样表已创建，补录 {backfilled} 条当前分数')
+
+
 MIGRATIONS = [
     ('001_player_in_library', _m001_player_in_library),
     ('002_season_hit_ratio', _m002_season_hit_ratio),
@@ -147,6 +153,7 @@ MIGRATIONS = [
     ('010_advanced_match_stats', _m010_advanced_match_stats),
     ('011_demo_analysis', _m011_demo_analysis),
     ('012_player_season_summary', _m012_player_season_summary),
+    ('013_player_perfect_rank_history', _m013_player_perfect_rank_history),
 ]
 
 

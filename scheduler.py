@@ -13,8 +13,8 @@ from champion_service import judge_champion
 from config import (PERFECT_RANK_REFRESH_HOURS, PERFECT_RANK_REQUEST_INTERVAL,
                     WMPVP_ACCESS_TOKEN, WMPVP_STEAM_ID)
 
-from database import (create_tables, Match, MatchPlayer, Player, Config,
-                      Season, SeasonRoster, MatchSelection)
+from database import (create_tables, Match, MatchPlayer, Player, PlayerPerfectRankHistory,
+                      Config, Season, SeasonRoster, MatchSelection)
 from perfect_service import (clear_perfect_rank_cache, get_perfect_rank,
                              resolve_steam_id64)
 from title_service import title_service
@@ -601,11 +601,18 @@ def refresh_perfect_ranks():
             stats['failed'] += 1
         else:
             refreshed_at = datetime.datetime.now()
-            (Player.update(
-                perfect_score=rank['score'],
-                perfect_level=rank['level'],
-                perfect_rank_updated_at=refreshed_at,
-            ).where(Player.player_id == player.player_id).execute())
+            with Player._meta.database.atomic():
+                (Player.update(
+                    perfect_score=rank['score'],
+                    perfect_level=rank['level'],
+                    perfect_rank_updated_at=refreshed_at,
+                ).where(Player.player_id == player.player_id).execute())
+                PlayerPerfectRankHistory.create(
+                    player_id=player.player_id,
+                    score=rank['score'],
+                    level=rank['level'],
+                    sampled_at=refreshed_at,
+                )
             stats['updated'] += 1
 
         if index < len(players) - 1 and PERFECT_RANK_REQUEST_INTERVAL > 0:

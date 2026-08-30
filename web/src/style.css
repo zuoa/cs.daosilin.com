@@ -611,6 +611,8 @@ img.player-monogram { object-fit: cover; }
 .player-kpi-grid article > small { min-height: 18px; margin-top: 8px; color: var(--ink-500); font-size: .62rem; }
 .player-kpi-grid article > small b { color: var(--signal-dark); font-family: var(--font-body); }
 .analysis-grid { display: grid; grid-template-columns: minmax(340px, .8fr) minmax(480px, 1.2fr); gap: 16px; margin-bottom: 16px; }
+.ladder-trend-panel { grid-column: 1 / -1; }
+.ladder-trend-panel .player-chart, .ladder-trend-panel .chart-empty { height: 240px; }
 .chart-panel { overflow: hidden; }
 .player-chart { width: 100%; height: 320px; }
 .chart-empty { height: 320px; }

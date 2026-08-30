@@ -117,6 +117,14 @@
             <div v-if="history.length" ref="lineEl" class="player-chart line-chart" role="img" :aria-label="`${playerName} 的 Rating 走势折线图`"></div>
             <div v-else class="empty-state compact chart-empty"><span><AppIcon name="activity" /></span><h3>暂无趋势数据</h3><p>有多个比赛日后会生成走势。</p></div>
           </section>
+          <section class="panel chart-panel ladder-trend-panel">
+            <div class="panel-header">
+              <h2>天梯分走势</h2>
+              <span class="result-count">{{ rankHistory.length }} 次采样</span>
+            </div>
+            <div v-if="rankHistory.length" ref="rankLineEl" class="player-chart line-chart" role="img" :aria-label="`${playerName} 的天梯分走势折线图`"></div>
+            <div v-else class="empty-state compact chart-empty"><span><AppIcon name="activity" /></span><h3>暂无天梯分历史</h3><p>下次段位采集成功后会记录在这里。</p></div>
+          </section>
         </div>
 
         <section v-if="titles.length" class="panel player-section title-profile-section">
@@ -396,6 +404,7 @@ const ranks = ref({})
 const cupDays = ref([])
 const cupAlias = ref('')
 const history = ref([])
+const rankHistory = ref([])
 const mapStats = ref([])
 const matchRecords = ref([])
 const killMatchups = ref([])
@@ -409,8 +418,10 @@ const error = ref('')
 const loading = ref(true)
 const radarEl = ref(null)
 const lineEl = ref(null)
+const rankLineEl = ref(null)
 let radarChart
 let lineChart
+let rankLineChart
 let matchDetailRequest = 0
 
 const playerName = computed(() => player.value?.alias_name || player.value?.nickname || player.value?.player_id || '选手')
@@ -547,6 +558,10 @@ function formatPlayDay(value) {
 function formatDateTime(value) {
   return value ? String(value).replace('T', ' ').slice(0, 16) : '—'
 }
+function formatRankSample(value) {
+  const text = formatTime(value)
+  return text ? `${text.slice(5, 10)} ${text.slice(11, 16)}` : ''
+}
 function formatDuration(value) {
   const number = Number(value)
   if (!Number.isFinite(number) || number <= 0) return '—'
@@ -657,14 +672,51 @@ function drawCharts() {
       series: [{ type: 'line', data: history.value.map((item) => Number(item.data.avg_pw_rating || 0).toFixed(2)), smooth: 0.28, showSymbol: true, symbolSize: 6, lineStyle: { color: colors.accent, width: 2.5 }, itemStyle: { color: colors.accent, borderColor: colors.paper2, borderWidth: 2 }, areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: colors.fill }, { offset: 1, color: colors.fade }] } } }],
     })
   }
+  if (rankLineEl.value && rankHistory.value.length) {
+    rankLineChart = rankLineChart || echarts.init(rankLineEl.value)
+    rankLineChart.setOption({
+      animation: false,
+      grid: { left: 54, right: 22, top: 28, bottom: 42 },
+      tooltip: {
+        trigger: 'axis',
+        backgroundColor: colors.tooltip,
+        borderWidth: 0,
+        textStyle: { color: colors.ink },
+        formatter: (items) => {
+          const sample = rankHistory.value[items?.[0]?.dataIndex]
+          return sample ? `${formatDateTime(sample.sampled_at)}<br>${sample.level} ${sample.score}` : ''
+        },
+      },
+      xAxis: {
+        type: 'category',
+        boundaryGap: false,
+        data: rankHistory.value.map((item) => item.sampled_at),
+        axisLabel: { ...chartTextStyle(10, colors), formatter: formatRankSample },
+        axisLine: { lineStyle: { color: colors.rule } },
+        axisTick: { show: false },
+      },
+      yAxis: { type: 'value', scale: true, splitNumber: 4, axisLabel: chartTextStyle(10, colors), splitLine: { lineStyle: { color: colors.paper3 } } },
+      series: [{
+        type: 'line',
+        data: rankHistory.value.map((item) => Number(item.score || 0)),
+        smooth: 0.2,
+        showSymbol: rankHistory.value.length < 20,
+        symbolSize: 5,
+        lineStyle: { color: colors.accent, width: 2 },
+        itemStyle: { color: colors.accent },
+      }],
+    })
+  }
 }
-function resizeCharts() { radarChart?.resize(); lineChart?.resize() }
+function resizeCharts() { radarChart?.resize(); lineChart?.resize(); rankLineChart?.resize() }
 async function load() {
   closeMatch()
   radarChart?.dispose()
   lineChart?.dispose()
+  rankLineChart?.dispose()
   radarChart = null
   lineChart = null
+  rankLineChart = null
   error.value = ''
   loading.value = true
   try {
@@ -677,6 +729,7 @@ async function load() {
     cupDays.value = data.cup_days || []
     cupAlias.value = data.cup_alias || data.cup
     history.value = data.historical_data || []
+    rankHistory.value = data.perfect_rank_history || []
     mapStats.value = data.map_stats || []
     matchRecords.value = data.match_records || []
     killMatchups.value = data.kill_matchups || []
@@ -699,5 +752,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', resizeCharts)
   radarChart?.dispose()
   lineChart?.dispose()
+  rankLineChart?.dispose()
 })
 </script>
