@@ -86,7 +86,7 @@ class PerfectRankLookupTest(unittest.TestCase):
         detail_response.raise_for_status.return_value = None
         detail_response.json.return_value = {
             'statusCode': 0,
-            'data': {'pvpScore': 2401, 'stars': 28},
+            'data': {'pvpScore': 2578, 'stars': 28},
         }
         post.side_effect = [search_response, detail_response]
 
@@ -99,6 +99,7 @@ class PerfectRankLookupTest(unittest.TestCase):
         )
 
         self.assertEqual(rank['level'], 'S')
+        self.assertEqual(rank['score'], 2578)
         self.assertEqual(rank['stars'], 28)
         self.assertEqual(post.call_count, 2)
         detail_call = post.call_args_list[1]
@@ -159,6 +160,43 @@ class PerfectRankLookupTest(unittest.TestCase):
         )
 
         self.assertEqual(rank['stars'], 31)
+
+    @patch('perfect_service.requests.post')
+    def test_score_list_overrides_zero_top_level_placeholder(self, post):
+        search_response = Mock()
+        search_response.raise_for_status.return_value = None
+        search_response.json.return_value = {
+            'code': 1,
+            'result': [{
+                'steamId': '76561199039451434',
+                'pvpNickName': 'Rolly',
+                'pvpScore': 2401,
+            }],
+        }
+        detail_response = Mock()
+        detail_response.raise_for_status.return_value = None
+        detail_response.json.return_value = {
+            'statusCode': 0,
+            'data': {
+                'stars': 0,
+                'scoreList': [
+                    {'time': 1788107432, 'score': 2664, 'stars': 13},
+                    {'time': 1788095968, 'score': 2654, 'stars': 12},
+                ],
+            },
+        }
+        post.side_effect = [search_response, detail_response]
+
+        rank = get_perfect_rank(
+            '76561199039451434',
+            credential={
+                'steam_id': '76561198000000001',
+                'access_token': 'encrypted-token-value',
+            },
+        )
+
+        self.assertEqual(rank['score'], 2664)
+        self.assertEqual(rank['stars'], 13)
 
     @patch('perfect_service.requests.post')
     def test_invalid_id_does_not_call_upstream(self, post):

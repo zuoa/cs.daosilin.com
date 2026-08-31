@@ -129,12 +129,21 @@ def clear_perfect_rank_cache() -> None:
         _cache.clear()
 
 
-def _get_perfect_stars(
+def _optional_nonnegative_int(value: object) -> Optional[int]:
+    if value is None or value == '':
+        return None
+    try:
+        return max(0, int(float(value)))
+    except (TypeError, ValueError):
+        return None
+
+
+def _get_perfect_s_detail(
     steam_id: str,
     credential: Optional[Dict[str, str]],
     timeout: float,
-) -> Optional[int]:
-    """Return the authenticated S-rank star count when credentials are available."""
+) -> Optional[Dict[str, Optional[int]]]:
+    """Return the authenticated current S score and stars when available."""
     if not credential:
         return None
     access_token = str(credential.get('access_token') or '').strip()
@@ -165,21 +174,33 @@ def _get_perfect_stars(
         data = payload.get('data') if isinstance(payload, dict) else None
         if payload.get('statusCode') != 0 or not isinstance(data, dict):
             return None
-        candidates = [data.get('stars')]
-        candidates.extend(
-            item.get('stars')
-            for item in (data.get('scoreList') or [])
+        # The live API currently leaves top-level pvpScore/stars at placeholder
+        # values for S players. scoreList is the per-match history and its
+        # newest row contains both the effective score and star count.
+        score_items = [
+            item for item in (data.get('scoreList') or [])
             if isinstance(item, dict)
-        )
-        for candidate in candidates:
-            if candidate is None or candidate == '':
-                continue
-            return max(0, int(float(candidate)))
-        return None
+        ]
+        if any(isinstance(item.get('time'), (int, float)) for item in score_items):
+            score_items.sort(
+                key=lambda item: item.get('time')
+                if isinstance(item.get('time'), (int, float)) else -1,
+                reverse=True,
+            )
+        if score_items:
+            latest = score_items[0]
+            return {
+                'score': _optional_nonnegative_int(latest.get('score')),
+                'stars': _optional_nonnegative_int(latest.get('stars')),
+            }
+        return {
+            'score': _optional_nonnegative_int(data.get('pvpScore')),
+            'stars': _optional_nonnegative_int(data.get('stars')),
+        }
     except (requests.RequestException, ValueError, TypeError, AttributeError) as exc:
         # Star enrichment is optional: a stale credential must not discard the
         # rank already obtained from the public search endpoint.
-        logger.warning(f'查询完美 S 段星数失败 steam_id={steam_id}: {exc}')
+        logger.warning(f'查询完美 S 段详情失败 steam_id={steam_id}: {exc}')
         return None
 
 
@@ -229,7 +250,11 @@ def get_perfect_rank(
         except (TypeError, ValueError):
             score = 0
         level = perfect_level(score)
-        stars = _get_perfect_stars(normalized, credential, timeout) if level == 'S' else None
+        s_detail = _get_perfect_s_detail(normalized, credential, timeout) if level == 'S' else None
+        stars = s_detail.get('stars') if s_detail else None
+        detail_score = s_detail.get('score') if s_detail else None
+        if detail_score and detail_score >= score:
+            score = detail_score
         result = {
             'steam_id': normalized,
             'nickname': player.get('pvpNickName') or '',
