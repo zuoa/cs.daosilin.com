@@ -5,8 +5,14 @@
     :aria-label="ariaLabel"
     :title="title"
   >
-    <i class="rank-aura" aria-hidden="true"></i>
-    <strong>{{ normalizedLevel }}</strong>
+    <i v-if="rankClass === 'rank-s'" class="rank-emblem" aria-hidden="true">
+      <i class="rank-aura"></i>
+      <strong>{{ normalizedLevel }}</strong>
+    </i>
+    <template v-else>
+      <i class="rank-aura" aria-hidden="true"></i>
+      <strong>{{ normalizedLevel }}</strong>
+    </template>
     <span v-if="displayLabel" :class="{ 'rank-detail': showDetails && rankClass === 'rank-s' }">{{ displayLabel }}</span>
   </span>
 </template>
