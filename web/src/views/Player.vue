@@ -117,14 +117,6 @@
             <div v-if="history.length" ref="lineEl" class="player-chart line-chart" role="img" :aria-label="`${playerName} 的 Rating 走势折线图`"></div>
             <div v-else class="empty-state compact chart-empty"><span><AppIcon name="activity" /></span><h3>暂无趋势数据</h3><p>有多个比赛日后会生成走势。</p></div>
           </section>
-          <section class="panel chart-panel ladder-trend-panel">
-            <div class="panel-header">
-              <h2>天梯分走势</h2>
-              <span class="result-count">{{ rankHistory.length }} 次采样</span>
-            </div>
-            <div v-if="rankHistory.length" ref="rankLineEl" class="player-chart line-chart" role="img" :aria-label="`${playerName} 的天梯分走势折线图`"></div>
-            <div v-else class="empty-state compact chart-empty"><span><AppIcon name="activity" /></span><h3>暂无天梯分历史</h3><p>下次段位采集成功后会记录在这里。</p></div>
-          </section>
         </div>
 
         <section v-if="titles.length" class="panel player-section title-profile-section">
@@ -296,6 +288,14 @@
               </tbody>
             </table>
           </div>
+        </section>
+
+        <section v-if="rankHistory.length" class="panel player-section chart-panel ladder-trend-panel">
+          <div class="panel-header">
+            <h2>天梯分走势</h2>
+            <span class="result-count">{{ rankHistory.length }} 次采样</span>
+          </div>
+          <div ref="rankLineEl" class="player-chart line-chart" role="img" :aria-label="`${playerName} 的天梯分走势折线图`"></div>
         </section>
 
         <p v-if="lastCrawl" class="player-update-note"><AppIcon name="activity" />数据更新于 {{ formatTime(lastCrawl) }}</p>
