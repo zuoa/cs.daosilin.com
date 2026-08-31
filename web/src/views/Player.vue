@@ -257,16 +257,32 @@
           <p class="player-update-note">高级 Rating 为实验性估算值，按回合加权计算，不替代平台 PWR。</p>
         </section>
 
-        <section v-if="killMatchups.length" class="panel player-section">
+        <section v-if="killMatchups.length" class="panel player-section soft-targets-section" aria-labelledby="soft-targets-title">
           <div class="panel-header">
-            <h2>对位击杀</h2>
-            <span class="result-count">按击杀次数排序</span>
+            <div>
+              <span class="summary-kicker"><AppIcon name="target" />KILL MATCHUPS</span>
+              <h2 id="soft-targets-title">软柿子 · TOP 3</h2>
+              <p>本统计范围内，最常被 {{ playerName }} 击杀的三位对手。</p>
+            </div>
+            <span class="result-count">{{ killMatchups.length }} 位交手对手</span>
           </div>
-          <div class="table-scroll">
+          <ol class="soft-target-podium">
+            <li v-for="(opponent, index) in softTargets" :key="opponent.player_id" :class="`place-${index + 1}`">
+              <span class="target-rank">#{{ index + 1 }}</span>
+              <span class="target-sight" aria-hidden="true"><AppIcon name="target" :size="24" /></span>
+              <div class="target-copy">
+                <small>{{ softTargetLabel(index) }}</small>
+                <strong>{{ opponent.nickname || opponent.player_id }}</strong>
+                <code>{{ opponent.player_id }}</code>
+              </div>
+              <div class="target-kills"><strong>{{ opponent.kills }}</strong><span>次击杀</span></div>
+            </li>
+          </ol>
+          <div v-if="otherMatchups.length" class="table-scroll soft-target-overflow">
             <table class="data-table">
-              <thead><tr><th>对手</th><th class="num">击杀次数</th></tr></thead>
+              <thead><tr><th>其他对位</th><th class="num">击杀次数</th></tr></thead>
               <tbody>
-                <tr v-for="opponent in killMatchups.slice(0, 10)" :key="opponent.player_id">
+                <tr v-for="opponent in otherMatchups" :key="opponent.player_id">
                   <td><strong>{{ opponent.nickname || opponent.player_id }}</strong><small>{{ opponent.player_id }}</small></td>
                   <td class="num mono-data"><strong>{{ opponent.kills }}</strong></td>
                 </tr>
@@ -466,6 +482,8 @@ const heroStats = computed(() => !stats.value ? [] : [
   { label: '总击杀', value: stats.value.total_kills || 0, rank: ranks.value.total_kills },
   { label: 'MVP', value: stats.value.total_mvp || 0, rank: ranks.value.total_mvp },
 ])
+const softTargets = computed(() => killMatchups.value.slice(0, 3))
+const otherMatchups = computed(() => killMatchups.value.slice(3, 10))
 const statGroups = computed(() => {
   const s = stats.value || {}
   return [
@@ -538,6 +556,7 @@ function titleMeta(title) { return titleCategories[title?.title_category] || { l
 function titleCategory(title) { return titleMeta(title).label }
 function titleIcon(title) { return titleMeta(title).icon }
 function titleSummary(title) { return title?.title_summary || '由本赛季有效样本计算得出' }
+function softTargetLabel(index) { return ['头号软柿子', '顺手目标', '稳定提款机'][index] || '对位目标' }
 function normalizeRatio(value) { const number = Number(value || 0); return number > 1 ? number : number * 100 }
 function pad(value) { return String(value || 0).padStart(2, '0') }
 function formatTime(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '' }
@@ -728,7 +747,10 @@ async function load() {
     ranks.value = data.player_rankings || {}
     cupDays.value = data.cup_days || []
     cupAlias.value = data.cup_alias || data.cup
-    history.value = data.historical_data || []
+    // 日期导航保持新到旧；走势图按时间从左到右推进。
+    history.value = [...(data.historical_data || [])].sort((a, b) =>
+      String(a.day || '').localeCompare(String(b.day || '')),
+    )
     rankHistory.value = data.perfect_rank_history || []
     mapStats.value = data.map_stats || []
     matchRecords.value = data.match_records || []

@@ -43,13 +43,15 @@ GET /api/v1/external/players/<URL 编码后的赛季名>
 
 `data.seasons` 说明本次统计实际命中的赛季，`data.player_count` 是选手数，`data.players` 是每个选手的合并统计。
 
-每个选手都包含 `player_id`、昵称、头像、别名、Steam ID、直播地址，以及完整统计字段。其中必定包含：
+External API 只提供选手身份、基础比赛数据、当前完美平台段位和 AI 球探报告。站内 Demo 分析、高级指标、对位榜等数据不会通过此接口返回。
 
-- `avg_adpr`
-- `avg_rating`
-- `fk_fd_ratio`
-- `avg_kast` / `kast_ratio`
-- `avg_headshot_ratio`
+选手身份字段包括 `player_id`、`nickname`、`avatar`、`alias_name`、`steam_id`、`live_url` 和 `live_room_id`。
+
+基础比赛数据包括：
+
+- 场次与胜负：`match_count`、`win_count`、`win_rate`、`total_rounds`。
+- 击杀数据：`total_kills`、`total_deaths`、`total_assists`、`kd_ratio`、`total_first_kills`、`total_first_deaths`、`total_headshots`、`avg_headshot_ratio`、`total_mvp`。
+- 平均表现：`avg_rating`、`avg_pw_rating`、`avg_adpr`、`avg_kast`。
 
 每个选手还会返回当前完美平台段位与按赛季生成的个人球探报告：
 
@@ -60,28 +62,7 @@ GET /api/v1/external/players/<URL 编码后的赛季名>
 
 球探报告始终保持单赛季口径。`season=all` 返回的比赛统计是跨赛季合并值，但 `scouting_reports` 不会把多赛季报告合并；尚未建立报告任务的赛季不会出现在列表中。
 
-`avg_adpr` 使用“总生命伤害 / 总回合”，`avg_kast` 使用“KAST 回合数 / 总回合”，`avg_headshot_ratio` 使用“总爆头 / 总击杀”；它们都是跨场次加权口径，不是逐场百分比的算术平均。
-
-可直接使用的扩展指标包括：
-
-- 回合效率：`total_rounds`、`kills_per_round`、`deaths_per_round`、`assists_per_round`。
-- 开局对枪：`opening_duel_win_rate`、`opening_duels_per_round`。
-- 多杀与 MVP：`multi_kill_rounds`、`multi_kill_round_rate`、`mvp_match_rate`。
-- 闪光：`total_flash_success`（敌方致盲事件）、`total_flash_teammate`（队友致盲事件）、`enemy_flashes_per_round`、`team_flashes_per_round`、`team_flash_share`。
-- 团队与道具：`total_trade_frags`、`trade_kill_share`、`total_grenade_damage`、`total_inferno_damage`、`total_utility_damage`、`utility_damage_per_round`、`throws_per_round`。
-- 对位击杀：`kill_matchups`，按对手聚合并按击杀次数降序排列。
-
-所有比率字段为 `0.0-1.0`，例如 `win_rate: 0.625` 表示 62.5%。WMPVP 当前的 `flash`（闪光投掷数）始终为 0，无法作为成功率分母，因此兼容字段 `flash_success_ratio` 与 `flash_teammate_ratio` 固定返回 `0.0`，新接入方不应使用它们。
-
-启用 Demo 分析后，每个选手还会返回：
-
-- `platform_data`：未经 Demo 替换的原平台聚合，便于审计与兼容。
-- `demo_data`：只聚合已完成 Demo 的事件指标，缺失比赛不会补 0。
-- `demo_coverage`：`completed / total / ratio` 覆盖率。
-- `demo_analysis`：解析器、固定 commit、指标版本和实验性 Rating 标记。
-- `metric_source`：`platform`、`mixed` 或 `demo`。扁平通用字段是逐场选择数据源后的有效值；Demo 专属字段只在存在 Demo 样本时出现。
-
-Demo 闪光指标应使用 `flash_thrown`、`enemies_flashed`、`friends_flashed`、`enemy_flash_seconds`、`average_enemy_flash_seconds`、`enemies_per_flash` 与 `team_flash_share`，不要再使用旧的伪成功率字段。
+`avg_adpr` 使用“总生命伤害 / 总回合”，`avg_kast` 使用“KAST 回合数 / 总回合”，`avg_headshot_ratio` 使用“总爆头 / 总击杀”；它们都是跨场次加权口径，不是逐场百分比的算术平均。所有比率字段为 `0.0-1.0`，例如 `win_rate: 0.625` 表示 62.5%。
 
 ## 查询单个选手
 

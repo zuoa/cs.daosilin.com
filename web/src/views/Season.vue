@@ -294,7 +294,8 @@ async function load() {
     const data = await api.cup(cup.value, day.value || null)
     cupAlias.value = data.cup_alias || data.cup
     players.value = data.players || []
-    cupDays.value = data.cup_days || []
+    // “赛季总览”在模板中单独置顶；比赛日统一按日期倒序展示。
+    cupDays.value = [...new Set((data.cup_days || []).filter(Boolean))].sort().reverse()
     lastCrawl.value = data.last_crawl_time || ''
     document.title = `${cupAlias.value}${day.value ? ` · ${day.value}` : ''} · 熊掌CS Major`
   } catch (e) {

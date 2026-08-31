@@ -143,6 +143,28 @@ class ExternalPlayersApiTest(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 401)
 
+    def test_cup_days_are_returned_in_descending_order(self):
+        cup_name = 'day-order-season'
+        try:
+            for day in ('20260827', '20260829', '20260828'):
+                for index in range(2):
+                    create_match_player(
+                        f'order-{day}-{index}',
+                        f'order-player-{day}-{index}',
+                        cup_name,
+                        play_day=day,
+                    )
+
+            self.assertEqual(
+                MatchPlayer.get_cup_day_set(cup_name),
+                ['20260829', '20260828', '20260827'],
+            )
+        finally:
+            (MatchPlayer
+             .delete()
+             .where(MatchPlayer.cup_name == cup_name)
+             .execute())
+
     def test_last_returns_latest_completed_season(self):
         response = self.client.get('/api/v1/external/players?season=last', headers=self.auth)
         self.assertEqual(response.status_code, 200)
@@ -150,15 +172,19 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(payload['seasons'][0]['cup_name'], 'season-two')
         self.assertEqual(payload['player_count'], 1)
         player = payload['players'][0]
+        self.assertEqual(set(player), {
+            'player_id', 'nickname', 'avatar', 'alias_name', 'steam_id',
+            'live_url', 'live_room_id', 'match_count', 'win_count', 'win_rate',
+            'total_rounds', 'total_kills', 'total_deaths', 'total_assists',
+            'kd_ratio', 'total_first_kills', 'total_first_deaths',
+            'total_headshots', 'avg_headshot_ratio', 'total_mvp', 'avg_rating',
+            'avg_pw_rating', 'avg_adpr', 'avg_kast', 'perfect_rank',
+            'scouting_reports',
+        })
         self.assertEqual(player['avg_adpr'], 100.0)
         self.assertEqual(player['avg_kast'], 0.75)
         self.assertEqual(player['avg_headshot_ratio'], 0.5)
-        self.assertEqual(player['enemy_flashes_per_round'], 0.4)
-        self.assertEqual(player['team_flash_share'], 0.2)
-        self.assertEqual(player['trade_kill_share'], 0.3)
-        self.assertEqual(player['utility_damage_per_round'], 5.0)
         self.assertEqual(player['avg_rating'], 2.0)
-        self.assertEqual(player['fk_fd_ratio'], 3.0)
         self.assertEqual(player['perfect_rank'], {
             'score': 1513,
             'level': 'B',
@@ -186,11 +212,12 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(p1['avg_adpr'], 93.3333)
         self.assertEqual(p1['avg_kast'], 0.7333)
         self.assertEqual(p1['avg_headshot_ratio'], 0.4667)
-        self.assertEqual(p1['throws_per_round'], 0.8667)
-        self.assertEqual(p1['kill_matchups'][0]['nickname'], '选手二')
-        self.assertEqual(p1['kill_matchups'][0]['kills'], 3)
-        self.assertEqual(p1['fk_fd_ratio'], 1.6667)
         self.assertEqual(p1['live_room_id'], 'DOUYU_731778')
+        for demo_field in (
+            'platform_data', 'demo_data', 'demo_coverage', 'demo_analysis',
+            'metric_source',
+        ):
+            self.assertNotIn(demo_field, p1)
         p2 = next(player for player in payload['players'] if player['player_id'] == 'p2')
         self.assertEqual(p2['perfect_rank'], {
             'score': None,

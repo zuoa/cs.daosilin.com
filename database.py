@@ -647,6 +647,7 @@ class MatchPlayer(BaseModel, CRUDMixin):
             # 否则会污染首页「日期导航」
             if cup_name:
                 query = query.where(cls.cup_name == cup_name)
+            query = query.order_by(cls.play_day.desc())
             return [record.play_day for record in query]
         except Exception as e:
             logger.error(f"get_dup_day_set error: {e}")
@@ -781,7 +782,7 @@ class MatchPlayer(BaseModel, CRUDMixin):
     @classmethod
     def get_external_player_stats(cls, cup_names: List[str],
                                   player_id: str = None) -> List[Dict[str, Any]]:
-        """Aggregate every player's public statistics across selected seasons."""
+        """Return the intentionally small, platform-only External API payload."""
         cup_names = list(dict.fromkeys(name for name in (cup_names or []) if name))
         if not cup_names:
             return []
@@ -789,67 +790,25 @@ class MatchPlayer(BaseModel, CRUDMixin):
         total_fields = {
             'win_count': cls.win,
             'total_kills': cls.kill,
-            'total_bot_kills': cls.bot_kill,
-            'total_negative_kills': cls.neg_kill,
-            'total_handgun_kills': cls.handgun_kill,
-            'total_first_kills': cls.entry_kill,
-            'total_awp_kills': cls.awp_kill,
             'total_deaths': cls.death,
-            'total_entry_deaths': cls.entry_death,
-            'total_first_deaths': cls.first_death,
             'total_assists': cls.assist,
+            'total_first_kills': cls.entry_kill,
+            'total_first_deaths': cls.first_death,
             'total_headshots': cls.headshot,
-            'total_damage': cls.damage,
-            'total_item_throws': cls.item_throw,
-            'total_flashes': cls.flash,
-            'total_flash_teammate': cls.flash_teammate,
-            'total_flash_success': cls.flash_success,
-            'total_end_games': cls.end_game,
             'total_mvp': cls.mvp_value,
-            'total_score': cls.score,
-            'total_2k': cls.two_kill,
-            'total_3k': cls.three_kill,
-            'total_4k': cls.four_kill,
-            'total_5k': cls.five_kill,
-            'total_multi_kills': cls.multi_kills,
-            'total_1v1': cls.vs1,
-            'total_1v2': cls.vs2,
-            'total_1v3': cls.vs3,
-            'total_1v4': cls.vs4,
-            'total_1v5': cls.vs5,
-            'total_headshot_count': cls.headshot_count,
-            'total_armor_damage': cls.dmg_armor,
             'total_health_damage': cls.dmg_health,
-            'total_fire_count': cls.fire_count,
-            'total_hit_count': cls.hit_count,
-            'total_throws_count': cls.throws_count,
-            'total_snipe_num': cls.snipe_num,
             'total_game_count': cls.game_count,
             'total_kast_rounds': cls.kast,
-            'total_trade_frags': cls.trade_frag_count,
-            'total_grenade_damage': cls.grenade_damage,
-            'total_inferno_damage': cls.inferno_damage,
         }
         average_fields = {
-            'avg_kills': cls.kill,
-            'avg_deaths': cls.death,
-            'avg_assists': cls.assist,
             'avg_rating': cls.rating,
             'avg_pw_rating': cls.pw_rating,
-            'avg_rws': cls.rws,
-            'avg_we': cls.we,
-            'avg_armor_damage': cls.dmg_armor,
-            'avg_health_damage': cls.dmg_health,
-            'avg_throws_count': cls.throws_count,
         }
         select_fields = [
             cls.player_id,
             fn.MAX(cls.nickname).alias('nickname'),
             fn.MAX(cls.avatar).alias('avatar'),
             fn.COUNT(fn.DISTINCT(cls.match_id)).alias('match_count'),
-            fn.COALESCE(
-                fn.SUM(Case(None, [(cls.mvp == True, 1)], 0)), 0
-            ).alias('match_mvp_count'),
         ]
         select_fields.extend(
             fn.COALESCE(fn.SUM(field), 0).alias(name)
@@ -885,8 +844,6 @@ class MatchPlayer(BaseModel, CRUDMixin):
                 PlayerSeasonSummary.cup_name.in_(cup_names),
             )
         } if player_ids else {}
-        matchup_map = cls._aggregate_kill_matchups(cup_names, player_ids)
-
         def _ratio(numerator, denominator, precision=4):
             return round(float(numerator or 0) / float(denominator or 0), precision) \
                 if denominator else 0.0
@@ -898,41 +855,17 @@ class MatchPlayer(BaseModel, CRUDMixin):
             for name in average_fields:
                 row[name] = float(row.get(name) or 0)
             row['match_count'] = int(row.get('match_count') or 0)
-            row['match_mvp_count'] = int(row.get('match_mvp_count') or 0)
             rounds = row['total_game_count']
-            opening_duels = row['total_first_kills'] + row['total_first_deaths']
-            flash_events = row['total_flash_success'] + row['total_flash_teammate']
-            multi_kill_rounds = sum(row[name] for name in ('total_2k', 'total_3k', 'total_4k', 'total_5k'))
-            utility_damage = row['total_grenade_damage'] + row['total_inferno_damage']
             row['kd_ratio'] = _ratio(row['total_kills'], row['total_deaths'])
-            row['fk_fd_ratio'] = _ratio(row['total_first_kills'], row['total_first_deaths'])
             row['win_rate'] = _ratio(row['win_count'], row['match_count'])
-            row['headshot_ratio'] = _ratio(row['total_headshots'], row['total_kills'])
-            row['avg_headshot_ratio'] = row['headshot_ratio']
+            row['avg_headshot_ratio'] = _ratio(row['total_headshots'], row['total_kills'])
             row['total_rounds'] = rounds
             row['avg_adpr'] = _ratio(row['total_health_damage'], rounds)
             row['avg_kast'] = _ratio(row['total_kast_rounds'], rounds)
-            row['kast_ratio'] = row['avg_kast']
-            row['kills_per_round'] = _ratio(row['total_kills'], rounds)
-            row['deaths_per_round'] = _ratio(row['total_deaths'], rounds)
-            row['assists_per_round'] = _ratio(row['total_assists'], rounds)
-            row['opening_duel_win_rate'] = _ratio(row['total_first_kills'], opening_duels)
-            row['opening_duels_per_round'] = _ratio(opening_duels, rounds)
-            row['throws_per_round'] = _ratio(row['total_throws_count'], rounds)
-            row['multi_kill_rounds'] = multi_kill_rounds
-            row['multi_kill_round_rate'] = _ratio(multi_kill_rounds, rounds)
-            row['mvp_match_rate'] = _ratio(row['match_mvp_count'], row['match_count'])
-            row['enemy_flashes_per_round'] = _ratio(row['total_flash_success'], rounds)
-            row['team_flashes_per_round'] = _ratio(row['total_flash_teammate'], rounds)
-            row['team_flash_share'] = _ratio(row['total_flash_teammate'], flash_events)
-            row['trade_kill_share'] = _ratio(row['total_trade_frags'], row['total_kills'])
-            row['total_utility_damage'] = utility_damage
-            row['utility_damage_per_round'] = _ratio(utility_damage, rounds)
-            row['kill_matchups'] = matchup_map.get(row['player_id'], [])
-            # WMPVP 当前不返回闪光弹投掷数，旧比率没有可靠分母。
-            row['flash_success_ratio'] = 0.0
-            row['flash_teammate_ratio'] = 0.0
-            row['hit_ratio'] = _ratio(row['total_hit_count'], row['total_fire_count'])
+            # These source totals are only needed to derive the public basics.
+            row.pop('total_health_damage', None)
+            row.pop('total_game_count', None)
+            row.pop('total_kast_rounds', None)
 
             player = player_map.get(row['player_id'])
             if player:
@@ -943,7 +876,6 @@ class MatchPlayer(BaseModel, CRUDMixin):
                     'steam_id': player.steam_id or '',
                     'live_url': player.live_url or '',
                     'live_room_id': Player.live_room_id(player.live_url),
-                    'in_library': bool(player.in_library),
                     'perfect_rank': {
                         'score': player.perfect_score,
                         'level': player.perfect_level,
@@ -959,7 +891,6 @@ class MatchPlayer(BaseModel, CRUDMixin):
                     'steam_id': '',
                     'live_url': '',
                     'live_room_id': '',
-                    'in_library': False,
                     'perfect_rank': {
                         'score': None,
                         'level': None,
@@ -979,8 +910,7 @@ class MatchPlayer(BaseModel, CRUDMixin):
                 for cup_name in cup_names
                 if (row['player_id'], cup_name) in summary_map
             ]
-            from demo_service import attach_demo_stats
-            result.append(attach_demo_stats(row, cup_names, row['player_id']))
+            result.append(row)
 
         result.sort(key=lambda item: (-item['avg_rating'], item['player_id']))
         return result

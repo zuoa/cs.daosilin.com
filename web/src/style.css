@@ -638,6 +638,26 @@ img.player-monogram { object-fit: cover; }
 .player-chart { width: 100%; height: 320px; }
 .chart-empty { height: 320px; }
 .player-section { margin-top: 16px; overflow: hidden; }
+.soft-targets-section .panel-header { align-items: flex-end; padding-block: 17px; }
+.soft-targets-section .panel-header h2 { margin-top: 5px; }
+.soft-targets-section .panel-header p { margin-top: 4px; color: var(--ink-500); font-size: .68rem; }
+.soft-target-podium { display: grid; grid-template-columns: 1.16fr 1fr 1fr; gap: 10px; margin: 0; padding: 18px 20px 20px; list-style: none; }
+.soft-target-podium li { position: relative; display: grid; min-width: 0; min-height: 132px; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; padding: 18px 16px; background: var(--surface-soft); }
+.soft-target-podium li::after { position: absolute; right: -26px; bottom: -38px; width: 112px; height: 112px; border: 1px solid color-mix(in srgb, var(--signal) 20%, transparent); border-radius: 50%; content: ""; }
+.soft-target-podium li.place-1 { border-color: color-mix(in srgb, var(--signal) 45%, var(--line)); background: linear-gradient(135deg, var(--signal-soft), var(--surface) 70%); }
+.target-rank { position: absolute; top: 10px; right: 12px; color: var(--ink-400); font-family: var(--font-outlier); font-size: .62rem; font-weight: 800; letter-spacing: .08em; }
+.target-sight { display: inline-flex; width: 45px; height: 45px; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--signal-dark); }
+.place-1 .target-sight { border-color: color-mix(in srgb, var(--signal) 45%, var(--line)); box-shadow: inset 0 0 0 5px var(--signal-soft); }
+.target-copy { min-width: 0; }
+.target-copy small, .target-copy strong, .target-copy code { display: block; }
+.target-copy small { color: var(--signal-dark); font-size: .58rem; font-weight: 800; letter-spacing: .06em; }
+.target-copy strong { margin-top: 5px; overflow: hidden; font-family: var(--font-display); font-size: 1rem; letter-spacing: -.02em; text-overflow: ellipsis; white-space: nowrap; }
+.target-copy code { margin-top: 3px; overflow: hidden; color: var(--ink-400); font-size: .56rem; text-overflow: ellipsis; white-space: nowrap; }
+.target-kills { position: relative; z-index: 1; display: flex; min-width: 58px; align-items: flex-end; flex-direction: column; }
+.target-kills strong { font-family: var(--font-display); font-size: 2rem; letter-spacing: -.06em; line-height: 1; }
+.target-kills span { margin-top: 5px; color: var(--ink-500); font-size: .58rem; }
+.soft-target-overflow { border-top: 1px solid var(--line); }
+.soft-target-overflow .data-table { margin: 0; }
 .achievement-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 18px 20px 20px; }
 .achievement-grid article { display: grid; min-height: 94px; grid-template-columns: auto minmax(0, 1fr); gap: 10px; border: 1px solid var(--line); border-left: 3px solid var(--line-strong); border-radius: 11px; padding: 12px; background: var(--surface-soft); }
 .achievement-grid article.title-positive { border-left-color: var(--signal) !important; }
@@ -1702,6 +1722,8 @@ h1, h2, h3 {
   .season-summary { min-width: 0; }
   .player-profile-proof { grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); }
   .season-summary-body { grid-template-columns: minmax(0, 1fr); }
+  .soft-target-podium { grid-template-columns: minmax(0, 1fr); }
+  .soft-target-podium li { min-height: 112px; }
   .title-showcase { grid-template-columns: minmax(0, 1fr); }
   .title-support-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1743,6 +1765,12 @@ h1, h2, h3 {
   .statement-footer { min-height: 180px; padding: var(--space-lg) var(--space-sm); }
   .season-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .player-profile-hero { padding-block: var(--space-lg); }
+  .soft-targets-section .panel-header { align-items: flex-start; }
+  .soft-targets-section .panel-header > .result-count { margin-top: 8px; }
+  .soft-target-podium { gap: 8px; padding: 14px; }
+  .soft-target-podium li { min-height: 104px; padding: 15px 13px; }
+  .target-sight { width: 40px; height: 40px; }
+  .target-kills strong { font-size: 1.7rem; }
   .player-profile-main { align-items: flex-start; }
   .profile-name-line h1 { font-size: var(--text-3xl); }
   .player-profile-proof { grid-template-columns: minmax(0, 1fr); }
