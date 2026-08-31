@@ -31,6 +31,7 @@
                     :score="player.perfect_score"
                     :stars="player.perfect_stars"
                     :updated-at="player.perfect_rank_updated_at"
+                    show-details
                     large
                   />
                   <span v-if="day" class="status-badge neutral">{{ day }}</span>

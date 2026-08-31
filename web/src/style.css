@@ -1362,106 +1362,204 @@ h1, h2, h3 {
 }
 
 .perfect-rank-badge.rank-s {
-  --rank-color: #bdf8ff;
-  --rank-rgb: 34, 211, 238;
-  border-color: rgba(103, 232, 249, .88);
-  background:
-    radial-gradient(circle at 22% 15%, rgba(103, 232, 249, .34), transparent 34%),
-    linear-gradient(135deg, #07182d, #0b3a55 52%, #07182d);
-  box-shadow:
-    inset 0 1px 0 rgba(207, 250, 254, .42),
-    0 0 0 1px rgba(34, 211, 238, .15),
-    0 0 22px rgba(34, 211, 238, .48),
-    0 6px 22px rgba(8, 47, 73, .3);
+  --rank-color: #d88732;
+  --rank-rgb: 216, 113, 35;
+  min-width: 58px;
+  min-height: 44px;
+  justify-content: center;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  padding: 2px 10px 4px;
+  background: transparent;
+  box-shadow: none;
+  filter: drop-shadow(0 6px 6px rgba(77, 35, 7, .2));
 }
 
-/* S 段不增加可见文字：用同一枚 S 的材质和运动节奏表达星级。 */
+/* S 段沿用官方独立立体字标语言，不增加可见的等级文字。 */
+.perfect-rank-badge.rank-s:hover {
+  box-shadow: none;
+  filter: drop-shadow(0 7px 9px rgba(var(--rank-rgb), .36));
+  transform: translateY(-2px) scale(1.04);
+}
+
+.perfect-rank-badge.rank-s::before {
+  z-index: -1;
+  inset: 15% 2%;
+  width: auto;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(var(--rank-rgb), .42), transparent 70%);
+  filter: blur(7px);
+  opacity: .62;
+  transform: none;
+  animation: rankEmblemAura 2.8s var(--ease-in-out) infinite;
+}
+
+.perfect-rank-badge.rank-s::after {
+  position: absolute;
+  z-index: 3;
+  top: 4px;
+  right: 7px;
+  width: 5px;
+  height: 5px;
+  background: #fff4ca;
+  clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%);
+  content: "";
+  opacity: 0;
+  pointer-events: none;
+}
+
+.perfect-rank-badge.rank-s .rank-aura {
+  z-index: -1;
+  inset: 11% 15%;
+  background: rgba(var(--rank-rgb), .28);
+  filter: blur(8px);
+  opacity: .7;
+}
+
+.perfect-rank-badge.rank-s strong {
+  position: relative;
+  z-index: 2;
+  color: transparent;
+  background-image: linear-gradient(112deg, #6c2f0d 3%, #bc5c1e 24%, #f0a44b 46%, #9a4315 70%, #5a260c 96%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  font-size: 2rem;
+  font-style: italic;
+  font-weight: 950;
+  letter-spacing: -.09em;
+  line-height: .9;
+  -webkit-text-stroke: .7px rgba(78, 32, 8, .86);
+  text-shadow: 0 1px 0 rgba(255, 183, 84, .4);
+  transform: skewX(-7deg) scaleX(1.12);
+  transform-origin: center;
+}
+
+.perfect-rank-badge.rank-s strong::before {
+  position: absolute;
+  z-index: -1;
+  top: 3px;
+  left: -3px;
+  color: #3a1909;
+  content: "S";
+  -webkit-text-stroke: 1px #241006;
+  text-shadow: 0 2px 4px rgba(30, 13, 4, .55);
+}
+
+.perfect-rank-badge.rank-s strong::after {
+  position: absolute;
+  z-index: 1;
+  inset: -1px 0 0 -1px;
+  color: transparent;
+  content: "S";
+  opacity: .72;
+  -webkit-text-stroke: .55px rgba(255, 217, 159, .9);
+}
+
 .perfect-rank-badge.rank-s.s-tier-gold {
-  --rank-color: #ffd878;
-  --rank-rgb: 245, 183, 49;
-  border-color: rgba(255, 216, 120, .92);
-  background:
-    radial-gradient(circle at 18% 8%, rgba(255, 232, 160, .34), transparent 32%),
-    linear-gradient(135deg, #241706, #634515 54%, #1c1105);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 242, 194, .46),
-    0 0 0 1px rgba(245, 183, 49, .16),
-    0 0 23px rgba(224, 154, 24, .42),
-    0 6px 22px rgba(91, 55, 5, .28);
+  --rank-color: #ffd85e;
+  --rank-rgb: 255, 190, 44;
+  filter: drop-shadow(0 5px 6px rgba(135, 77, 0, .3));
 }
 
 .perfect-rank-badge.rank-s.s-tier-diamond {
-  --rank-color: #e8fdff;
-  --rank-rgb: 125, 235, 255;
-  border-color: rgba(217, 252, 255, .95);
-  background:
-    linear-gradient(118deg, transparent 23%, rgba(255, 255, 255, .16) 24%, transparent 26%),
-    radial-gradient(circle at 20% 10%, rgba(223, 252, 255, .46), transparent 31%),
-    linear-gradient(135deg, #071626, #124966 48%, #182a5a 72%, #071626);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, .58),
-    0 0 0 1px rgba(151, 240, 255, .2),
-    0 0 25px rgba(86, 218, 255, .5),
-    0 6px 24px rgba(23, 61, 112, .32);
+  --rank-color: #b9f6ff;
+  --rank-rgb: 101, 220, 255;
+  filter:
+    drop-shadow(-3px 1px 0 rgba(47, 68, 139, .88))
+    drop-shadow(3px -1px 0 rgba(181, 119, 255, .48))
+    drop-shadow(0 7px 8px rgba(32, 94, 177, .38));
 }
 
 .perfect-rank-badge.rank-s.s-tier-demon {
-  --rank-color: #ffe4ff;
-  --rank-rgb: 225, 106, 255;
-  border-color: rgba(245, 194, 255, .9);
-  background:
-    radial-gradient(circle at 22% 8%, rgba(255, 221, 250, .3), transparent 30%),
-    linear-gradient(135deg, #18091f, #512054 50%, #13102d);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 228, 255, .46),
-    0 0 0 1px rgba(225, 106, 255, .2),
-    0 0 26px rgba(199, 67, 237, .5),
-    0 6px 24px rgba(65, 19, 78, .34);
-}
-
-.perfect-rank-badge.rank-s.s-tier-gold strong,
-.perfect-rank-badge.rank-s.s-tier-diamond strong,
-.perfect-rank-badge.rank-s.s-tier-demon strong {
-  color: transparent;
-  background-clip: text;
-  -webkit-background-clip: text;
-  background-size: 240% 100%;
+  --rank-color: #ff7a27;
+  --rank-rgb: 255, 80, 28;
+  filter: drop-shadow(0 5px 7px rgba(143, 27, 6, .42));
 }
 
 .perfect-rank-badge.rank-s.s-tier-gold strong {
-  background-image: linear-gradient(105deg, #c98918 8%, #fff2b8 38%, #ffd15c 52%, #fff7d7 66%, #c98918 92%);
-  animation: rankGoldS 3.2s var(--ease-in-out) infinite;
+  background-image: linear-gradient(108deg, #9b5b08 2%, #ffd43f 22%, #fff7b5 43%, #f7bd18 61%, #fff1a0 76%, #a46008 98%);
+  background-size: 250% 100%;
+  -webkit-text-stroke-color: rgba(113, 61, 2, .86);
+  animation: rankGoldS 2.9s var(--ease-in-out) infinite;
 }
 
 .perfect-rank-badge.rank-s.s-tier-diamond strong {
-  background-image: linear-gradient(105deg, #84e8ff 5%, #ffffff 28%, #bba9ff 46%, #e9ffff 62%, #6fd9ff 94%);
-  animation: rankDiamondS 2.7s var(--ease-in-out) infinite;
+  background-image:
+    linear-gradient(158deg, transparent 0 34%, rgba(83, 124, 222, .62) 35% 48%, transparent 49%),
+    linear-gradient(72deg, #4faedf 0 18%, #eaffff 19% 34%, #829ee9 35% 51%, #f7f2ff 52% 65%, #8d6dd4 66% 79%, #58d4f0 80% 100%);
+  background-size: 100% 100%, 230% 100%;
+  -webkit-text-stroke: 1px rgba(231, 253, 255, .92);
+  text-shadow:
+    -2px 0 0 rgba(61, 93, 185, .75),
+    2px 0 0 rgba(159, 105, 224, .56),
+    0 0 11px rgba(196, 245, 255, .9);
+  animation: rankDiamondS 2.15s cubic-bezier(.4, 0, .2, 1) infinite;
 }
 
 .perfect-rank-badge.rank-s.s-tier-demon strong {
-  background-image: linear-gradient(105deg, #ff8bdd 6%, #fff0ff 32%, #b89cff 52%, #fff0ff 68%, #ff77cc 94%);
-  animation: rankDemonS 2.35s var(--ease-in-out) infinite;
+  background-image: linear-gradient(108deg, #8f1907 2%, #ff5b16 28%, #ffd45d 44%, #f62d0d 62%, #ff9d22 78%, #751407 98%);
+  background-size: 240% 100%;
+  -webkit-text-stroke-color: rgba(84, 15, 3, .92);
+  animation: rankDemonS 2.1s var(--ease-in-out) infinite;
 }
 
-.perfect-rank-badge.rank-s.s-tier-gold::after,
-.perfect-rank-badge.rank-s.s-tier-diamond::after,
+.perfect-rank-badge.rank-s.s-tier-gold::after {
+  opacity: .95;
+  animation: rankGoldSpark 2.9s var(--ease-in-out) infinite;
+}
+
+.perfect-rank-badge.rank-s.s-tier-diamond::before {
+  inset: -5% -10%;
+  background:
+    conic-gradient(from 30deg, transparent 0 13%, rgba(89, 223, 255, .5) 14% 17%, transparent 18% 45%, rgba(188, 132, 255, .45) 46% 50%, transparent 51% 100%);
+  filter: blur(3px);
+  opacity: .9;
+  animation: rankDiamondHalo 3.2s linear infinite;
+}
+
+.perfect-rank-badge.rank-s.s-tier-diamond::after {
+  top: 1px;
+  right: 3px;
+  width: 11px;
+  height: 13px;
+  background: linear-gradient(145deg, #fff 0 22%, #74dcff 23% 48%, #a987f4 49% 72%, transparent 73%);
+  clip-path: polygon(50% 0, 64% 36%, 100% 50%, 64% 64%, 50% 100%, 36% 64%, 0 50%, 36% 36%);
+  opacity: .96;
+  filter: drop-shadow(0 0 5px #82e8ff);
+  animation: rankDiamondSpark 2.15s var(--ease-in-out) infinite;
+}
+
+.perfect-rank-badge.rank-s.s-tier-diamond .rank-aura {
+  inset: 4% 7%;
+  background:
+    linear-gradient(135deg, transparent 0 25%, rgba(138, 231, 255, .46) 26% 42%, transparent 43% 61%, rgba(174, 129, 255, .38) 62% 78%, transparent 79%),
+    radial-gradient(circle, rgba(113, 215, 255, .42), transparent 68%);
+  clip-path: polygon(50% 0, 96% 24%, 88% 79%, 50% 100%, 10% 78%, 3% 27%);
+  filter: blur(2px);
+  animation: rankDiamondFacet 2.15s var(--ease-in-out) infinite;
+}
+
+.perfect-rank-badge.rank-s.s-tier-diamond strong::before {
+  color: #263d7b;
+  -webkit-text-stroke-color: #1c2757;
+}
+
+.perfect-rank-badge.rank-s.s-tier-diamond strong::after {
+  -webkit-text-stroke-color: rgba(255, 255, 255, .96);
+}
+
 .perfect-rank-badge.rank-s.s-tier-demon::after {
-  position: absolute;
-  z-index: -1;
-  inset: 1px;
-  border: 1px solid transparent;
-  border-radius: inherit;
-  background: conic-gradient(from 0deg, transparent 0 36%, rgba(255, 255, 255, .9) 47%, transparent 58% 100%) border-box;
-  content: "";
-  pointer-events: none;
-  -webkit-mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  animation: rankOrbit 4.8s linear infinite;
+  top: -2px;
+  right: 8px;
+  width: 34px;
+  height: 14px;
+  background: linear-gradient(90deg, #7d1305, #ff6a16 18% 30%, transparent 31% 69%, #ff6a16 70% 82%, #7d1305);
+  clip-path: polygon(0 0, 25% 54%, 37% 100%, 30% 44%, 17% 18%, 17% 0, 0 0, 100% 0, 83% 0, 83% 18%, 70% 44%, 63% 100%, 75% 54%);
+  opacity: .95;
+  filter: drop-shadow(0 0 4px rgba(255, 68, 14, .72));
+  animation: rankDemonCrown 2.1s var(--ease-in-out) infinite;
 }
-
-.perfect-rank-badge.rank-s.s-tier-diamond::after { animation-duration: 3.4s; }
-.perfect-rank-badge.rank-s.s-tier-demon::after { animation-duration: 2.8s; }
 
 .perfect-rank-badge.rank-s .rank-aura,
 .perfect-rank-badge.rank-elite .rank-aura {
@@ -1477,6 +1575,38 @@ h1, h2, h3 {
 
 .perfect-rank-badge.large strong { font-size: var(--text-xl); }
 
+.perfect-rank-badge.rank-s.large {
+  min-width: 78px;
+  min-height: 60px;
+  padding: 3px 15px 6px;
+}
+
+.perfect-rank-badge.rank-s.large strong { font-size: 2.8rem; }
+
+.perfect-rank-badge.rank-s.show-details {
+  min-width: 0;
+  gap: 14px;
+  justify-content: flex-start;
+}
+
+.perfect-rank-badge.rank-s.show-details .rank-detail {
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  border-left: 1px solid rgba(var(--rank-rgb), .42);
+  padding: 2px 0 2px 13px;
+  color: var(--ink-800);
+  font-family: var(--font-outlier);
+  font-size: .76rem;
+  font-weight: 800;
+  letter-spacing: .025em;
+  line-height: 1;
+  opacity: 1;
+  text-shadow: none;
+}
+
 .perfect-rank-badge.compact {
   min-height: 30px;
   gap: 5px;
@@ -1486,6 +1616,14 @@ h1, h2, h3 {
 .perfect-rank-badge.compact small { font-size: .56rem; }
 .perfect-rank-badge.compact strong { font-size: var(--text-sm); }
 .perfect-rank-badge.compact span { font-size: .58rem; }
+
+.perfect-rank-badge.rank-s.compact {
+  min-width: 54px;
+  min-height: 40px;
+  padding: 2px 9px 4px;
+}
+
+.perfect-rank-badge.rank-s.compact strong { font-size: 1.85rem; }
 
 .perfect-rank-cell { min-width: 118px; }
 
@@ -1498,23 +1636,51 @@ h1, h2, h3 {
   50% { opacity: .32; transform: scale(.84); }
 }
 
+@keyframes rankEmblemAura {
+  0%, 100% { opacity: .42; transform: scale(.88); }
+  50% { opacity: .72; transform: scale(1.08); }
+}
+
 @keyframes rankGoldS {
   0%, 100% { background-position: 100% 50%; filter: drop-shadow(0 0 3px rgba(255, 203, 82, .45)); }
   50% { background-position: 0 50%; filter: drop-shadow(0 0 7px rgba(255, 220, 121, .82)); }
 }
 
+@keyframes rankGoldSpark {
+  0%, 54%, 100% { opacity: 0; transform: scale(.35) rotate(0); }
+  64% { opacity: 1; transform: scale(1.55) rotate(90deg); }
+  75% { opacity: .25; transform: scale(.7) rotate(160deg); }
+}
+
 @keyframes rankDiamondS {
-  0%, 100% { background-position: 100% 50%; filter: drop-shadow(-2px 0 3px rgba(112, 226, 255, .45)); }
-  50% { background-position: 0 50%; filter: drop-shadow(2px 0 7px rgba(210, 196, 255, .9)); }
+  0%, 100% { background-position: 0 0, 100% 50%; filter: brightness(.94) saturate(1.05); }
+  48% { background-position: 0 0, 0 50%; filter: brightness(1.2) saturate(1.22); }
+  54% { background-position: 0 0, 8% 50%; filter: brightness(1.05) saturate(1.12); }
+}
+
+@keyframes rankDiamondHalo {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes rankDiamondFacet {
+  0%, 100% { opacity: .48; transform: scale(.9) rotate(-2deg); }
+  48% { opacity: .94; transform: scale(1.08) rotate(2deg); }
+}
+
+@keyframes rankDiamondSpark {
+  0%, 42%, 100% { opacity: .22; transform: scale(.55) rotate(0); }
+  52% { opacity: 1; transform: scale(1.18) rotate(90deg); }
+  64% { opacity: .38; transform: scale(.72) rotate(150deg); }
 }
 
 @keyframes rankDemonS {
-  0%, 100% { background-position: 100% 50%; filter: drop-shadow(0 0 4px rgba(255, 112, 211, .5)); }
-  50% { background-position: 0 50%; filter: drop-shadow(0 0 8px rgba(204, 139, 255, .86)); }
+  0%, 100% { background-position: 100% 50%; filter: drop-shadow(0 0 4px rgba(255, 67, 18, .55)); }
+  50% { background-position: 0 50%; filter: drop-shadow(0 0 9px rgba(255, 132, 28, .94)); }
 }
 
-@keyframes rankOrbit {
-  to { transform: rotate(360deg); }
+@keyframes rankDemonCrown {
+  0%, 100% { opacity: .72; transform: translateY(1px) scale(.95); }
+  50% { opacity: 1; transform: translateY(-1px) scale(1.04); }
 }
 
 .player-profile-proof {

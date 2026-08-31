@@ -1,13 +1,13 @@
 <template>
   <span
     class="perfect-rank-badge"
-    :class="[rankClass, sTierClass, { 'rank-elite': isElite, large, compact }]"
+    :class="[rankClass, sTierClass, { 'rank-elite': isElite, 'show-details': showDetails, large, compact }]"
     :aria-label="ariaLabel"
     :title="title"
   >
     <i class="rank-aura" aria-hidden="true"></i>
     <strong>{{ normalizedLevel }}</strong>
-    <span v-if="scoreLabel">{{ scoreLabel }}</span>
+    <span v-if="displayLabel" :class="{ 'rank-detail': showDetails && rankClass === 'rank-s' }">{{ displayLabel }}</span>
   </span>
 </template>
 
@@ -19,6 +19,7 @@ const props = defineProps({
   score: { type: [Number, String], default: 0 },
   stars: { type: [Number, String], default: null },
   updatedAt: { type: String, default: '' },
+  showDetails: { type: Boolean, default: false },
   large: { type: Boolean, default: false },
   compact: { type: Boolean, default: false },
 })
@@ -61,10 +62,18 @@ const scoreLabel = computed(() => {
   }
   return `${Math.round(numericScore.value)}`
 })
+const displayLabel = computed(() => {
+  if (!props.showDetails || rankClass.value !== 'rank-s' || numericScore.value <= 0) {
+    return scoreLabel.value
+  }
+  const score = `${Math.round(numericScore.value)} 分`
+  return numericStars.value === null ? score : `${score} · ${numericStars.value} 星`
+})
 const ariaLabel = computed(() => {
   if (numericScore.value <= 0) return '完美平台段位未定级'
   if (rankClass.value === 'rank-s' && numericStars.value !== null) {
-    return `完美平台段位 ${sTierName.value}，${numericStars.value} 星`
+    const score = props.showDetails ? `，天梯分 ${Math.round(numericScore.value)}` : ''
+    return `完美平台段位 ${sTierName.value}${score}，${numericStars.value} 星`
   }
   return `完美平台段位 ${normalizedLevel.value}，天梯分 ${scoreLabel.value}`
 })
