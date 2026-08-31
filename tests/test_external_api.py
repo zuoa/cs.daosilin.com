@@ -453,6 +453,32 @@ class ExternalPlayersApiTest(unittest.TestCase):
              .where(MatchPlayer.cup_name == cup_name)
              .execute())
 
+    def test_kill_matchups_include_opponents_with_only_deaths(self):
+        cup_name = 'death-only-matchup-season'
+        try:
+            create_match_player(
+                'matchup-victim', 'p1', cup_name,
+                kill_map=json.dumps({}),
+            )
+            create_match_player(
+                'matchup-attacker', 'p2', cup_name,
+                kill_map=json.dumps({'p1': 6}),
+            )
+
+            self.assertEqual(MatchPlayer.get_player_kill_matchups(cup_name, 'p1'), [{
+                'player_id': 'p2',
+                'nickname': '选手二',
+                'kills': 0,
+                'deaths': 6,
+                'encounters': 6,
+                'kill_death_ratio': 0.0,
+            }])
+        finally:
+            (MatchPlayer
+             .delete()
+             .where(MatchPlayer.cup_name == cup_name)
+             .execute())
+
     def test_public_match_detail_only_exposes_approved_matches(self):
         response = self.client.get('/api/v1/match?cup=season-two&match_id=m2')
         self.assertEqual(response.status_code, 200)

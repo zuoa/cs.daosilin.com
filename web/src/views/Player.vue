@@ -249,12 +249,12 @@
           <p class="player-update-note">高级 Rating 为实验性估算值，按回合加权计算，不替代平台 PWR。</p>
         </section>
 
-        <section v-if="sortedMatchups.length" class="panel player-section soft-targets-section" aria-labelledby="soft-targets-title">
+        <section v-if="sortedSoftMatchups.length" class="panel player-section soft-targets-section" aria-labelledby="soft-targets-title">
           <div class="panel-header">
             <div>
               <span class="summary-kicker"><AppIcon name="target" />KILL MATCHUPS</span>
               <h2 id="soft-targets-title">软柿子 · TOP 3</h2>
-              <p>只统计双向击杀合计超过 5 次的对位，默认按击杀 / 被击杀排序。</p>
+              <p>只统计双向击杀合计超过 5 次且对位比大于 1 的对位；不足 3 人时不补位。</p>
             </div>
             <div class="matchup-sorter" aria-label="软柿子排序方式">
               <button type="button" :class="{ active: matchupSort === 'ratio' }" @click="matchupSort = 'ratio'">按对位比</button>
@@ -288,6 +288,31 @@
               </tbody>
             </table>
           </div>
+        </section>
+
+        <section v-if="hardTargets.length" class="panel player-section soft-targets-section hard-targets-section" aria-labelledby="hard-targets-title">
+          <div class="panel-header">
+            <div>
+              <span class="summary-kicker"><AppIcon name="shield" />TOUGH MATCHUPS</span>
+              <h2 id="hard-targets-title">尿完了 · TOP 3</h2>
+              <p>同样只统计双向击杀合计超过 5 次的对位，按对位比从低到高排列。</p>
+            </div>
+          </div>
+          <ol class="soft-target-podium hard-target-podium">
+            <li v-for="(opponent, index) in hardTargets" :key="opponent.player_id" :class="`place-${index + 1}`">
+              <span class="target-rank">#{{ index + 1 }}</span>
+              <span class="target-sight" aria-hidden="true"><AppIcon name="shield" :size="24" /></span>
+              <div class="target-copy">
+                <small>{{ hardTargetLabel(index) }}</small>
+                <strong>{{ opponent.nickname || opponent.player_id }}</strong>
+                <code>{{ opponent.player_id }}</code>
+              </div>
+              <div class="target-kills">
+                <strong>{{ formatMatchupRatio(opponent) }}</strong>
+                <span>{{ opponent.kills }} 杀 / {{ opponent.deaths }} 被杀</span>
+              </div>
+            </li>
+          </ol>
         </section>
 
         <section v-if="rankHistory.length" class="panel player-section chart-panel ladder-trend-panel">
@@ -490,20 +515,27 @@ const heroStats = computed(() => !stats.value ? [] : [
   { label: '总击杀', value: stats.value.total_kills || 0, rank: ranks.value.total_kills },
   { label: 'MVP', value: stats.value.total_mvp || 0, rank: ranks.value.total_mvp },
 ])
-const sortedMatchups = computed(() => [...killMatchups.value].sort((a, b) => {
+const validMatchups = computed(() => killMatchups.value.filter((opponent) => (
+  Number(opponent.encounters ?? (Number(opponent.kills || 0) + Number(opponent.deaths || 0))) > 5
+)))
+const sortedSoftMatchups = computed(() => validMatchups.value
+  .filter((opponent) => matchupRatio(opponent) > 1)
+  .sort((a, b) => {
   if (matchupSort.value === 'kills') {
     return Number(b.kills || 0) - Number(a.kills || 0)
       || Number(a.deaths || 0) - Number(b.deaths || 0)
   }
-  const aUnbeaten = Number(a.deaths || 0) === 0
-  const bUnbeaten = Number(b.deaths || 0) === 0
-  if (aUnbeaten !== bUnbeaten) return aUnbeaten ? -1 : 1
-  return Number(b.kill_death_ratio || 0) - Number(a.kill_death_ratio || 0)
+  return matchupRatio(b) - matchupRatio(a)
     || Number(b.encounters || 0) - Number(a.encounters || 0)
     || Number(b.kills || 0) - Number(a.kills || 0)
-}))
-const softTargets = computed(() => sortedMatchups.value.slice(0, 3))
-const otherMatchups = computed(() => sortedMatchups.value.slice(3, 10))
+  }))
+const softTargets = computed(() => sortedSoftMatchups.value.slice(0, 3))
+const otherMatchups = computed(() => sortedSoftMatchups.value.slice(3, 10))
+const hardTargets = computed(() => [...validMatchups.value].sort((a, b) => (
+  matchupRatio(a) - matchupRatio(b)
+  || Number(b.encounters || 0) - Number(a.encounters || 0)
+  || Number(b.deaths || 0) - Number(a.deaths || 0)
+)).slice(0, 3))
 const statGroups = computed(() => {
   const s = stats.value || {}
   return [
@@ -577,6 +609,12 @@ function titleCategory(title) { return titleMeta(title).label }
 function titleIcon(title) { return titleMeta(title).icon }
 function titleSummary(title) { return title?.title_summary || '由本赛季有效样本计算得出' }
 function softTargetLabel(index) { return ['头号软柿子', '顺手目标', '稳定提款机'][index] || '对位目标' }
+function hardTargetLabel(index) { return ['一滴不剩', '快见底了', '还剩两滴'][index] || '棘手对位' }
+function matchupRatio(opponent) {
+  return Number(opponent?.deaths || 0) === 0
+    ? Number.POSITIVE_INFINITY
+    : Number(opponent?.kills || 0) / Number(opponent.deaths)
+}
 function formatMatchupRatio(opponent) {
   return Number(opponent?.deaths || 0) === 0
     ? '∞'

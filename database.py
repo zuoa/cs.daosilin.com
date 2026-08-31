@@ -949,32 +949,50 @@ class MatchPlayer(BaseModel, CRUDMixin):
                     if victim_id in target_ids and attacker_id != victim_id:
                         death_counters[victim_id][attacker_id] += count
 
-        victim_ids = {
-            victim_id
+        eligible_opponents = {
+            player_id: [
+                opponent_id
+                for opponent_id in (
+                    set(kill_counters[player_id]) | set(death_counters[player_id])
+                )
+                if (kill_counters[player_id][opponent_id]
+                    + death_counters[player_id][opponent_id]) > 5
+            ]
             for player_id in player_ids
-            for victim_id in kill_counters[player_id]
-            if kill_counters[player_id][victim_id] + death_counters[player_id][victim_id] > 5
+        }
+        opponent_ids = {
+            opponent_id
+            for player_opponents in eligible_opponents.values()
+            for opponent_id in player_opponents
         }
         victims = {
             player.player_id: player
-            for player in Player.select().where(Player.player_id.in_(victim_ids))
-        } if victim_ids else {}
+            for player in Player.select().where(Player.player_id.in_(opponent_ids))
+        } if opponent_ids else {}
         return {
             player_id: [
                 {
-                    'player_id': victim_id,
-                    'nickname': ((victims.get(victim_id).alias_name or victims.get(victim_id).nickname)
-                                 if victims.get(victim_id) else victim_id),
-                    'kills': kills,
-                    'deaths': death_counters[player_id][victim_id],
-                    'encounters': kills + death_counters[player_id][victim_id],
+                    'player_id': opponent_id,
+                    'nickname': ((victims.get(opponent_id).alias_name or victims.get(opponent_id).nickname)
+                                 if victims.get(opponent_id) else opponent_id),
+                    'kills': kill_counters[player_id][opponent_id],
+                    'deaths': death_counters[player_id][opponent_id],
+                    'encounters': (kill_counters[player_id][opponent_id]
+                                   + death_counters[player_id][opponent_id]),
                     'kill_death_ratio': (
-                        round(kills / death_counters[player_id][victim_id], 4)
-                        if death_counters[player_id][victim_id] else None
+                        round(kill_counters[player_id][opponent_id]
+                              / death_counters[player_id][opponent_id], 4)
+                        if death_counters[player_id][opponent_id] else None
                     ),
                 }
-                for victim_id, kills in kill_counters[player_id].most_common()
-                if kills + death_counters[player_id][victim_id] > 5
+                for opponent_id in sorted(
+                    eligible_opponents[player_id],
+                    key=lambda item: (
+                        -kill_counters[player_id][item],
+                        death_counters[player_id][item],
+                        item,
+                    ),
+                )
             ]
             for player_id in player_ids
         }
