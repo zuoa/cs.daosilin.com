@@ -553,9 +553,9 @@ def _parse_season_datetime(raw):
     if not value:
         return None
     try:
-        return datetime.strptime(value, '%Y-%m-%dT%H:%M:%S')
+        return datetime.fromisoformat(value)
     except ValueError as exc:
-        raise ValueError('时间格式应为 YYYY-MM-DDTHH:MM:SS') from exc
+        raise ValueError('时间格式应为 ISO 8601 日期时间') from exc
 
 
 def _selection_payload(cup, status=None, day=None):

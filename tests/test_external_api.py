@@ -512,6 +512,25 @@ class ExternalPlayersApiTest(unittest.TestCase):
         records = response.get_json()['data']['list']
         self.assertEqual(records[0]['start_time'], '2025-02-03T20:15:30')
 
+    def test_admin_can_save_season_when_datetime_omits_zero_seconds(self):
+        cup = 'season-minute-precision-test'
+        self._login_admin()
+        try:
+            response = self.client.get('/api/admin/season/save', query_string={
+                'cup': cup,
+                'cup_alias': '整分时间测试',
+                'start_date': '2026-09-01T02:00',
+                'end_date': '2026-09-01T03:00',
+                'status': 'archived',
+            })
+
+            self.assertEqual(response.status_code, 200)
+            season = Season.get(Season.cup_name == cup)
+            self.assertEqual(season.start_date, datetime(2026, 9, 1, 2, 0))
+            self.assertEqual(season.end_date, datetime(2026, 9, 1, 3, 0))
+        finally:
+            Season.delete_with_related_data(cup)
+
     def test_admin_can_delete_season_and_related_data(self):
         cup = 'season-delete-test'
         match_id = 'm-delete-test'
