@@ -57,6 +57,7 @@ External API 只提供选手身份、基础比赛数据、当前完美平台段�
 
 - `perfect_rank.score`：当前天梯分，尚未采集时为 `null`。
 - `perfect_rank.level`：当前段位，例如 `B`、`A`、`S21`，尚未定级或未采集时为 `null`。
+- `perfect_rank.stars`：S 段当前星数；非 S 段、凭证不可用或尚未采集时为 `null`。
 - `perfect_rank.updated_at`：最近一次成功采集段位的 ISO 8601 时间。
 - `scouting_reports`：本次命中赛季中已经建立的球探报告列表。每项包含 `cup_name`、`season_name` 和 `report`；报告生成中时 `report.status` 为 `pending`，完成后会包含 `headline`、`overview`、`strength`、`weakness`、`style`、`sample`、`generated_at`、`refreshing` 与 `stale`。
 

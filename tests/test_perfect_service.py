@@ -71,6 +71,96 @@ class PerfectRankLookupTest(unittest.TestCase):
         post.assert_called_once()
 
     @patch('perfect_service.requests.post')
+    def test_enriches_s_rank_with_authenticated_star_count(self, post):
+        search_response = Mock()
+        search_response.raise_for_status.return_value = None
+        search_response.json.return_value = {
+            'code': 1,
+            'result': [{
+                'steamId': '76561199039451434',
+                'pvpNickName': 'Rolly',
+                'pvpScore': 2401,
+            }],
+        }
+        detail_response = Mock()
+        detail_response.raise_for_status.return_value = None
+        detail_response.json.return_value = {
+            'statusCode': 0,
+            'data': {'pvpScore': 2401, 'stars': 28},
+        }
+        post.side_effect = [search_response, detail_response]
+
+        rank = get_perfect_rank(
+            '76561199039451434',
+            credential={
+                'steam_id': '76561198000000001',
+                'access_token': 'encrypted-token-value',
+            },
+        )
+
+        self.assertEqual(rank['level'], 'S')
+        self.assertEqual(rank['stars'], 28)
+        self.assertEqual(post.call_count, 2)
+        detail_call = post.call_args_list[1]
+        self.assertIn('accessToken', detail_call.kwargs['headers'])
+        self.assertEqual(detail_call.kwargs['json']['toSteamId'], 76561199039451434)
+
+    @patch('perfect_service.requests.post')
+    def test_s_rank_survives_optional_star_lookup_failure(self, post):
+        search_response = Mock()
+        search_response.raise_for_status.return_value = None
+        search_response.json.return_value = {
+            'code': 1,
+            'result': [{
+                'steamId': '76561199039451434',
+                'pvpNickName': 'Rolly',
+                'pvpScore': 2401,
+            }],
+        }
+        post.side_effect = [search_response, requests.ConnectionError('expired token')]
+
+        rank = get_perfect_rank(
+            '76561199039451434',
+            credential={
+                'steam_id': '76561198000000001',
+                'access_token': 'expired-token-value',
+            },
+        )
+
+        self.assertEqual(rank['level'], 'S')
+        self.assertIsNone(rank['stars'])
+
+    @patch('perfect_service.requests.post')
+    def test_uses_latest_score_list_when_top_level_stars_are_missing(self, post):
+        search_response = Mock()
+        search_response.raise_for_status.return_value = None
+        search_response.json.return_value = {
+            'code': 1,
+            'result': [{
+                'steamId': '76561199039451434',
+                'pvpNickName': 'Rolly',
+                'pvpScore': 2401,
+            }],
+        }
+        detail_response = Mock()
+        detail_response.raise_for_status.return_value = None
+        detail_response.json.return_value = {
+            'statusCode': 0,
+            'data': {'scoreList': [{'stars': 31}, {'stars': 30}]},
+        }
+        post.side_effect = [search_response, detail_response]
+
+        rank = get_perfect_rank(
+            '76561199039451434',
+            credential={
+                'steam_id': '76561198000000001',
+                'access_token': 'encrypted-token-value',
+            },
+        )
+
+        self.assertEqual(rank['stars'], 31)
+
+    @patch('perfect_service.requests.post')
     def test_invalid_id_does_not_call_upstream(self, post):
         self.assertIsNone(get_perfect_rank('player-one'))
         post.assert_not_called()

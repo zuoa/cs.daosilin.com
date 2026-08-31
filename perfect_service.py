@@ -17,6 +17,7 @@ from ajlog import logger
 
 
 PERFECT_SEARCH_URL = 'https://appengine.wmpvp.com/steamcn/app/search/user'
+PERFECT_DETAIL_URL = 'https://api.wmpvp.com/api/csgo/home/pvp/detailStats'
 STEAM_ID64_BASE = 76561197960265728
 PERFECT_RANK_CACHE_SECONDS = 300
 PERFECT_RANK_FAILURE_CACHE_SECONDS = 60
@@ -28,6 +29,18 @@ _REQUEST_HEADERS = {
     'Referer': 'https://client.wmpvp.com',
     'User-Agent': 'Mozilla/5.0',
     'x-requested-with': 'XMLHttpRequest',
+}
+
+_DETAIL_HEADERS = {
+    'Accept': 'application/json, text/plain, */*',
+    'Content-Type': 'application/json;charset=UTF-8',
+    'Referer': 'https://news.wmpvp.com/',
+    'User-Agent': 'Mozilla/5.0 (Linux; Android 15) EsportsApp',
+    'appversion': '3.6.6.192',
+    'device': 'rank-enrichment',
+    'platform': 'h5_android',
+    'gameType': '2',
+    'gameTypeStr': '2',
 }
 
 _cache: Dict[str, tuple[float, Optional[Dict[str, Any]]]] = {}
@@ -116,7 +129,65 @@ def clear_perfect_rank_cache() -> None:
         _cache.clear()
 
 
-def get_perfect_rank(steam_id: object, timeout: float = 4.0) -> Optional[Dict[str, Any]]:
+def _get_perfect_stars(
+    steam_id: str,
+    credential: Optional[Dict[str, str]],
+    timeout: float,
+) -> Optional[int]:
+    """Return the authenticated S-rank star count when credentials are available."""
+    if not credential:
+        return None
+    access_token = str(credential.get('access_token') or '').strip()
+    my_steam_id = to_steam_id64(credential.get('steam_id'))
+    if not access_token or not my_steam_id:
+        return None
+
+    try:
+        response = requests.post(
+            PERFECT_DETAIL_URL,
+            headers={
+                **_DETAIL_HEADERS,
+                # Current clients use accessToken; token keeps older API
+                # deployments compatible without changing the request body.
+                'accessToken': access_token,
+                'token': access_token,
+            },
+            json={
+                'accessToken': '',
+                'mySteamId': int(my_steam_id),
+                'toSteamId': int(steam_id),
+                'csgoSeasonId': 'recent',
+            },
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        data = payload.get('data') if isinstance(payload, dict) else None
+        if payload.get('statusCode') != 0 or not isinstance(data, dict):
+            return None
+        candidates = [data.get('stars')]
+        candidates.extend(
+            item.get('stars')
+            for item in (data.get('scoreList') or [])
+            if isinstance(item, dict)
+        )
+        for candidate in candidates:
+            if candidate is None or candidate == '':
+                continue
+            return max(0, int(float(candidate)))
+        return None
+    except (requests.RequestException, ValueError, TypeError, AttributeError) as exc:
+        # Star enrichment is optional: a stale credential must not discard the
+        # rank already obtained from the public search endpoint.
+        logger.warning(f'查询完美 S 段星数失败 steam_id={steam_id}: {exc}')
+        return None
+
+
+def get_perfect_rank(
+    steam_id: object,
+    timeout: float = 4.0,
+    credential: Optional[Dict[str, str]] = None,
+) -> Optional[Dict[str, Any]]:
     """Fetch a player's current Perfect World score and calculated rank.
 
     Network and upstream-data failures intentionally return ``None`` so an
@@ -126,7 +197,8 @@ def get_perfect_rank(steam_id: object, timeout: float = 4.0) -> Optional[Dict[st
     if not normalized:
         return None
 
-    hit, cached_value = _cached(normalized)
+    cache_key = f'{normalized}:auth' if credential else f'{normalized}:public'
+    hit, cached_value = _cached(cache_key)
     if hit:
         return cached_value
 
@@ -149,7 +221,7 @@ def get_perfect_rank(steam_id: object, timeout: float = 4.0) -> Optional[Dict[st
             if str(item.get('steamId') or '').strip() == normalized
         ), None)
         if player is None:
-            _store(normalized, None, PERFECT_RANK_FAILURE_CACHE_SECONDS)
+            _store(cache_key, None, PERFECT_RANK_FAILURE_CACHE_SECONDS)
             return None
 
         try:
@@ -157,19 +229,21 @@ def get_perfect_rank(steam_id: object, timeout: float = 4.0) -> Optional[Dict[st
         except (TypeError, ValueError):
             score = 0
         level = perfect_level(score)
+        stars = _get_perfect_stars(normalized, credential, timeout) if level == 'S' else None
         result = {
             'steam_id': normalized,
             'nickname': player.get('pvpNickName') or '',
             'score': score,
             'level': level,
+            'stars': stars,
             'is_ranked': score > 0,
             'is_elite': level.startswith('精英'),
             'score_capped': level == 'S' and score == 2401,
             'source': 'perfect_world',
         }
-        _store(normalized, result, PERFECT_RANK_CACHE_SECONDS)
+        _store(cache_key, result, PERFECT_RANK_CACHE_SECONDS)
         return result.copy()
     except (requests.RequestException, ValueError, TypeError) as exc:
         logger.warning(f'查询完美段位失败 steam_id={normalized}: {exc}')
-        _store(normalized, None, PERFECT_RANK_FAILURE_CACHE_SECONDS)
+        _store(cache_key, None, PERFECT_RANK_FAILURE_CACHE_SECONDS)
         return None

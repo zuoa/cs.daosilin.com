@@ -96,6 +96,7 @@
                         v-if="p.perfect_level"
                         :level="p.perfect_level"
                         :score="p.perfect_score"
+                        :stars="p.perfect_stars"
                         :updated-at="p.perfect_rank_updated_at"
                         compact
                       />
@@ -208,6 +209,7 @@
                     <PerfectRankBadge
                       :level="p.perfect_level"
                       :score="p.perfect_score"
+                      :stars="p.perfect_stars"
                       :updated-at="p.perfect_rank_updated_at"
                       compact
                     />

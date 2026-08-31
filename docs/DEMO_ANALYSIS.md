@@ -33,7 +33,7 @@
 
 4. 使用同一镜像启动 `app` 与 `demo-worker`。`docker-compose.yml` 已为两者挂载同一个 `/data`，归档默认写入 `/data/demos`。后台开启后会自动扫描新比赛和最近 30 天。
 
-凭证优先级为“管理后台加密凭证 → `.env` 中的 `WMPVP_ACCESS_TOKEN` / `WMPVP_STEAM_ID`”。没有加密 key 时后台拒绝保存覆盖凭证；access token 不进入日志、任务参数、下载归档或 API 返回。数据库中没有保存凭证时，Worker 自动回退到 `.env`。
+凭证优先级为“管理后台加密凭证 → `.env` 中的 `WMPVP_ACCESS_TOKEN` / `WMPVP_STEAM_ID`”。同一凭证也会在完美段位刷新时用于获取 S 段星数。没有加密 key 时后台拒绝保存覆盖凭证；access token 不进入日志、任务参数、下载归档或 API 返回。数据库中没有保存凭证时，Worker 自动回退到 `.env`。
 
 ## 下载与校验
 

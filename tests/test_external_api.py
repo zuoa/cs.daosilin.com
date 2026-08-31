@@ -188,6 +188,7 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(player['perfect_rank'], {
             'score': 1513,
             'level': 'B',
+            'stars': None,
             'updated_at': '2025-02-04T08:30:00',
         })
         self.assertEqual(len(player['scouting_reports']), 1)
@@ -222,6 +223,7 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(p2['perfect_rank'], {
             'score': None,
             'level': None,
+            'stars': None,
             'updated_at': None,
         })
         self.assertEqual(p2['scouting_reports'], [])

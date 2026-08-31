@@ -29,6 +29,7 @@
                     v-if="player.perfect_level"
                     :level="player.perfect_level"
                     :score="player.perfect_score"
+                    :stars="player.perfect_stars"
                     :updated-at="player.perfect_rank_updated_at"
                     large
                   />

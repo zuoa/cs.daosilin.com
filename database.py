@@ -195,6 +195,7 @@ class Player(BaseModel, CRUDMixin):
     in_library = BooleanField(default=False)  # 是否计入玩家库（占比门槛只认库内）
     perfect_score = IntegerField(null=True)  # 完美平台当前天梯分
     perfect_level = CharField(max_length=16, null=True)  # S21+ 完美平台段位
+    perfect_stars = IntegerField(null=True)  # S 段升星数；非 S 或未获取时为空
     perfect_rank_updated_at = DateTimeField(null=True)  # 段位最近成功更新时间
 
     @staticmethod
@@ -327,6 +328,7 @@ class PlayerPerfectRankHistory(BaseModel, CRUDMixin):
     player_id = CharField(max_length=64)
     score = IntegerField()
     level = CharField(max_length=16)
+    stars = IntegerField(null=True)
     sampled_at = DateTimeField(default=datetime.now)
 
     class Meta:
@@ -337,7 +339,7 @@ class PlayerPerfectRankHistory(BaseModel, CRUDMixin):
 
     @classmethod
     def get_player_history(cls, player_id: str) -> List[Dict[str, Any]]:
-        query = (cls.select(cls.score, cls.level, cls.sampled_at)
+        query = (cls.select(cls.score, cls.level, cls.stars, cls.sampled_at)
                  .where(cls.player_id == player_id)
                  .order_by(cls.sampled_at.asc(), cls.id.asc()))
         return list(query.dicts())
@@ -347,7 +349,16 @@ def backfill_current_perfect_rank_history() -> int:
     """Use the last known rank as the initial sample for an empty history table."""
     if PlayerPerfectRankHistory.select().exists():
         return 0
-    players = (Player.select()
+    player_columns = {column.name for column in db.get_columns(Player._meta.table_name)}
+    selected_fields = [
+        Player.player_id,
+        Player.perfect_score,
+        Player.perfect_level,
+        Player.perfect_rank_updated_at,
+    ]
+    if 'perfect_stars' in player_columns:
+        selected_fields.append(Player.perfect_stars)
+    players = (Player.select(*selected_fields)
                .where(Player.perfect_score.is_null(False),
                       Player.perfect_rank_updated_at.is_null(False)))
     created = 0
@@ -356,6 +367,7 @@ def backfill_current_perfect_rank_history() -> int:
             player_id=player.player_id,
             score=player.perfect_score,
             level=player.perfect_level or '未定级',
+            stars=getattr(player, 'perfect_stars', None),
             sampled_at=player.perfect_rank_updated_at,
         )
         created += 1
@@ -879,6 +891,7 @@ class MatchPlayer(BaseModel, CRUDMixin):
                     'perfect_rank': {
                         'score': player.perfect_score,
                         'level': player.perfect_level,
+                        'stars': player.perfect_stars,
                         'updated_at': (
                             player.perfect_rank_updated_at.isoformat()
                             if player.perfect_rank_updated_at else None
@@ -894,6 +907,7 @@ class MatchPlayer(BaseModel, CRUDMixin):
                     'perfect_rank': {
                         'score': None,
                         'level': None,
+                        'stars': None,
                         'updated_at': None,
                     },
                 })

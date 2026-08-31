@@ -15,6 +15,7 @@ from config import (PERFECT_RANK_REFRESH_HOURS, PERFECT_RANK_REQUEST_INTERVAL,
 
 from database import (create_tables, Match, MatchPlayer, Player, PlayerPerfectRankHistory,
                       Config, Season, SeasonRoster, MatchSelection)
+from demo_service import load_demo_credential
 from perfect_service import (clear_perfect_rank_cache, get_perfect_rank,
                              resolve_steam_id64)
 from title_service import title_service
@@ -585,6 +586,11 @@ def refresh_perfect_ranks():
     """Refresh and persist Perfect World ranks for every known player."""
     players = list(Player.select().order_by(Player.in_library.desc(), Player.player_id.asc()))
     clear_perfect_rank_cache()
+    try:
+        rank_credential = load_demo_credential()
+    except ValueError as exc:
+        logger.warning(f'完美段位星数凭证不可用，本次仅刷新基础段位: {exc}')
+        rank_credential = None
     stats = {'total': len(players), 'updated': 0, 'failed': 0, 'invalid': 0}
     started_at = datetime.datetime.now()
     logger.info(f"====== 开始刷新完美段位，共 {len(players)} 名玩家 ======")
@@ -595,7 +601,7 @@ def refresh_perfect_ranks():
             stats['invalid'] += 1
             continue
 
-        rank = get_perfect_rank(steam_id)
+        rank = get_perfect_rank(steam_id, credential=rank_credential)
         if rank is None:
             stats['failed'] += 1
         else:
@@ -604,12 +610,14 @@ def refresh_perfect_ranks():
                 (Player.update(
                     perfect_score=rank['score'],
                     perfect_level=rank['level'],
+                    perfect_stars=rank.get('stars'),
                     perfect_rank_updated_at=refreshed_at,
                 ).where(Player.player_id == player.player_id).execute())
                 PlayerPerfectRankHistory.create(
                     player_id=player.player_id,
                     score=rank['score'],
                     level=rank['level'],
+                    stars=rank.get('stars'),
                     sampled_at=refreshed_at,
                 )
             stats['updated'] += 1

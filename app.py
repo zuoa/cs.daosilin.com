@@ -108,6 +108,7 @@ def _build_cup_players(cup, day=None):
         "alias_name": all_players_map.get(player["player_id"], {}).get("alias_name", ""),
         "perfect_score": all_players_map.get(player["player_id"], {}).get("perfect_score"),
         "perfect_level": all_players_map.get(player["player_id"], {}).get("perfect_level"),
+        "perfect_stars": all_players_map.get(player["player_id"], {}).get("perfect_stars"),
         "perfect_rank_updated_at": _iso_dt(
             all_players_map.get(player["player_id"], {}).get("perfect_rank_updated_at")
         ),
@@ -233,6 +234,7 @@ def _player_detail_payload(player_id, cup, day=None):
             {
                 'score': sample['score'],
                 'level': sample['level'],
+                'stars': sample['stars'],
                 'sampled_at': _iso_dt(sample['sampled_at']),
             }
             for sample in PlayerPerfectRankHistory.get_player_history(player_id)

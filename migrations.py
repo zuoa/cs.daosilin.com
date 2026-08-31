@@ -140,6 +140,15 @@ def _m013_player_perfect_rank_history():
     logger.info(f'选手完美天梯分历史采样表已创建，补录 {backfilled} 条当前分数')
 
 
+def _m014_player_perfect_rank_stars():
+    if _table_exists('player') and not _column_exists('player', 'perfect_stars'):
+        _add_column('player', 'perfect_stars', 'INTEGER')
+    if (_table_exists('player_perfect_rank_history')
+            and not _column_exists('player_perfect_rank_history', 'stars')):
+        _add_column('player_perfect_rank_history', 'stars', 'INTEGER')
+    logger.info('选手完美 S 段星数字段已补齐')
+
+
 MIGRATIONS = [
     ('001_player_in_library', _m001_player_in_library),
     ('002_season_hit_ratio', _m002_season_hit_ratio),
@@ -154,6 +163,7 @@ MIGRATIONS = [
     ('011_demo_analysis', _m011_demo_analysis),
     ('012_player_season_summary', _m012_player_season_summary),
     ('013_player_perfect_rank_history', _m013_player_perfect_rank_history),
+    ('014_player_perfect_rank_stars', _m014_player_perfect_rank_stars),
 ]
 
 

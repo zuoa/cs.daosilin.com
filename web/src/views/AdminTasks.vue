@@ -16,11 +16,11 @@
           </div>
         </div>
         <div class="token-content">
-          <div class="token-status-card"><span class="metric-icon" :class="demo.configured ? 'green' : 'slate'"><AppIcon name="database" /></span><div><small>PWA 下载凭证</small><strong>{{ demo.token_hint || '尚未保存 access token' }}</strong><span>{{ demo.steam_id || '需要 SteamID64' }} · {{ demoSourceLabel }}</span></div></div>
-          <div v-if="!demo.encryption_ready" class="inline-alert" role="alert"><AppIcon name="shield" /><span><strong>默认采集凭证仍可使用</strong>只有在后台保存覆盖凭证时，才需要配置 DEMO_CREDENTIAL_ENCRYPTION_KEY。</span></div>
+          <div class="token-status-card"><span class="metric-icon" :class="demo.configured ? 'green' : 'slate'"><AppIcon name="database" /></span><div><small>PWA 数据凭证</small><strong>{{ demo.token_hint || '尚未保存 access token' }}</strong><span>{{ demo.steam_id || '需要 SteamID64' }} · {{ demoSourceLabel }}</span></div></div>
+          <div v-if="!demo.encryption_ready" class="inline-alert" role="alert"><AppIcon name="shield" /><span><strong>可直接使用环境变量凭证</strong>只有在后台保存覆盖凭证时，才需要配置 DEMO_CREDENTIAL_ENCRYPTION_KEY。</span></div>
           <form class="custom-token-form" @submit.prevent="saveDemoCredential">
             <div class="field-group"><label for="demo-steam-id">PWA SteamID64</label><input id="demo-steam-id" v-model="demoSteamId" autocomplete="off" placeholder="7656119…" :disabled="Boolean(demoBusy)"></div>
-            <div class="field-group"><label for="demo-token">PWA access token</label><div class="token-input-line"><input id="demo-token" v-model="demoToken" type="password" autocomplete="new-password" placeholder="仅在保存时传输" :disabled="Boolean(demoBusy)"><button class="button primary" type="submit" :disabled="Boolean(demoBusy) || !demo.encryption_ready || !demoSteamId || demoToken.length < 16"><AppIcon name="save" />加密保存</button></div><small>token 只会在 Worker 内存中解密；日志、接口与任务记录均不返回明文或签名 URL。</small></div>
+            <div class="field-group"><label for="demo-token">PWA access token</label><div class="token-input-line"><input id="demo-token" v-model="demoToken" type="password" autocomplete="new-password" placeholder="仅在保存时传输" :disabled="Boolean(demoBusy)"><button class="button primary" type="submit" :disabled="Boolean(demoBusy) || !demo.encryption_ready || !demoSteamId || demoToken.length < 16"><AppIcon name="save" />加密保存</button></div><small>凭证同时用于 Demo 下载和 S 段星数更新；日志、接口与任务记录均不返回明文或签名 URL。</small></div>
           </form>
           <div class="token-actions"><div><strong>任务概况</strong><p>{{ demoJobSummary }}</p></div><button class="button subtle" type="button" :disabled="Boolean(demoBusy) || !demo.configured" @click="demoAction('backfill')"><AppIcon name="refresh" />扫描近 30 天</button><button v-if="demo.database_configured" class="button danger-ghost" type="button" :disabled="Boolean(demoBusy)" @click="revokeDemo"><AppIcon name="archive" />删除覆盖凭证</button></div>
         </div>
