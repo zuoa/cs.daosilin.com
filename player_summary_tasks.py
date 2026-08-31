@@ -9,6 +9,7 @@ from config import (LLM_API_KEY, LLM_MODEL_NAME, PLAYER_SUMMARY_PROMPT_VERSION,
 from database import MatchPlayer, PlayerSeasonSummary, Season
 from player_summary_service import (build_summary_input, generate_summary,
                                     llm_configured, snapshot_hash)
+from cache_service import invalidate_season
 
 
 def _safe_error(exc):
@@ -150,6 +151,7 @@ def run_player_summary(cup_name, player_id, target_hash):
             row.error_message = None
             row.generated_at = datetime.now()
             row.save()
+        invalidate_season(cup_name)
         return {'status': 'completed', 'summary_id': row.id}
     except Exception as exc:
         row = _row(cup_name, player_id)

@@ -1,11 +1,11 @@
 import os
 import secrets
 import threading
+import time
 from datetime import datetime
 from urllib.parse import urlsplit
 
-from flask import Flask, request, send_from_directory
-from flask_caching import Cache
+from flask import Flask, g, request, send_from_directory
 from peewee import fn
 
 import title_service
@@ -17,6 +17,8 @@ from auth import (captcha_ok, captcha_response, clear_login_fail, current_admin,
                   revoke_database_external_api_token, save_external_api_token,
                   verify_password)
 from champion_service import judge_champion
+from cache_service import (cached_response, init_cache, invalidate_profiles,
+                           invalidate_season, season_scope)
 from config import (ADMIN_PASSWORD, ADMIN_USERNAME, DEMO_BACKFILL_DAYS,
                     EXTERNAL_API_TOKEN, LLM_MODEL_NAME, REDIS_URL,
                     SECRET_KEY, SITE_NAME)
@@ -25,6 +27,7 @@ from database import (AdminUser, DemoAnalysis, MatchPlayer, Player, PlayerPerfec
                       create_tables, Config, PlayerTitle, Match, Season, SeasonRoster,
                       MatchSelection, PlayerSeasonSummary, import_history_sql)
 from demo_service import (demo_analysis_enabled, demo_credential_status,
+                          load_demo_context,
                           revoke_demo_credential, save_demo_credential,
                           set_demo_analysis_enabled)
 from live_service import (LiveRoomError, fetch_live_avatar, normalize_live_room,
@@ -44,21 +47,34 @@ app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['EXTERNAL_API_TOKEN'] = EXTERNAL_API_TOKEN
 
-if REDIS_URL:
-    cache = Cache(config={
-        'CACHE_TYPE': 'RedisCache',
-        'CACHE_REDIS_URL': REDIS_URL,
-        'CACHE_DEFAULT_TIMEOUT': 60,
-        'CACHE_KEY_PREFIX': 'cs:',
-    })
-else:
-    cache = Cache(config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 60})
-cache.init_app(app)
+init_cache(app)
 
 try:
     create_tables()
 except Exception as e:
     logger.error(f"启动时初始化数据库失败: {e}")
+
+
+@app.before_request
+def start_request_timer():
+    if request.path.startswith('/api/'):
+        g.request_started_at = time.perf_counter()
+
+
+@app.after_request
+def log_slow_api(response):
+    started = getattr(g, 'request_started_at', None)
+    if started is None:
+        return response
+    elapsed_ms = (time.perf_counter() - started) * 1000
+    response.headers.setdefault('Server-Timing', f'app;dur={elapsed_ms:.2f}')
+    if elapsed_ms >= 500:
+        logger.warning(
+            f'慢 API method={request.method} path={request.path} '
+            f'status={response.status_code} duration_ms={elapsed_ms:.1f} '
+            f'cache={response.headers.get("X-Cache", "BYPASS")}'
+        )
+    return response
 
 
 @app.before_request
@@ -74,11 +90,26 @@ def protect_admin():
 
 def _season_list_payload():
     seasons = Season.get_all() or []
+    match_counts = {
+        row.cup_name: int(row.count or 0)
+        for row in (Match.select(Match.cup_name, fn.COUNT(Match.id).alias('count'))
+                    .where(Match.cup_name.is_null(False))
+                    .group_by(Match.cup_name))
+    }
+    day_counts = {}
+    day_rows = (MatchPlayer
+                .select(MatchPlayer.cup_name, MatchPlayer.play_day,
+                        fn.COUNT(MatchPlayer.id).alias('count'))
+                .where(MatchPlayer.cup_name.is_null(False))
+                .group_by(MatchPlayer.cup_name, MatchPlayer.play_day)
+                .having(fn.COUNT(MatchPlayer.id) > 1))
+    for row in day_rows:
+        day_counts[row.cup_name] = day_counts.get(row.cup_name, 0) + 1
     for s in seasons:
         Season.annotate(s)
         cup = s.get('cup_name')
-        s['match_count'] = Match.select().where(Match.cup_name == cup).count() if cup else 0
-        s['day_count'] = len(MatchPlayer.get_cup_day_set(cup) or [])
+        s['match_count'] = match_counts.get(cup, 0)
+        s['day_count'] = day_counts.get(cup, 0)
         for key in ('created_at', 'updated_at', 'start_date', 'end_date'):
             val = s.get(key)
             if isinstance(val, datetime):
@@ -118,10 +149,15 @@ def _build_cup_players(cup, day=None):
         "is_runner_up": player["player_id"] in day_champion.get("runner_up_team_player_ids", '').split(
             ',') if day_champion else False,
     } for player in players}
+    exploits = MatchPlayer.get_match_exploits(cup, players_map.keys(), day)
+    stored_titles = (
+        PlayerTitle.get_players_titles(players_map.keys(), cup, day)
+        if not day else {}
+    )
 
     player_data = []
     for player_id, player in players_map.items():
-        d = MatchPlayer.get_match_exploit(cup, player_id, day)
+        d = exploits.get(str(player_id))
         if d:
             player.update(d)
         profile_avatar = all_players_map.get(player_id, {}).get('avatar')
@@ -148,7 +184,7 @@ def _build_cup_players(cup, day=None):
             player['titles'] = title_service.build_title_rows(player, comparable_players)
     else:
         for player in player_data:
-            player['titles'] = PlayerTitle.get_player_titles(player['player_id'], cup, day)
+            player['titles'] = stored_titles.get(str(player['player_id']), [])
     return player_data, MatchPlayer.get_cup_day_set(cup)
 
 
@@ -160,7 +196,10 @@ def _player_detail_payload(player_id, cup, day=None):
     for key in ('created_at', 'updated_at', 'perfect_rank_updated_at'):
         if hasattr(player.get(key), 'isoformat'):
             player[key] = player[key].isoformat()
-    player_data = MatchPlayer.get_match_exploit(cup, player_id, day)
+    player_demo_context = load_demo_context(cup, [player_id])
+    player_data = MatchPlayer.get_match_exploits(
+        cup, [player_id], day, demo_context=player_demo_context,
+    ).get(str(player_id))
     if not player_data:
         return None, "该选手在此杯赛/日期下无数据"
     all_champions = CupDayChampion.filter_records(**{'cup_name': cup})
@@ -180,14 +219,21 @@ def _player_detail_payload(player_id, cup, day=None):
                 'trophy': 'runner_up',
             })
     cup_days = MatchPlayer.get_cup_day_set(cup)
+    historical_map = MatchPlayer.get_match_exploits_by_day(
+        cup, [player_id], demo_context=player_demo_context,
+    )
     historical_data = []
     for historical_day in cup_days:
-        day_data = MatchPlayer.get_match_exploit(cup, player_id, historical_day)
+        day_data = historical_map.get((str(player_id), historical_day))
         if day_data:
             historical_data.append({'day': historical_day, 'data': day_data})
+    all_player_profiles = Player.get_all()
+    comparison_stats = MatchPlayer.get_match_exploits(
+        cup, [p['player_id'] for p in all_player_profiles], day,
+    )
     all_players_data = []
-    for p in Player.get_all():
-        p_data = MatchPlayer.get_match_exploit(cup, p["player_id"], day)
+    for p in all_player_profiles:
+        p_data = comparison_stats.get(str(p['player_id']))
         if p_data:
             p_data['player_id'] = p["player_id"]
             p_data['nickname'] = p["nickname"]
@@ -263,7 +309,7 @@ def api_meta():
 
 
 @app.route('/api/v1/seasons')
-@cache.cached(timeout=60)
+@cached_response(timeout=900, scopes=('seasons',))
 def api_seasons():
     return success({
         'seasons': _season_list_payload(),
@@ -273,7 +319,7 @@ def api_seasons():
 
 
 @app.route('/api/v1/cup/<string:cup>')
-@cache.cached(timeout=60, query_string=True)
+@cached_response(timeout=900, scopes=lambda: (season_scope(request.view_args['cup']), 'profiles'))
 def api_cup(cup):
     day = request.args.get('day') or None
     players, cup_days = _build_cup_players(cup, day)
@@ -288,7 +334,8 @@ def api_cup(cup):
 
 
 @app.route('/api/v1/player/<string:player_id>')
-@cache.cached(timeout=60, query_string=True)
+@cached_response(timeout=900, scopes=lambda: (
+    season_scope(request.args.get('cup') or ''), 'profiles'))
 def api_player_detail(player_id):
     cup = request.args.get('cup')
     if not cup:
@@ -301,7 +348,8 @@ def api_player_detail(player_id):
 
 
 @app.route('/api/v1/players')
-@cache.cached(timeout=120, query_string=True)
+@cached_response(timeout=900, scopes=lambda: (
+    season_scope(request.args.get('cup') or ''), 'profiles'))
 def api_players():
     cup = request.args.get('cup')
     if not cup:
@@ -313,11 +361,14 @@ def api_players():
     all_champions.sort(key=lambda champion: champion.get('day', ''))
 
     all_players = Player.get_all()
+    exploits = MatchPlayer.get_match_exploits(
+        cup, [player.get('player_id') for player in all_players], day,
+    )
     for i in range(len(all_players)):
         player = all_players[i]
         player_id = player.get('player_id')
         profile_avatar = player.get('avatar')
-        d = MatchPlayer.get_match_exploit(cup, player_id, day)
+        d = exploits.get(str(player_id))
         if d:
             player.update(d)
         if profile_avatar:
@@ -385,6 +436,7 @@ def _resolve_external_seasons(selector):
 @app.route('/api/v1/external/players', defaults={'season_selector': None})
 @app.route('/api/v1/external/players/<path:season_selector>')
 @external_api_token_required
+@cached_response(timeout=900, scopes=('external',))
 def api_external_players(season_selector):
     """Token-protected player statistics for all, last, or a named season."""
     selector = season_selector if season_selector is not None else request.args.get('season', 'last')
@@ -420,6 +472,7 @@ def _external_lookup_arg(*names):
 
 @app.route('/api/v1/external/player')
 @external_api_token_required
+@cached_response(timeout=900, scopes=('external',))
 def api_external_player():
     """Token-protected stats for one player resolved by Steam ID or room ID."""
     try:
@@ -670,6 +723,8 @@ def _match_detail_payload(cup, match_id):
 
 
 @app.route('/api/v1/match')
+@cached_response(timeout=900, scopes=lambda: (
+    season_scope(request.args.get('cup') or ''), 'profiles'))
 def api_match_detail():
     """Return details for a match that is already part of a public season."""
     cup = (request.args.get('cup') or '').strip()
@@ -689,22 +744,27 @@ def api_admin_season_list():
     if not _admin_authed():
         return error(403, "无权限访问")
     seasons = Season.get_all()
+    roster_counts = {
+        row.season_cup_name: int(row.count or 0)
+        for row in (SeasonRoster
+                    .select(SeasonRoster.season_cup_name,
+                            fn.COUNT(SeasonRoster.id).alias('count'))
+                    .group_by(SeasonRoster.season_cup_name))
+    }
+    selection_counts = {}
+    for row in (MatchSelection
+                .select(MatchSelection.season_cup_name, MatchSelection.status,
+                        fn.COUNT(MatchSelection.id).alias('count'))
+                .group_by(MatchSelection.season_cup_name, MatchSelection.status)):
+        selection_counts[(row.season_cup_name, row.status)] = int(row.count or 0)
     for s in seasons:
         for key in ('created_at', 'updated_at', 'start_date', 'end_date'):
             val = s.get(key)
             if isinstance(val, datetime):
                 s[key] = val.isoformat(timespec='seconds')
-        s['roster_count'] = len(SeasonRoster.get_player_ids(s['cup_name']))
-        s['approved_count'] = (MatchSelection
-                               .select()
-                               .where(MatchSelection.season_cup_name == s['cup_name'],
-                                      MatchSelection.status == 'approved')
-                               .count())
-        s['rejected_count'] = (MatchSelection
-                               .select()
-                               .where(MatchSelection.season_cup_name == s['cup_name'],
-                                      MatchSelection.status == 'rejected')
-                               .count())
+        s['roster_count'] = roster_counts.get(s['cup_name'], 0)
+        s['approved_count'] = selection_counts.get((s['cup_name'], 'approved'), 0)
+        s['rejected_count'] = selection_counts.get((s['cup_name'], 'rejected'), 0)
         s['pending_count'] = s['approved_count']
         if is_auto_crawl_enabled(s['cup_name']) and season_crawl_phase(s) == 'expired':
             set_auto_crawl_enabled(s['cup_name'], False)
@@ -761,10 +821,7 @@ def api_admin_season_save():
     elif season_crawl_phase(saved_season) == 'expired':
         set_auto_crawl_enabled(cup, False)
         set_crawl_status(cup, state='expired', message='赛季已截止，自动采集已停止')
-    try:
-        cache.clear()
-    except Exception:
-        pass
+    invalidate_season(cup, seasons=True)
     return success("赛季已保存")
 
 
@@ -784,10 +841,7 @@ def api_admin_season_delete():
             return error(409, "该赛季正在采集，请等待本轮完成后再删除"), 409
         deleted = Season.delete_with_related_data(cup)
 
-    try:
-        cache.clear()
-    except Exception:
-        pass
+    invalidate_season(cup, seasons=True)
     logger.info(f"赛季 {cup} 已删除: {deleted}")
     return success({
         'message': '赛季已删除',
@@ -797,15 +851,22 @@ def api_admin_season_delete():
 
 
 @app.route('/api/admin/season/roster/get')
+@cached_response(timeout=300, scopes=lambda: (
+    season_scope(request.args.get('cup') or ''), 'profiles'))
 def api_admin_season_roster_get():
     if not _admin_authed():
         return error(403, "无权限访问")
     cup = request.args.get('cup')
     if not cup:
         return error(400, "参数 cup 不能为空")
+    player_ids = SeasonRoster.get_player_ids(cup)
+    player_map = {
+        player.player_id: player
+        for player in Player.select().where(Player.player_id.in_(player_ids))
+    } if player_ids else {}
     roster = []
-    for pid in SeasonRoster.get_player_ids(cup):
-        p = Player.get_or_none(Player.player_id == pid)
+    for pid in player_ids:
+        p = player_map.get(pid)
         roster.append({
             'player_id': pid,
             'nickname': p.nickname if p else '',
@@ -824,6 +885,8 @@ def api_admin_season_roster_save():
         return error(400, "参数 cup 不能为空")
     pids = _parse_ids(request.args.get('player_ids', ''))
     SeasonRoster.set_roster(cup, pids)
+    invalidate_season(cup, external=False)
+    invalidate_profiles(external=False)
     return success(f"种子已保存（{len(pids)} 人）")
 
 
@@ -897,6 +960,8 @@ def api_admin_season_crawl_status():
 
 
 @app.route('/api/admin/selection/list')
+@cached_response(timeout=300, scopes=lambda: (
+    season_scope(request.args.get('cup') or ''), 'profiles'))
 def api_admin_selection_list():
     if not _admin_authed():
         return error(403, "无权限访问")
@@ -909,6 +974,8 @@ def api_admin_selection_list():
 
 
 @app.route('/api/admin/selection/detail')
+@cached_response(timeout=300, scopes=lambda: (
+    season_scope(request.args.get('cup') or ''), 'profiles'))
 def api_admin_selection_detail():
     if not _admin_authed():
         return error(403, "无权限访问")
@@ -925,6 +992,8 @@ def api_admin_selection_detail():
 
 
 @app.route('/api/admin/selection/pending')
+@cached_response(timeout=300, scopes=lambda: (
+    season_scope(request.args.get('cup') or ''), 'profiles'))
 def api_admin_selection_pending():
     """兼容旧入口：返回已纳入比赛。"""
     if not _admin_authed():
@@ -972,10 +1041,7 @@ def api_admin_selection_approve():
     if not match_ids:
         return error(400, "参数 match_ids 不能为空")
     n = _set_selection_status(cup, match_ids, 'approved')
-    try:
-        cache.clear()
-    except Exception:
-        pass
+    invalidate_season(cup, seasons=True)
     return success(f"已恢复纳入 {n} 场比赛")
 
 
@@ -991,14 +1057,12 @@ def api_admin_selection_reject():
     if not match_ids:
         return error(400, "参数 match_ids 不能为空")
     n = _set_selection_status(cup, match_ids, 'rejected')
-    try:
-        cache.clear()
-    except Exception:
-        pass
+    invalidate_season(cup, seasons=True)
     return success(f"已剔除 {n} 场比赛")
 
 
 @app.route('/api/admin/players')
+@cached_response(timeout=300, scopes=('profiles',))
 def api_admin_players():
     if not _admin_authed():
         return error(403, "无权限访问")
@@ -1148,10 +1212,7 @@ def api_admin_player_save():
         Player.update(**fields).where(Player.player_id == player_id).execute()
     else:
         Player.create(player_id=player_id, **fields)
-    try:
-        cache.clear()
-    except Exception:
-        pass
+    invalidate_profiles()
     return success({
         'message': '玩家已保存',
         'avatar': selected_avatar,
@@ -1178,6 +1239,7 @@ def api_admin_player_library():
         elif in_library:
             Player.create(player_id=pid, nickname=pid, in_library=True)
             n += 1
+    invalidate_profiles()
     return success(f"已更新 {n} 名玩家的库内状态")
 
 

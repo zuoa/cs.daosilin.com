@@ -18,6 +18,7 @@ from database import (create_tables, Match, MatchPlayer, Player, PlayerPerfectRa
 from demo_service import load_demo_credential
 from perfect_service import (clear_perfect_rank_cache, get_perfect_rank,
                              resolve_steam_id64)
+from cache_service import invalidate_profiles, invalidate_season
 from title_service import title_service
 from utils import get_play_day
 from wm import WMAPI
@@ -403,6 +404,7 @@ def crawl_season_with_status(cup_name, manual=False):
                 stats=stats,
             )
             Config.set_value("last_crawl_time", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            invalidate_season(cup_name, seasons=True)
             _schedule_player_summaries(cup_name)
             return stats
         keep_scheduled = is_auto_crawl_enabled(cup_name) and not manual
@@ -419,6 +421,7 @@ def crawl_season_with_status(cup_name, manual=False):
             stats=stats,
         )
         Config.set_value("last_crawl_time", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        invalidate_season(cup_name, seasons=True)
         _schedule_player_summaries(cup_name)
         return stats
     except Exception as e:
@@ -628,6 +631,7 @@ def refresh_perfect_ranks():
     finished_at = datetime.datetime.now()
     Config.set_value('perfect_rank_last_refresh', finished_at.strftime('%Y-%m-%d %H:%M:%S'))
     Config.set_value('perfect_rank_refresh_stats', json.dumps(stats, ensure_ascii=False))
+    invalidate_profiles()
     elapsed = (finished_at - started_at).total_seconds()
     logger.info(f"====== 完美段位刷新完成 {stats}，耗时 {elapsed:.1f}s ======")
     return stats

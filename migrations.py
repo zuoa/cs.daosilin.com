@@ -149,6 +149,26 @@ def _m014_player_perfect_rank_stars():
     logger.info('选手完美 S 段星数字段已补齐')
 
 
+def _m015_api_performance_indexes():
+    statements = (
+        'CREATE INDEX IF NOT EXISTS match_cup_name_play_day '
+        'ON "match" (cup_name, play_day)',
+        'CREATE INDEX IF NOT EXISTS matchplayer_cup_name_player_id_play_day '
+        'ON match_player (cup_name, player_id, play_day)',
+        'CREATE INDEX IF NOT EXISTS matchplayer_cup_name_play_day_player_id '
+        'ON match_player (cup_name, play_day, player_id)',
+        'CREATE INDEX IF NOT EXISTS matchselection_season_cup_name_status_play_day '
+        'ON match_selection (season_cup_name, status, play_day)',
+        'CREATE INDEX IF NOT EXISTS demoanalysis_status_updated '
+        'ON demo_analysis (status, updated_at)',
+        'CREATE INDEX IF NOT EXISTS playerseasonsummary_cup_status_updated '
+        'ON player_season_summary (cup_name, status, updated_at)',
+    )
+    for statement in statements:
+        db.execute_sql(statement)
+    logger.info('API 热点查询索引已创建')
+
+
 MIGRATIONS = [
     ('001_player_in_library', _m001_player_in_library),
     ('002_season_hit_ratio', _m002_season_hit_ratio),
@@ -164,6 +184,7 @@ MIGRATIONS = [
     ('012_player_season_summary', _m012_player_season_summary),
     ('013_player_perfect_rank_history', _m013_player_perfect_rank_history),
     ('014_player_perfect_rank_stars', _m014_player_perfect_rank_stars),
+    ('015_api_performance_indexes', _m015_api_performance_indexes),
 ]
 
 

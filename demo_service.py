@@ -195,6 +195,9 @@ def persist_analysis(match_id: str, payload: dict) -> int:
         DemoPlayerStats.delete().where(DemoPlayerStats.match_id == match_id).execute()
         if rows:
             DemoPlayerStats.insert_many(rows).execute()
+    from cache_service import invalidate_season
+    for cup_name in {row.cup_name for row in platform_rows if row.cup_name}:
+        invalidate_season(cup_name, external=False)
     return len(rows)
 
 
@@ -436,3 +439,117 @@ def attach_demo_stats(platform_data, cup_name, player_id, play_day=None):
         'rating_experimental': True,
     }
     return effective
+
+
+def load_demo_context(cup_name, player_ids):
+    """Load match membership and analysis state once for related aggregates."""
+    player_ids = list(dict.fromkeys(str(item) for item in (player_ids or []) if item))
+    if not player_ids:
+        return {'scope_rows': [], 'analyses': {}}
+    conditions = [MatchPlayer.player_id.in_(player_ids)]
+    if isinstance(cup_name, (list, tuple, set)):
+        conditions.append(MatchPlayer.cup_name.in_(list(cup_name)))
+    elif cup_name:
+        conditions.append(MatchPlayer.cup_name == cup_name)
+    scope_rows = list(
+        MatchPlayer.select(
+            MatchPlayer.player_id, MatchPlayer.match_id, MatchPlayer.play_day,
+        ).where(*conditions).dicts()
+    )
+    match_ids = list(dict.fromkeys(row['match_id'] for row in scope_rows))
+    analyses = {
+        row.match_id: row for row in DemoAnalysis.select().where(
+            DemoAnalysis.match_id.in_(match_ids)
+        )
+    } if match_ids else {}
+    return {'scope_rows': scope_rows, 'analyses': analyses}
+
+
+def attach_demo_stats_many(platform_by_player, cup_name, play_day=None,
+                           *, demo_context=None):
+    """Attach demo state in bulk, avoiding per-player queries when no demo exists."""
+    platform_by_player = {
+        str(player_id): data for player_id, data in (platform_by_player or {}).items()
+    }
+    if not platform_by_player:
+        return {}
+    context = demo_context or load_demo_context(cup_name, platform_by_player)
+    scope_rows = context['scope_rows']
+    if play_day:
+        scope_rows = [row for row in scope_rows if row.get('play_day') == play_day]
+    analyses = context['analyses']
+    matches_by_player = {player_id: set() for player_id in platform_by_player}
+    for row in scope_rows:
+        matches_by_player.setdefault(str(row['player_id']), set()).add(row['match_id'])
+
+    result = {}
+    for player_id, platform_data in platform_by_player.items():
+        scoped_ids = matches_by_player.get(player_id, set())
+        current_completed = any(
+            analyses.get(match_id)
+            and analyses[match_id].status == 'completed'
+            and analyses[match_id].metric_version == DEMO_METRIC_VERSION
+            for match_id in scoped_ids
+        )
+        if current_completed:
+            # Completed-demo arithmetic is intentionally kept in the canonical
+            # single-player implementation until it too can be expressed as SQL.
+            result[player_id] = attach_demo_stats(
+                platform_data, cup_name, player_id, play_day,
+            )
+            continue
+        statuses = {}
+        for match_id in scoped_ids:
+            analysis = analyses.get(match_id)
+            if analysis:
+                statuses[analysis.status] = statuses.get(analysis.status, 0) + 1
+        total_matches = len(scoped_ids)
+        active = any(statuses.get(name) for name in (
+            'queued', 'downloading', 'validating', 'parsing',
+        ))
+        if active:
+            analysis_status = 'processing'
+        elif statuses.get('blocked_credentials'):
+            analysis_status = 'blocked_credentials'
+        elif statuses.get('failed'):
+            analysis_status = 'failed'
+        elif statuses.get('unavailable') == total_matches and total_matches:
+            analysis_status = 'unavailable'
+        else:
+            analysis_status = 'pending'
+        effective = dict(platform_data)
+        effective.update({
+            'platform_data': dict(platform_data),
+            'demo_data': None,
+            'demo_coverage': {
+                'completed': 0, 'total': total_matches, 'ratio': 0.0,
+            },
+            'metric_source': 'platform',
+            'demo_analysis': {
+                'status': analysis_status,
+                'status_counts': statuses,
+                'parser': PARSER_NAME,
+                'parser_version': PARSER_VERSION,
+                'metric_version': DEMO_METRIC_VERSION,
+                'rating_experimental': True,
+            },
+        })
+        result[player_id] = effective
+    return result
+
+
+def attach_demo_stats_by_day(platform_by_key, cup_name, *, demo_context=None):
+    """Attach demo state to `(player_id, play_day)` aggregates in one preload."""
+    player_ids = list(dict.fromkeys(key[0] for key in (platform_by_key or {})))
+    context = demo_context or load_demo_context(cup_name, player_ids)
+    by_day = {}
+    for (player_id, play_day), data in (platform_by_key or {}).items():
+        by_day.setdefault(play_day, {})[player_id] = data
+    result = {}
+    for play_day, player_map in by_day.items():
+        attached = attach_demo_stats_many(
+            player_map, cup_name, play_day, demo_context=context,
+        )
+        for player_id, data in attached.items():
+            result[(player_id, play_day)] = data
+    return result

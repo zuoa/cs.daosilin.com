@@ -15,6 +15,7 @@ import requests
 import zstandard
 
 from ajlog import logger
+from cache_service import invalidate_season
 from config import (DEMO_ANALYZER_PATH, DEMO_ANALYZER_TIMEOUT, DEMO_BACKFILL_DAYS,
                     DEMO_MAX_BYTES, DEMO_METRIC_VERSION, DEMO_STORAGE_PATH,
                     REDIS_URL)
@@ -56,6 +57,9 @@ def _state(match_id, status, **values):
     for key, value in values.items():
         setattr(row, key, value)
     row.save()
+    match = Match.get_or_none(Match.match_id == match_id)
+    if match and match.cup_name:
+        invalidate_season(match.cup_name, external=False)
     return row
 
 

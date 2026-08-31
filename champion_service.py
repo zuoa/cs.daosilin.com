@@ -1,6 +1,7 @@
 import datetime
 
 from ajlog import logger
+from cache_service import invalidate_season
 from database import Match, CupDayChampion, MatchPlayer
 
 
@@ -106,6 +107,7 @@ def judge_champion(day=None, cup_name=None):
             'champion_team_player_ids': champion_player_ids,
             'runner_up_team_player_ids': runner_up_player_ids
         })
+        invalidate_season(cup_name, external=False)
 
     else:
         logger.info(

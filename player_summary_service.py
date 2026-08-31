@@ -96,14 +96,14 @@ def _player_name(player_id):
 
 
 def _peer_rows(cup_name):
-    rows = []
     query = (MatchPlayer.select(MatchPlayer.player_id)
              .where(MatchPlayer.cup_name == cup_name).distinct())
-    for record in query:
-        stats = MatchPlayer.get_match_exploit(cup_name, record.player_id, None)
-        if stats:
-            rows.append((record.player_id, stats))
-    return rows
+    player_ids = [record.player_id for record in query]
+    aggregates = MatchPlayer.get_match_exploits(cup_name, player_ids, None)
+    return [
+        (player_id, aggregates[str(player_id)])
+        for player_id in player_ids if str(player_id) in aggregates
+    ]
 
 
 def build_summary_input(cup_name, player_id, peers=None):
@@ -170,8 +170,13 @@ def build_summary_input(cup_name, player_id, peers=None):
         maps.append(row)
 
     days = []
-    for play_day in sorted(MatchPlayer.get_cup_day_set(cup_name) or []):
-        day_stats = MatchPlayer.get_match_exploit(cup_name, player_id, play_day)
+    cup_days = sorted(MatchPlayer.get_cup_day_set(cup_name) or [])
+    day_stats_map = (
+        MatchPlayer.get_match_exploits_by_day(cup_name, [player_id])
+        if cup_days else {}
+    )
+    for play_day in cup_days:
+        day_stats = day_stats_map.get((str(player_id), play_day))
         if not day_stats:
             continue
         row = {'比赛日': play_day, '场次': int(day_stats.get('match_count') or 0)}

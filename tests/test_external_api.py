@@ -15,6 +15,7 @@ os.environ['EXTERNAL_API_TOKEN'] = 'test-token'
 os.environ['ADMIN_PASSWORD'] = 'test-admin-password'
 
 from app import app  # noqa: E402
+from cache_service import cache, invalidate_season  # noqa: E402
 from auth import EXTERNAL_TOKEN_HASH_KEY, EXTERNAL_TOKEN_HINT_KEY  # noqa: E402
 from database import (Config, CupDayChampion, Match, MatchPlayer, MatchSelection,
                       Player, PlayerSeasonSummary, PlayerTitle, Season,
@@ -612,6 +613,45 @@ class ExternalPlayersApiTest(unittest.TestCase):
             self.assertIsNotNone(Season.get_by_cup(cup))
         finally:
             Season.delete_with_related_data(cup)
+
+    def test_public_cup_cache_hits_and_season_invalidation(self):
+        cache.clear()
+        path = '/api/v1/cup/season-two'
+        first = self.client.get(path)
+        second = self.client.get(path)
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first.headers.get('X-Cache'), 'MISS')
+        self.assertEqual(second.headers.get('X-Cache'), 'HIT')
+
+        invalidate_season('season-two', external=False)
+        third = self.client.get(path)
+        self.assertEqual(third.status_code, 200)
+        self.assertEqual(third.headers.get('X-Cache'), 'MISS')
+
+    def test_external_auth_is_checked_before_response_cache(self):
+        cache.clear()
+        path = '/api/v1/external/players?season=last'
+        populated = self.client.get(path, headers=self.auth)
+        self.assertEqual(populated.status_code, 200)
+        self.assertEqual(populated.headers.get('X-Cache'), 'MISS')
+
+        unauthorized = self.client.get(path)
+        self.assertEqual(unauthorized.status_code, 401)
+
+    def test_cup_cold_query_count_does_not_scale_per_player(self):
+        cache.clear()
+        selects = []
+        connection = db.connection()
+        connection.set_trace_callback(
+            lambda sql: selects.append(sql)
+            if sql.lstrip().upper().startswith('SELECT') else None
+        )
+        try:
+            response = self.client.get('/api/v1/cup/season-two')
+        finally:
+            connection.set_trace_callback(None)
+        self.assertEqual(response.status_code, 200)
+        self.assertLessEqual(len(selects), 15, '\n'.join(selects))
 
 
 if __name__ == '__main__':

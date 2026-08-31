@@ -3,6 +3,7 @@
 from typing import Dict, List, Optional
 
 from ajlog import logger
+from cache_service import invalidate_season
 from database import MatchPlayer, PlayerTitle
 from title_system import Title, title_system
 
@@ -23,23 +24,27 @@ class RefactoredTitleService:
         if play_day:
             query = query.where(MatchPlayer.play_day == play_day)
 
+        player_ids = [record.player_id for record in query]
+        aggregate_map = MatchPlayer.get_match_exploits(cup_name, player_ids, play_day)
         players_data = []
-        for record in query:
-            data = MatchPlayer.get_match_exploit(cup_name, record.player_id, play_day)
+        for player_id in player_ids:
+            data = aggregate_map.get(str(player_id))
             if not data:
                 continue
-            data["player_id"] = record.player_id
+            data["player_id"] = player_id
             players_data.append(data)
 
         if include_history and not play_day:
             days = sorted(MatchPlayer.get_cup_day_set(cup_name) or [])
-            for data in players_data:
-                history = []
-                for day in days:
-                    day_data = MatchPlayer.get_match_exploit(cup_name, data["player_id"], day)
+            history_by_player = {str(player_id): [] for player_id in player_ids}
+            day_map = MatchPlayer.get_match_exploits_by_day(cup_name, player_ids)
+            for day in days:
+                for player_id in player_ids:
+                    day_data = day_map.get((str(player_id), day))
                     if day_data:
-                        history.append(day_data)
-                data["day_history"] = history
+                        history_by_player[str(player_id)].append(day_data)
+            for data in players_data:
+                data["day_history"] = history_by_player.get(str(data['player_id']), [])
 
         return players_data
 
@@ -91,6 +96,7 @@ class RefactoredTitleService:
                     )
 
             logger.info(f"称号计算完成: {success_count}/{len(all_players_data)} 个玩家成功")
+            invalidate_season(cup_name, external=False)
             return success_count == len(all_players_data)
         except Exception as exc:
             logger.error(f"计算并保存称号失败: {exc}")

@@ -179,6 +179,9 @@ class Match(BaseModel, CRUDMixin):
 
     class Meta:
         table_name = 'match'
+        indexes = (
+            (('cup_name', 'play_day'), False),
+        )
 
 
 class Player(BaseModel, CRUDMixin):
@@ -441,6 +444,27 @@ class PlayerTitle(BaseModel, CRUDMixin):
             return []
 
     @classmethod
+    def get_players_titles(cls, player_ids, cup_name: str = None,
+                           play_day: str = None) -> Dict[str, List[Dict[str, Any]]]:
+        player_ids = list(dict.fromkeys(str(item) for item in (player_ids or []) if item))
+        if not player_ids:
+            return {}
+        query = cls.select().where(
+            cls.player_id.in_(player_ids), cls.is_active == True,
+        )
+        if cup_name:
+            query = query.where(cls.cup_name == cup_name)
+        if play_day:
+            query = query.where(cls.play_day == play_day)
+        query = query.order_by(
+            cls.player_id, cls.title_priority.desc(), cls.title_score.desc(),
+        )
+        result = {player_id: [] for player_id in player_ids}
+        for row in query.dicts():
+            result.setdefault(str(row['player_id']), []).append(row)
+        return result
+
+    @classmethod
     def update_player_titles(cls, player_id: str, cup_name: str, play_day: str, titles_data: List[Dict]) -> bool:
         """更新玩家称号"""
         try:
@@ -666,7 +690,145 @@ class MatchPlayer(BaseModel, CRUDMixin):
             return []
 
     @classmethod
-    def get_match_exploit(cls, cup_name: str, player_id, play_day: str) -> Optional[Dict[str, Any]]:
+    def get_match_exploits(cls, cup_name: str, player_ids=None,
+                           play_day: str = None, *, group_by_day=False,
+                           demo_context=None) -> Dict[str, Dict[str, Any]]:
+        """Aggregate all requested players in one query.
+
+        The old call pattern issued one full aggregate query per player.  This
+        grouped form is the hot-path primitive used by list and detail APIs.
+        """
+        player_ids = None if player_ids is None else list(dict.fromkeys(
+            str(player_id) for player_id in player_ids if player_id
+        ))
+        if player_ids == []:
+            return {}
+        totals = {
+            'win_count': cls.win, 'total_kills': cls.kill,
+            'total_assists': cls.assist, 'total_deaths': cls.death,
+            'total_first_kills': cls.entry_kill,
+            'total_first_deaths': cls.first_death,
+            'total_headshots': cls.headshot, 'total_2k': cls.two_kill,
+            'total_3k': cls.three_kill, 'total_4k': cls.four_kill,
+            'total_5k': cls.five_kill, 'total_multi_kills': cls.multi_kills,
+            'total_1v1': cls.vs1, 'total_1v2': cls.vs2,
+            'total_1v3': cls.vs3, 'total_1v4': cls.vs4,
+            'total_1v5': cls.vs5, 'total_flashes': cls.flash,
+            'total_flash_success': cls.flash_success,
+            'total_flash_teammate': cls.flash_teammate,
+            'total_hit_count': cls.hit_count, 'total_fire_count': cls.fire_count,
+            'total_throws_count': cls.throws_count,
+            'total_snipe_num': cls.snipe_num, 'total_mvp': cls.mvp_value,
+            'total_game_count': cls.game_count,
+            'total_health_damage': cls.dmg_health,
+            'total_kast_rounds': cls.kast,
+            'total_trade_frags': cls.trade_frag_count,
+            'total_grenade_damage': cls.grenade_damage,
+            'total_inferno_damage': cls.inferno_damage,
+        }
+        averages = {
+            'avg_kills': cls.kill, 'avg_deaths': cls.death,
+            'avg_assists': cls.assist, 'avg_damage_armar': cls.dmg_armor,
+            'avg_damage_health': cls.dmg_health, 'avg_rating': cls.rating,
+            'avg_pw_rating': cls.pw_rating, 'avg_rws': cls.rws,
+            'avg_we': cls.we, 'avg_throws_count': cls.throws_count,
+        }
+        group_fields = [cls.player_id]
+        if group_by_day:
+            group_fields.append(cls.play_day)
+        query = cls.select(
+            *group_fields,
+            fn.COUNT(fn.DISTINCT(cls.match_id)).alias('match_count'),
+            fn.COALESCE(
+                fn.SUM(Case(None, [(cls.mvp == True, 1)], 0)), 0
+            ).alias('match_mvp_count'),
+            *(fn.COALESCE(fn.SUM(field), 0).alias(name)
+              for name, field in totals.items()),
+            *(fn.COALESCE(fn.AVG(field), 0).alias(name)
+              for name, field in averages.items()),
+        )
+        if cup_name:
+            query = query.where(cls.cup_name == cup_name)
+        if player_ids is not None:
+            query = query.where(cls.player_id.in_(player_ids))
+        if play_day:
+            query = query.where(cls.play_day == play_day)
+        query = query.group_by(*group_fields)
+
+        def ratio(numerator, denominator):
+            return round(float(numerator or 0) / float(denominator or 0), 4) \
+                if denominator else 0.0
+
+        result_map = {}
+        for result in query:
+            data = {name: int(getattr(result, name, 0) or 0) for name in totals}
+            data.update({name: float(getattr(result, name, 0) or 0) for name in averages})
+            data['match_count'] = int(result.match_count or 0)
+            data['match_mvp_count'] = int(result.match_mvp_count or 0)
+            rounds = data['total_game_count']
+            flashes = data['total_flash_success'] + data['total_flash_teammate']
+            opening_duels = data['total_first_kills'] + data['total_first_deaths']
+            multi_kill_rounds = sum(
+                data[name] for name in ('total_2k', 'total_3k', 'total_4k', 'total_5k')
+            )
+            utility_damage = data['total_grenade_damage'] + data['total_inferno_damage']
+            data.update({
+                'total_rounds': rounds,
+                'kd_ratio': ratio(data['total_kills'], data['total_deaths']),
+                'fk_fd_ratio': ratio(data['total_first_kills'], data['total_first_deaths']),
+                'win_rate': ratio(data['win_count'], data['match_count']),
+                'avg_adpr': ratio(data['total_health_damage'], rounds),
+                'avg_kast': ratio(data['total_kast_rounds'], rounds),
+                'kast_ratio': ratio(data['total_kast_rounds'], rounds),
+                'avg_headshot_ratio': ratio(data['total_headshots'], data['total_kills']),
+                'headshot_ratio': ratio(data['total_headshots'], data['total_kills']),
+                'kills_per_round': ratio(data['total_kills'], rounds),
+                'deaths_per_round': ratio(data['total_deaths'], rounds),
+                'assists_per_round': ratio(data['total_assists'], rounds),
+                'opening_duel_win_rate': ratio(data['total_first_kills'], opening_duels),
+                'opening_duels_per_round': ratio(opening_duels, rounds),
+                'throws_per_round': ratio(data['total_throws_count'], rounds),
+                'multi_kill_rounds': multi_kill_rounds,
+                'multi_kill_round_rate': ratio(multi_kill_rounds, rounds),
+                'mvp_match_rate': ratio(data['match_mvp_count'], data['match_count']),
+                'enemy_flashes_per_round': ratio(data['total_flash_success'], rounds),
+                'team_flashes_per_round': ratio(data['total_flash_teammate'], rounds),
+                'team_flash_share': ratio(data['total_flash_teammate'], flashes),
+                'trade_kill_share': ratio(data['total_trade_frags'], data['total_kills']),
+                'total_utility_damage': utility_damage,
+                'utility_damage_per_round': ratio(utility_damage, rounds),
+                'flash_success_ratio': 0.0,
+                'flash_teammate_ratio': 0.0,
+            })
+            key = ((str(result.player_id), result.play_day)
+                   if group_by_day else str(result.player_id))
+            result_map[key] = data
+
+        if group_by_day:
+            from demo_service import attach_demo_stats_by_day
+            return attach_demo_stats_by_day(result_map, cup_name, demo_context=demo_context)
+        from demo_service import attach_demo_stats_many
+        return attach_demo_stats_many(
+            result_map, cup_name, play_day, demo_context=demo_context,
+        )
+
+    @classmethod
+    def get_match_exploits_by_day(cls, cup_name: str, player_ids,
+                                  *, demo_context=None):
+        return cls.get_match_exploits(
+            cup_name, player_ids, group_by_day=True,
+            demo_context=demo_context,
+        )
+
+    @classmethod
+    def get_match_exploit(cls, cup_name: str, player_id,
+                          play_day: str) -> Optional[Dict[str, Any]]:
+        if not player_id:
+            return None
+        return cls.get_match_exploits(cup_name, [player_id], play_day).get(str(player_id))
+
+    @classmethod
+    def _get_match_exploit_legacy(cls, cup_name: str, player_id, play_day: str) -> Optional[Dict[str, Any]]:
         try:
             totals = {
                 'win_count': cls.win,
@@ -1178,9 +1340,10 @@ class MatchPlayer(BaseModel, CRUDMixin):
     class Meta:
         table_name = 'match_player'
 
-        ## 联合主键
         indexes = (
             (('match_id', 'player_id'), True),
+            (('cup_name', 'player_id', 'play_day'), False),
+            (('cup_name', 'play_day', 'player_id'), False),
         )
 
 
@@ -1451,6 +1614,7 @@ class MatchSelection(BaseModel, CRUDMixin):
         table_name = 'match_selection'
         indexes = (
             (('match_id', 'season_cup_name'), True),
+            (('season_cup_name', 'status', 'play_day'), False),
         )
 
     @classmethod
