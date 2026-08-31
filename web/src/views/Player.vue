@@ -521,13 +521,13 @@ const validMatchups = computed(() => killMatchups.value.filter((opponent) => (
 const sortedSoftMatchups = computed(() => validMatchups.value
   .filter((opponent) => matchupRatio(opponent) > 1)
   .sort((a, b) => {
-  if (matchupSort.value === 'kills') {
-    return Number(b.kills || 0) - Number(a.kills || 0)
-      || Number(a.deaths || 0) - Number(b.deaths || 0)
-  }
-  return matchupRatio(b) - matchupRatio(a)
-    || Number(b.encounters || 0) - Number(a.encounters || 0)
-    || Number(b.kills || 0) - Number(a.kills || 0)
+    if (matchupSort.value === 'kills') {
+      return Number(b.kills || 0) - Number(a.kills || 0)
+        || Number(a.deaths || 0) - Number(b.deaths || 0)
+    }
+    return matchupRatio(b) - matchupRatio(a)
+      || Number(b.encounters || 0) - Number(a.encounters || 0)
+      || Number(b.kills || 0) - Number(a.kills || 0)
   }))
 const softTargets = computed(() => sortedSoftMatchups.value.slice(0, 3))
 const otherMatchups = computed(() => sortedSoftMatchups.value.slice(3, 10))
