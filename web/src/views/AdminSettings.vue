@@ -50,6 +50,74 @@
         </div>
       </aside>
     </div>
+
+    <section v-if="!loading" class="panel api-test-panel" aria-labelledby="api-test-title">
+      <div class="panel-header">
+        <div>
+          <h2 id="api-test-title">在线测试</h2>
+          <p>从管理后台直接发起真实 External API 请求。</p>
+        </div>
+        <span v-if="testResult" class="status-badge" :class="testResult.ok ? 'success' : 'error'">
+          HTTP {{ testResult.status }}
+        </span>
+      </div>
+      <div class="api-test-layout">
+        <form class="api-test-form" @submit.prevent="testExternalApi">
+          <div class="field-grid two">
+            <div class="field-group">
+              <label for="test-endpoint">接口</label>
+              <select id="test-endpoint" v-model="testEndpoint">
+                <option value="players">选手列表</option>
+                <option value="player">单个选手</option>
+              </select>
+            </div>
+            <div class="field-group">
+              <label for="test-season">赛季</label>
+              <input id="test-season" v-model.trim="testSeason" type="text" placeholder="last、all 或赛季名称">
+              <small>留空时按 last 查询。</small>
+            </div>
+          </div>
+          <div v-if="testEndpoint === 'player'" class="field-grid two">
+            <div class="field-group">
+              <label for="test-identifier-type">查询方式</label>
+              <select id="test-identifier-type" v-model="testIdentifierType">
+                <option value="steam_id">Steam ID</option>
+                <option value="room_id">直播房间 ID</option>
+              </select>
+            </div>
+            <div class="field-group">
+              <label for="test-identifier">查询值</label>
+              <input id="test-identifier" v-model.trim="testIdentifier" type="text" :placeholder="testIdentifierType === 'steam_id' ? '76561198…' : 'DOUYU_9999'">
+            </div>
+          </div>
+          <div class="field-group">
+            <label for="test-api-token">Bearer token</label>
+            <input id="test-api-token" v-model="testToken" type="password" autocomplete="off" placeholder="粘贴当前 External API token">
+            <small>{{ testTokenHint }}</small>
+          </div>
+          <div class="api-test-request">
+            <code>GET {{ testUrl }}</code>
+            <button class="button primary" type="submit" :disabled="testing || !canTest">
+              <span v-if="testing" class="button-spinner"></span>
+              <AppIcon v-else name="activity" />
+              {{ testing ? '请求中' : '发送测试' }}
+            </button>
+          </div>
+        </form>
+
+        <div class="api-test-response" aria-live="polite">
+          <div class="api-test-response-head">
+            <div><strong>响应结果</strong><small v-if="testResult">{{ testResult.duration }} ms</small></div>
+            <button v-if="testResult" class="button text-button small" type="button" @click="copyResponse"><AppIcon name="copy" />复制 JSON</button>
+          </div>
+          <pre v-if="testResult"><code>{{ formattedTestResult }}</code></pre>
+          <div v-else class="api-test-empty">
+            <AppIcon name="activity" :size="22" />
+            <p>发送请求后，这里会显示 HTTP 状态和完整 JSON。</p>
+          </div>
+        </div>
+      </div>
+    </section>
     <div v-if="toast.message" class="toast" :class="toast.type" :role="toast.type === 'error' ? 'alert' : 'status'"><AppIcon :name="toast.type === 'error' ? 'alert' : 'check'" />{{ toast.message }}</div>
   </AdminLayout>
 </template>
@@ -66,15 +134,50 @@ const customToken = ref('')
 const revealedToken = ref('')
 const status = ref({ configured: false, source: 'none', hint: '', environment_locked: false })
 const toast = ref({ message: '', type: 'success' })
+const testing = ref(false)
+const testEndpoint = ref('players')
+const testSeason = ref('last')
+const testIdentifierType = ref('steam_id')
+const testIdentifier = ref('')
+const testToken = ref('')
+const testResult = ref(null)
 let toastTimer
 const sourceLabel = computed(() => ({ environment: '来源：部署环境变量', database: '来源：管理后台（哈希存储）', none: '生成后即可调用对外接口' }[status.value.source] || ''))
 const canRevoke = computed(() => status.value.source === 'database' || status.value.database_fallback_configured)
+const testUrl = computed(() => {
+  const isPlayer = testEndpoint.value === 'player'
+  const path = isPlayer
+    ? (status.value.player_api_path || '/api/v1/external/player')
+    : (status.value.api_path || '/api/v1/external/players')
+  const query = new URLSearchParams({ season: testSeason.value || 'last' })
+  if (isPlayer && testIdentifier.value) query.set(testIdentifierType.value, testIdentifier.value)
+  return `${path}?${query}`
+})
+const canTest = computed(() => Boolean(
+  testToken.value.trim()
+  && (testEndpoint.value === 'players' || testIdentifier.value.trim()),
+))
+const testTokenHint = computed(() => revealedToken.value
+  ? '已自动填入本次新生成的 token。'
+  : '已保存的 token 无法读取明文，请输入原始值；token 只保留在当前页面。')
+const formattedTestResult = computed(() => JSON.stringify(testResult.value?.body ?? {}, null, 2))
 
 function show(message, type = 'success') { clearTimeout(toastTimer); toast.value = { message, type }; toastTimer = setTimeout(() => { toast.value.message = '' }, 3500) }
 async function load() { loading.value = true; try { status.value = await api.get('/api/admin/external-api-token') } catch (error) { show(error.message, 'error') } finally { loading.value = false } }
 async function mutate(action, token = '') {
   busy.value = action
-  try { const data = await api.post('/api/admin/external-api-token', { action, token }); status.value = data; if (data.token) revealedToken.value = data.token; if (action !== 'generate') revealedToken.value = ''; customToken.value = ''; show(data.message || 'API 配置已更新') }
+  try {
+    const data = await api.post('/api/admin/external-api-token', { action, token })
+    status.value = data
+    if (data.token) {
+      revealedToken.value = data.token
+      testToken.value = data.token
+    }
+    if (action === 'save') testToken.value = token
+    if (action !== 'generate') revealedToken.value = ''
+    customToken.value = ''
+    show(data.message || 'API 配置已更新')
+  }
   catch (error) { show(error.message, 'error') }
   finally { busy.value = '' }
 }
@@ -82,6 +185,40 @@ function generateToken() { if (status.value.configured && !window.confirm('生�
 function saveCustomToken() { const token = customToken.value.trim(); if (token.length < 32) return show('自定义 token 至少需要 32 个字符', 'error'); if (status.value.configured && !window.confirm('保存后，当前 token 会立即失效。确认继续？')) return; mutate('save', token) }
 function revokeToken() { if (window.confirm('确认撤销数据库中保存的 API token？')) mutate('revoke') }
 async function copyToken() { try { await navigator.clipboard.writeText(revealedToken.value); show('token 已复制到剪贴板') } catch { show('复制失败，请手动选择 token', 'error') } }
+async function testExternalApi() {
+  if (!canTest.value) return
+  testing.value = true
+  testResult.value = null
+  const startedAt = performance.now()
+  try {
+    const response = await fetch(testUrl.value, {
+      credentials: 'same-origin',
+      headers: { Authorization: `Bearer ${testToken.value.trim()}` },
+    })
+    const raw = await response.text()
+    let body
+    try { body = raw ? JSON.parse(raw) : null } catch { body = { raw } }
+    testResult.value = {
+      ok: response.ok,
+      status: response.status,
+      duration: Math.round(performance.now() - startedAt),
+      body,
+    }
+  } catch (error) {
+    testResult.value = {
+      ok: false,
+      status: 'NETWORK_ERROR',
+      duration: Math.round(performance.now() - startedAt),
+      body: { success: false, message: error.message || '网络请求失败' },
+    }
+  } finally {
+    testing.value = false
+  }
+}
+async function copyResponse() {
+  try { await navigator.clipboard.writeText(formattedTestResult.value); show('响应 JSON 已复制') }
+  catch { show('复制失败，请手动选择响应内容', 'error') }
+}
 onMounted(load)
 onBeforeUnmount(() => clearTimeout(toastTimer))
 </script>

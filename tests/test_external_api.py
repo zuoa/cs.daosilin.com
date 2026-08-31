@@ -17,7 +17,8 @@ os.environ['ADMIN_PASSWORD'] = 'test-admin-password'
 from app import app  # noqa: E402
 from auth import EXTERNAL_TOKEN_HASH_KEY, EXTERNAL_TOKEN_HINT_KEY  # noqa: E402
 from database import (Config, CupDayChampion, Match, MatchPlayer, MatchSelection,
-                      Player, PlayerTitle, Season, SeasonRoster, db)  # noqa: E402
+                      Player, PlayerSeasonSummary, PlayerTitle, Season,
+                      SeasonRoster, db)  # noqa: E402
 from peewee import BooleanField, FloatField, IntegerField  # noqa: E402
 from scheduler import set_crawl_status  # noqa: E402
 
@@ -55,6 +56,8 @@ class ExternalPlayersApiTest(unittest.TestCase):
         Player.create(
             player_id='p1', nickname='选手一', alias_name='One', steam_id='steam-p1',
             live_url='https://www.douyu.com/731778', in_library=True,
+            perfect_score=1513, perfect_level='B',
+            perfect_rank_updated_at=datetime(2025, 2, 4, 8, 30),
         )
         Player.create(
             player_id='p2', nickname='选手二',
@@ -107,6 +110,17 @@ class ExternalPlayersApiTest(unittest.TestCase):
             first_death=2, rating=3.0, adpr=120.0, dmg_health=2880,
             game_count=24, kast=18, win=1,
         )
+        PlayerSeasonSummary.create(
+            player_id='p1', cup_name='season-one', status='pending',
+        )
+        PlayerSeasonSummary.create(
+            player_id='p1', cup_name='season-two', status='completed',
+            headline='稳定火力点', overview='赛季表现稳定，关键数据有足够样本支持。',
+            strength='持续输出能力突出。', weakness='部分地图样本仍需积累。',
+            style='重视效率的稳健打法。', sample_info='{"比赛场次": 1}',
+            source_hash='same', requested_hash='same',
+            generated_at=datetime(2025, 2, 4, 9, 0),
+        )
 
     @classmethod
     def tearDownClass(cls):
@@ -145,6 +159,17 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(player['utility_damage_per_round'], 5.0)
         self.assertEqual(player['avg_rating'], 2.0)
         self.assertEqual(player['fk_fd_ratio'], 3.0)
+        self.assertEqual(player['perfect_rank'], {
+            'score': 1513,
+            'level': 'B',
+            'updated_at': '2025-02-04T08:30:00',
+        })
+        self.assertEqual(len(player['scouting_reports']), 1)
+        report = player['scouting_reports'][0]
+        self.assertEqual(report['cup_name'], 'season-two')
+        self.assertEqual(report['season_name'], '赛季二')
+        self.assertEqual(report['report']['headline'], '稳定火力点')
+        self.assertEqual(report['report']['status'], 'completed')
 
     def test_all_combines_all_configured_seasons(self):
         response = self.client.get(
@@ -166,6 +191,13 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(p1['kill_matchups'][0]['kills'], 3)
         self.assertEqual(p1['fk_fd_ratio'], 1.6667)
         self.assertEqual(p1['live_room_id'], 'DOUYU_731778')
+        p2 = next(player for player in payload['players'] if player['player_id'] == 'p2')
+        self.assertEqual(p2['perfect_rank'], {
+            'score': None,
+            'level': None,
+            'updated_at': None,
+        })
+        self.assertEqual(p2['scouting_reports'], [])
 
     def test_external_player_can_be_queried_by_steam_id(self):
         response = self.client.get(
@@ -177,6 +209,14 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(payload['lookup'], {'type': 'steam_id', 'value': 'steam-p1'})
         self.assertEqual(payload['player']['player_id'], 'p1')
         self.assertEqual(payload['player']['match_count'], 2)
+        self.assertEqual(
+            [item['cup_name'] for item in payload['player']['scouting_reports']],
+            ['season-two', 'season-one'],
+        )
+        self.assertEqual(
+            payload['player']['scouting_reports'][1]['report'],
+            {'status': 'pending'},
+        )
 
     def test_external_player_steam_id_falls_back_to_player_id(self):
         response = self.client.get(

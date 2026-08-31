@@ -4,6 +4,8 @@
 
 登录「管理后台 → API 与安全」即可生成、保存或撤销 token。系统生成的 token 只在生成当次显示明文，数据库仅保存单向密码哈希和末 4 位提示。
 
+同一页面提供“在线测试”：输入 token，选择列表或个人接口及查询参数后，可直接查看 HTTP 状态、耗时与完整 JSON 响应。刚生成或保存的 token 会自动填入测试器，刷新页面后不会保留。
+
 也可在生产环境设置 `EXTERNAL_API_TOKEN` 后重启应用。环境变量优先级高于后台保存的 token，此时后台将它显示为只读配置。两种方式都没有配置时，对外接口返回 HTTP 503，不会匿名开放。
 
 ```bash
@@ -48,6 +50,15 @@ GET /api/v1/external/players/<URL 编码后的赛季名>
 - `fk_fd_ratio`
 - `avg_kast` / `kast_ratio`
 - `avg_headshot_ratio`
+
+每个选手还会返回当前完美平台段位与按赛季生成的个人球探报告：
+
+- `perfect_rank.score`：当前天梯分，尚未采集时为 `null`。
+- `perfect_rank.level`：当前段位，例如 `B`、`A`、`S21`，尚未定级或未采集时为 `null`。
+- `perfect_rank.updated_at`：最近一次成功采集段位的 ISO 8601 时间。
+- `scouting_reports`：本次命中赛季中已经建立的球探报告列表。每项包含 `cup_name`、`season_name` 和 `report`；报告生成中时 `report.status` 为 `pending`，完成后会包含 `headline`、`overview`、`strength`、`weakness`、`style`、`sample`、`generated_at`、`refreshing` 与 `stale`。
+
+球探报告始终保持单赛季口径。`season=all` 返回的比赛统计是跨赛季合并值，但 `scouting_reports` 不会把多赛季报告合并；尚未建立报告任务的赛季不会出现在列表中。
 
 `avg_adpr` 使用“总生命伤害 / 总回合”，`avg_kast` 使用“KAST 回合数 / 总回合”，`avg_headshot_ratio` 使用“总爆头 / 总击杀”；它们都是跨场次加权口径，不是逐场百分比的算术平均。
 

@@ -874,6 +874,17 @@ class MatchPlayer(BaseModel, CRUDMixin):
             player.player_id: player
             for player in Player.select().where(Player.player_id.in_(player_ids))
         } if player_ids else {}
+        season_map = {
+            season.cup_name: season
+            for season in Season.select().where(Season.cup_name.in_(cup_names))
+        }
+        summary_map = {
+            (summary.player_id, summary.cup_name): summary.public_payload()
+            for summary in PlayerSeasonSummary.select().where(
+                PlayerSeasonSummary.player_id.in_(player_ids),
+                PlayerSeasonSummary.cup_name.in_(cup_names),
+            )
+        } if player_ids else {}
         matchup_map = cls._aggregate_kill_matchups(cup_names, player_ids)
 
         def _ratio(numerator, denominator, precision=4):
@@ -933,6 +944,14 @@ class MatchPlayer(BaseModel, CRUDMixin):
                     'live_url': player.live_url or '',
                     'live_room_id': Player.live_room_id(player.live_url),
                     'in_library': bool(player.in_library),
+                    'perfect_rank': {
+                        'score': player.perfect_score,
+                        'level': player.perfect_level,
+                        'updated_at': (
+                            player.perfect_rank_updated_at.isoformat()
+                            if player.perfect_rank_updated_at else None
+                        ),
+                    },
                 })
             else:
                 row.update({
@@ -941,7 +960,25 @@ class MatchPlayer(BaseModel, CRUDMixin):
                     'live_url': '',
                     'live_room_id': '',
                     'in_library': False,
+                    'perfect_rank': {
+                        'score': None,
+                        'level': None,
+                        'updated_at': None,
+                    },
                 })
+            row['scouting_reports'] = [
+                {
+                    'cup_name': cup_name,
+                    'season_name': (
+                        season_map[cup_name].cup_alias
+                        or season_map[cup_name].name
+                        or cup_name
+                    ) if cup_name in season_map else cup_name,
+                    'report': summary_map.get((row['player_id'], cup_name)),
+                }
+                for cup_name in cup_names
+                if (row['player_id'], cup_name) in summary_map
+            ]
             from demo_service import attach_demo_stats
             result.append(attach_demo_stats(row, cup_names, row['player_id']))
 
