@@ -425,8 +425,33 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(records[0]['round_count'], 20)
         self.assertEqual(records[0]['kast_ratio'], 0.75)
         matchups = response.get_json()['data']['kill_matchups']
-        self.assertEqual(matchups[0]['player_id'], 'p2')
-        self.assertEqual(matchups[0]['kills'], 3)
+        self.assertEqual(matchups, [])
+
+    def test_kill_matchups_use_reciprocal_ratio_and_minimum_sample(self):
+        cup_name = 'matchup-ratio-season'
+        try:
+            create_match_player(
+                'matchup-a', 'p1', cup_name,
+                kill_map=json.dumps({'p2': 7, 'low-sample': 5}),
+            )
+            create_match_player(
+                'matchup-b', 'p2', cup_name,
+                kill_map=json.dumps({'p1': 2}),
+            )
+
+            self.assertEqual(MatchPlayer.get_player_kill_matchups(cup_name, 'p1'), [{
+                'player_id': 'p2',
+                'nickname': '选手二',
+                'kills': 7,
+                'deaths': 2,
+                'encounters': 9,
+                'kill_death_ratio': 3.5,
+            }])
+        finally:
+            (MatchPlayer
+             .delete()
+             .where(MatchPlayer.cup_name == cup_name)
+             .execute())
 
     def test_public_match_detail_only_exposes_approved_matches(self):
         response = self.client.get('/api/v1/match?cup=season-two&match_id=m2')

@@ -917,13 +917,18 @@ class MatchPlayer(BaseModel, CRUDMixin):
 
     @classmethod
     def _aggregate_kill_matchups(cls, cup_names: List[str],
-                                 player_ids: List[str]) -> Dict[str, List[Dict[str, Any]]]:
-        """Aggregate WMPVP killMap JSON without requiring demo parsing."""
+                                 player_ids: List[str],
+                                 play_day: str = None) -> Dict[str, List[Dict[str, Any]]]:
+        """Aggregate reciprocal WMPVP killMap data for meaningful matchups."""
         if not cup_names or not player_ids:
             return {}
-        counters = {player_id: Counter() for player_id in player_ids}
-        rows = (cls.select(cls.player_id, cls.kill_map)
-                .where(cls.cup_name.in_(cup_names), cls.player_id.in_(player_ids)))
+        target_ids = set(player_ids)
+        kill_counters = {player_id: Counter() for player_id in player_ids}
+        death_counters = {player_id: Counter() for player_id in player_ids}
+        conditions = [cls.cup_name.in_(cup_names)]
+        if play_day:
+            conditions.append(cls.play_day == play_day)
+        rows = cls.select(cls.player_id, cls.kill_map).where(*conditions)
         for row in rows:
             try:
                 values = json.loads(row.kill_map or '{}')
@@ -937,9 +942,19 @@ class MatchPlayer(BaseModel, CRUDMixin):
                 except (TypeError, ValueError):
                     continue
                 if count > 0:
-                    counters[row.player_id][str(victim_id)] += count
+                    attacker_id = str(row.player_id)
+                    victim_id = str(victim_id)
+                    if attacker_id in target_ids and victim_id != attacker_id:
+                        kill_counters[attacker_id][victim_id] += count
+                    if victim_id in target_ids and attacker_id != victim_id:
+                        death_counters[victim_id][attacker_id] += count
 
-        victim_ids = {victim_id for counter in counters.values() for victim_id in counter}
+        victim_ids = {
+            victim_id
+            for player_id in player_ids
+            for victim_id in kill_counters[player_id]
+            if kill_counters[player_id][victim_id] + death_counters[player_id][victim_id] > 5
+        }
         victims = {
             player.player_id: player
             for player in Player.select().where(Player.player_id.in_(victim_ids))
@@ -951,10 +966,17 @@ class MatchPlayer(BaseModel, CRUDMixin):
                     'nickname': ((victims.get(victim_id).alias_name or victims.get(victim_id).nickname)
                                  if victims.get(victim_id) else victim_id),
                     'kills': kills,
+                    'deaths': death_counters[player_id][victim_id],
+                    'encounters': kills + death_counters[player_id][victim_id],
+                    'kill_death_ratio': (
+                        round(kills / death_counters[player_id][victim_id], 4)
+                        if death_counters[player_id][victim_id] else None
+                    ),
                 }
-                for victim_id, kills in counter.most_common()
+                for victim_id, kills in kill_counters[player_id].most_common()
+                if kills + death_counters[player_id][victim_id] > 5
             ]
-            for player_id, counter in counters.items()
+            for player_id in player_ids
         }
 
     @classmethod
@@ -962,40 +984,9 @@ class MatchPlayer(BaseModel, CRUDMixin):
                                  play_day: str = None) -> List[Dict[str, Any]]:
         if not cup_name or not player_id:
             return []
-        if not play_day:
-            return cls._aggregate_kill_matchups([cup_name], [player_id]).get(player_id, [])
-        counter = Counter()
-        rows = (cls.select(cls.kill_map)
-                .where(cls.cup_name == cup_name,
-                       cls.player_id == player_id,
-                       cls.play_day == play_day))
-        for row in rows:
-            try:
-                values = json.loads(row.kill_map or '{}')
-            except (TypeError, ValueError, json.JSONDecodeError):
-                continue
-            if isinstance(values, dict):
-                for victim_id, kills in values.items():
-                    try:
-                        count = int(kills or 0)
-                    except (TypeError, ValueError):
-                        continue
-                    if count > 0:
-                        counter[str(victim_id)] += count
-        victim_ids = list(counter)
-        victims = {
-            player.player_id: player
-            for player in Player.select().where(Player.player_id.in_(victim_ids))
-        } if victim_ids else {}
-        return [
-            {
-                'player_id': victim_id,
-                'nickname': ((victims[victim_id].alias_name or victims[victim_id].nickname)
-                             if victim_id in victims else victim_id),
-                'kills': kills,
-            }
-            for victim_id, kills in counter.most_common()
-        ]
+        return cls._aggregate_kill_matchups(
+            [cup_name], [player_id], play_day,
+        ).get(player_id, [])
 
     @classmethod
     def get_player_map_stats(cls, cup_name: str, player_id: str, play_day: str = None) -> List[Dict[str, Any]]:

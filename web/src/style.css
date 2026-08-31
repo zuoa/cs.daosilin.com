@@ -641,6 +641,12 @@ img.player-monogram { object-fit: cover; }
 .soft-targets-section .panel-header { align-items: flex-end; padding-block: 17px; }
 .soft-targets-section .panel-header h2 { margin-top: 5px; }
 .soft-targets-section .panel-header p { margin-top: 4px; color: var(--ink-500); font-size: .68rem; }
+.matchup-sorter { display: inline-flex; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.matchup-sorter button { min-height: 32px; border: 0; border-right: 1px solid var(--line); padding: 6px 10px; background: transparent; color: var(--ink-500); font-size: .64rem; font-weight: 700; white-space: nowrap; }
+.matchup-sorter button:last-child { border-right: 0; }
+.matchup-sorter button:hover { color: var(--signal-dark); }
+.matchup-sorter button.active { background: var(--signal-soft); color: var(--signal-dark); }
+.matchup-sorter button:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--signal); outline-offset: -2px; }
 .soft-target-podium { display: grid; grid-template-columns: 1.16fr 1fr 1fr; gap: 10px; margin: 0; padding: 18px 20px 20px; list-style: none; }
 .soft-target-podium li { position: relative; display: grid; min-width: 0; min-height: 132px; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; padding: 18px 16px; background: var(--surface-soft); }
 .soft-target-podium li::after { position: absolute; right: -26px; bottom: -38px; width: 112px; height: 112px; border: 1px solid color-mix(in srgb, var(--signal) 20%, transparent); border-radius: 50%; content: ""; }
@@ -1766,7 +1772,7 @@ h1, h2, h3 {
   .season-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .player-profile-hero { padding-block: var(--space-lg); }
   .soft-targets-section .panel-header { align-items: flex-start; }
-  .soft-targets-section .panel-header > .result-count { margin-top: 8px; }
+  .matchup-sorter { margin-top: 8px; }
   .soft-target-podium { gap: 8px; padding: 14px; }
   .soft-target-podium li { min-height: 104px; padding: 15px 13px; }
   .target-sight { width: 40px; height: 40px; }

@@ -257,14 +257,17 @@
           <p class="player-update-note">高级 Rating 为实验性估算值，按回合加权计算，不替代平台 PWR。</p>
         </section>
 
-        <section v-if="killMatchups.length" class="panel player-section soft-targets-section" aria-labelledby="soft-targets-title">
+        <section v-if="sortedMatchups.length" class="panel player-section soft-targets-section" aria-labelledby="soft-targets-title">
           <div class="panel-header">
             <div>
               <span class="summary-kicker"><AppIcon name="target" />KILL MATCHUPS</span>
               <h2 id="soft-targets-title">软柿子 · TOP 3</h2>
-              <p>本统计范围内，最常被 {{ playerName }} 击杀的三位对手。</p>
+              <p>只统计双向击杀合计超过 5 次的对位，默认按击杀 / 被击杀排序。</p>
             </div>
-            <span class="result-count">{{ killMatchups.length }} 位交手对手</span>
+            <div class="matchup-sorter" aria-label="软柿子排序方式">
+              <button type="button" :class="{ active: matchupSort === 'ratio' }" @click="matchupSort = 'ratio'">按对位比</button>
+              <button type="button" :class="{ active: matchupSort === 'kills' }" @click="matchupSort = 'kills'">按击杀数</button>
+            </div>
           </div>
           <ol class="soft-target-podium">
             <li v-for="(opponent, index) in softTargets" :key="opponent.player_id" :class="`place-${index + 1}`">
@@ -275,16 +278,20 @@
                 <strong>{{ opponent.nickname || opponent.player_id }}</strong>
                 <code>{{ opponent.player_id }}</code>
               </div>
-              <div class="target-kills"><strong>{{ opponent.kills }}</strong><span>次击杀</span></div>
+              <div class="target-kills">
+                <strong>{{ matchupSort === 'ratio' ? formatMatchupRatio(opponent) : opponent.kills }}</strong>
+                <span>{{ opponent.kills }} 杀 / {{ opponent.deaths }} 被杀</span>
+              </div>
             </li>
           </ol>
           <div v-if="otherMatchups.length" class="table-scroll soft-target-overflow">
             <table class="data-table">
-              <thead><tr><th>其他对位</th><th class="num">击杀次数</th></tr></thead>
+              <thead><tr><th>其他对位</th><th class="num">对位 K:D</th><th class="num">对位比</th></tr></thead>
               <tbody>
                 <tr v-for="opponent in otherMatchups" :key="opponent.player_id">
                   <td><strong>{{ opponent.nickname || opponent.player_id }}</strong><small>{{ opponent.player_id }}</small></td>
-                  <td class="num mono-data"><strong>{{ opponent.kills }}</strong></td>
+                  <td class="num mono-data"><strong>{{ opponent.kills }} : {{ opponent.deaths }}</strong></td>
+                  <td class="num mono-data"><strong>{{ formatMatchupRatio(opponent) }}</strong></td>
                 </tr>
               </tbody>
             </table>
@@ -424,6 +431,7 @@ const rankHistory = ref([])
 const mapStats = ref([])
 const matchRecords = ref([])
 const killMatchups = ref([])
+const matchupSort = ref('ratio')
 const seasonSummary = ref(null)
 const matchDetailOpen = ref(false)
 const matchDetail = ref(null)
@@ -482,8 +490,20 @@ const heroStats = computed(() => !stats.value ? [] : [
   { label: '总击杀', value: stats.value.total_kills || 0, rank: ranks.value.total_kills },
   { label: 'MVP', value: stats.value.total_mvp || 0, rank: ranks.value.total_mvp },
 ])
-const softTargets = computed(() => killMatchups.value.slice(0, 3))
-const otherMatchups = computed(() => killMatchups.value.slice(3, 10))
+const sortedMatchups = computed(() => [...killMatchups.value].sort((a, b) => {
+  if (matchupSort.value === 'kills') {
+    return Number(b.kills || 0) - Number(a.kills || 0)
+      || Number(a.deaths || 0) - Number(b.deaths || 0)
+  }
+  const aUnbeaten = Number(a.deaths || 0) === 0
+  const bUnbeaten = Number(b.deaths || 0) === 0
+  if (aUnbeaten !== bUnbeaten) return aUnbeaten ? -1 : 1
+  return Number(b.kill_death_ratio || 0) - Number(a.kill_death_ratio || 0)
+    || Number(b.encounters || 0) - Number(a.encounters || 0)
+    || Number(b.kills || 0) - Number(a.kills || 0)
+}))
+const softTargets = computed(() => sortedMatchups.value.slice(0, 3))
+const otherMatchups = computed(() => sortedMatchups.value.slice(3, 10))
 const statGroups = computed(() => {
   const s = stats.value || {}
   return [
@@ -557,6 +577,11 @@ function titleCategory(title) { return titleMeta(title).label }
 function titleIcon(title) { return titleMeta(title).icon }
 function titleSummary(title) { return title?.title_summary || '由本赛季有效样本计算得出' }
 function softTargetLabel(index) { return ['头号软柿子', '顺手目标', '稳定提款机'][index] || '对位目标' }
+function formatMatchupRatio(opponent) {
+  return Number(opponent?.deaths || 0) === 0
+    ? '∞'
+    : Number(opponent?.kill_death_ratio || 0).toFixed(2)
+}
 function normalizeRatio(value) { const number = Number(value || 0); return number > 1 ? number : number * 100 }
 function pad(value) { return String(value || 0).padStart(2, '0') }
 function formatTime(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '' }
@@ -730,6 +755,7 @@ function drawCharts() {
 function resizeCharts() { radarChart?.resize(); lineChart?.resize(); rankLineChart?.resize() }
 async function load() {
   closeMatch()
+  matchupSort.value = 'ratio'
   radarChart?.dispose()
   lineChart?.dispose()
   rankLineChart?.dispose()
