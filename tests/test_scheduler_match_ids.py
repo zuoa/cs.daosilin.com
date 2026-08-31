@@ -2,6 +2,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import ANY, patch
 
+from database import MatchPlayer as DatabaseMatchPlayer
 from scheduler import _store_match, canonical_match_id, refresh_perfect_ranks
 
 
@@ -72,6 +73,7 @@ class MatchIdNormalizationTest(unittest.TestCase):
         self.assertEqual(saved['grenade_damage'], 37)
         self.assertEqual(saved['inferno_damage'], 52)
         self.assertEqual(saved['kill_map'], '{"p2": 3}')
+        self.assertLessEqual(set(saved), set(DatabaseMatchPlayer._meta.fields))
 
     @patch('scheduler.time.sleep')
     @patch('scheduler.clear_perfect_rank_cache')

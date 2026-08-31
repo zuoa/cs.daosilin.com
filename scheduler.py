@@ -151,7 +151,6 @@ def _store_match(match_data, assigned_cup_name=None, play_day=None, match_id=Non
             "fire_count": match_player.get('fireCount'),
             "hit_count": match_player.get('hitCount'),
             "rws": match_player.get('rws'),
-            "pvp_team": match_player.get('pvpTeam'),
             "kast": match_player.get('kast'),
             "rank": match_player.get('rank'),
             "old_rank": match_player.get('oldRank'),
