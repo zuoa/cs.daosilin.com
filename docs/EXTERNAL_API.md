@@ -50,7 +50,7 @@ External API 只提供选手身份、基础比赛数据、当前完美平台段�
 基础比赛数据包括：
 
 - 场次与胜负：`match_count`、`win_count`、`win_rate`、`total_rounds`。
-- 击杀数据：`total_kills`、`total_deaths`、`total_assists`、`kd_ratio`、`total_first_kills`、`total_first_deaths`、`total_headshots`、`avg_headshot_ratio`、`total_mvp`。
+- 击杀数据：`total_kills`、`total_deaths`、`total_assists`、`kd_ratio`、`total_first_kills`、`total_first_deaths`、`fk_fd_ratio`、`total_headshots`、`avg_headshot_ratio`、`total_mvp`。
 - 平均表现：`avg_rating`、`avg_pw_rating`、`avg_adpr`、`avg_kast`。
 
 每个选手还会返回当前完美平台段位与按赛季生成的个人球探报告：
@@ -63,7 +63,7 @@ External API 只提供选手身份、基础比赛数据、当前完美平台段�
 
 球探报告始终保持单赛季口径。`season=all` 返回的比赛统计是跨赛季合并值，但 `scouting_reports` 不会把多赛季报告合并；尚未建立报告任务的赛季不会出现在列表中。
 
-`avg_adpr` 使用“总生命伤害 / 总回合”，`avg_kast` 使用“KAST 回合数 / 总回合”，`avg_headshot_ratio` 使用“总爆头 / 总击杀”；它们都是跨场次加权口径，不是逐场百分比的算术平均。所有比率字段为 `0.0-1.0`，例如 `win_rate: 0.625` 表示 62.5%。
+`avg_adpr` 使用“总生命伤害 / 总回合”，`avg_kast` 使用“KAST 回合数 / 总回合”，`avg_headshot_ratio` 使用“总爆头 / 总击杀”，`fk_fd_ratio` 使用“总首杀 / 总首死”；它们都是跨场次加权口径，不是逐场比率的算术平均。`win_rate`、`avg_kast` 和 `avg_headshot_ratio` 为 `0.0-1.0`，例如 `win_rate: 0.625` 表示 62.5%；`kd_ratio` 和 `fk_fd_ratio` 可以大于 `1.0`。
 
 ## 查询单个选手
 

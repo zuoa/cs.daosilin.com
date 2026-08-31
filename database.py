@@ -905,6 +905,9 @@ class MatchPlayer(BaseModel, CRUDMixin):
             row['match_count'] = int(row.get('match_count') or 0)
             rounds = row['total_game_count']
             row['kd_ratio'] = _ratio(row['total_kills'], row['total_deaths'])
+            row['fk_fd_ratio'] = _ratio(
+                row['total_first_kills'], row['total_first_deaths']
+            )
             row['win_rate'] = _ratio(row['win_count'], row['match_count'])
             row['avg_headshot_ratio'] = _ratio(row['total_headshots'], row['total_kills'])
             row['total_rounds'] = rounds

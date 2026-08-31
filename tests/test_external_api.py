@@ -178,7 +178,8 @@ class ExternalPlayersApiTest(unittest.TestCase):
             'live_url', 'live_room_id', 'match_count', 'win_count', 'win_rate',
             'total_rounds', 'total_kills', 'total_deaths', 'total_assists',
             'kd_ratio', 'total_first_kills', 'total_first_deaths',
-            'total_headshots', 'avg_headshot_ratio', 'total_mvp', 'avg_rating',
+            'fk_fd_ratio', 'total_headshots', 'avg_headshot_ratio',
+            'total_mvp', 'avg_rating',
             'avg_pw_rating', 'avg_adpr', 'avg_kast', 'perfect_rank',
             'scouting_reports',
         })
@@ -186,6 +187,7 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(player['avg_kast'], 0.75)
         self.assertEqual(player['avg_headshot_ratio'], 0.5)
         self.assertEqual(player['avg_rating'], 2.0)
+        self.assertEqual(player['fk_fd_ratio'], 3.0)
         self.assertEqual(player['perfect_rank'], {
             'score': 1513,
             'level': 'B',
@@ -214,6 +216,7 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(p1['avg_adpr'], 93.3333)
         self.assertEqual(p1['avg_kast'], 0.7333)
         self.assertEqual(p1['avg_headshot_ratio'], 0.4667)
+        self.assertEqual(p1['fk_fd_ratio'], 1.6667)
         self.assertEqual(p1['live_room_id'], 'DOUYU_731778')
         for demo_field in (
             'platform_data', 'demo_data', 'demo_coverage', 'demo_analysis',
