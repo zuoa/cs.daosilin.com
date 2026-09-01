@@ -854,7 +854,8 @@ class MatchPlayer(BaseModel, CRUDMixin):
             'total_kast_rounds': cls.kast,
         }
         average_fields = {
-            'avg_rating': cls.rating,
+            # Public avg_rating is PWR, matching the site ranking metric.
+            'avg_rating': cls.pw_rating,
             'avg_pw_rating': cls.pw_rating,
         }
         select_fields = [

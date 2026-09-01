@@ -82,14 +82,14 @@ class ExternalPlayersApiTest(unittest.TestCase):
         )
         create_match_player(
             'm1', 'p1', 'season-one', kill=10, death=5, entry_kill=2,
-            first_death=2, rating=1.0, adpr=80.0, dmg_health=800,
+            first_death=2, rating=9.0, pw_rating=1.0, adpr=80.0, dmg_health=800,
             game_count=10, kast=7, headshot=4, flash_success=5,
             flash_teammate=1, throws_count=10, trade_frag_count=2,
             grenade_damage=50, inferno_damage=30, win=1,
         )
         create_match_player(
             'm2', 'p1', 'season-two', kill=20, death=10, entry_kill=3,
-            first_death=1, rating=2.0, adpr=100.0, dmg_health=2000,
+            first_death=1, rating=9.0, pw_rating=2.0, adpr=100.0, dmg_health=2000,
             game_count=20, kast=15, headshot=10, flash_success=8,
             flash_teammate=2, throws_count=16, trade_frag_count=6,
             grenade_damage=40, inferno_damage=60, kill_map=json.dumps({'p2': 3}),
@@ -109,7 +109,7 @@ class ExternalPlayersApiTest(unittest.TestCase):
         )
         create_match_player(
             'm3', 'p2', 'current-season', kill=30, death=10, entry_kill=4,
-            first_death=2, rating=3.0, adpr=120.0, dmg_health=2880,
+            first_death=2, rating=9.0, pw_rating=3.0, adpr=120.0, dmg_health=2880,
             game_count=24, kast=18, win=1,
         )
         PlayerSeasonSummary.create(
@@ -188,6 +188,7 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(player['avg_kast'], 0.75)
         self.assertEqual(player['avg_headshot_ratio'], 0.5)
         self.assertEqual(player['avg_rating'], 2.0)
+        self.assertEqual(player['avg_pw_rating'], 2.0)
         self.assertEqual(player['fk_fd_ratio'], 3.0)
         self.assertEqual(player['perfect_rank'], {
             'score': 1513,
@@ -214,6 +215,7 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(p1['match_count'], 2)
         self.assertEqual(p1['total_kills'], 30)
         self.assertEqual(p1['avg_rating'], 1.5)
+        self.assertEqual(p1['avg_pw_rating'], 1.5)
         self.assertEqual(p1['avg_adpr'], 93.3333)
         self.assertEqual(p1['avg_kast'], 0.7333)
         self.assertEqual(p1['avg_headshot_ratio'], 0.4667)
@@ -270,6 +272,7 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(payload['lookup'], {'type': 'room_id', 'value': 'DOUYU_731778'})
         self.assertEqual(payload['player']['player_id'], 'p1')
         self.assertEqual(payload['player']['avg_rating'], 1.0)
+        self.assertEqual(payload['player']['avg_pw_rating'], 1.0)
 
         # The platform prefix keeps identical room numbers unambiguous.
         response = self.client.get(
@@ -500,6 +503,7 @@ class ExternalPlayersApiTest(unittest.TestCase):
         payload = response.get_json()['data']
         self.assertEqual(payload['seasons'][0]['cup_name'], 'season-one')
         self.assertEqual(payload['players'][0]['avg_rating'], 1.0)
+        self.assertEqual(payload['players'][0]['avg_pw_rating'], 1.0)
 
     def test_unknown_season_returns_404(self):
         response = self.client.get(

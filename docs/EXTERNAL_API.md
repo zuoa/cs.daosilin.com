@@ -51,7 +51,7 @@ External API 只提供选手身份、基础比赛数据、当前完美平台段�
 
 - 场次与胜负：`match_count`、`win_count`、`win_rate`、`total_rounds`。
 - 击杀数据：`total_kills`、`total_deaths`、`total_assists`、`kd_ratio`、`total_first_kills`、`total_first_deaths`、`fk_fd_ratio`、`total_headshots`、`avg_headshot_ratio`、`total_mvp`。
-- 平均表现：`avg_rating`、`avg_pw_rating`、`avg_adpr`、`avg_kast`。
+- 平均表现：`avg_rating`、`avg_pw_rating`、`avg_adpr`、`avg_kast`。`avg_rating` 与 `avg_pw_rating` 都是平台 PWR Rating 的场次算术平均。
 
 每个选手还会返回当前完美平台段位与按赛季生成的个人球探报告：
 
