@@ -18,6 +18,20 @@ REDIS_URL = (os.getenv('REDIS_URL') or '').strip()
 SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-change-me')
 SITE_NAME = os.getenv('SITE_NAME', '熊掌CS Major')
 
+# Player portrait segmentation. Credentials are supplied by Baidu AI Cloud and
+# stay server-side; uploaded portraits are persisted below the shared /data
+# volume in production.
+BAIDU_BODY_API_KEY = (os.getenv('BAIDU_BODY_API_KEY') or '').strip()
+BAIDU_BODY_SECRET_KEY = (os.getenv('BAIDU_BODY_SECRET_KEY') or '').strip()
+PLAYER_PORTRAIT_STORAGE_PATH = os.getenv(
+    'PLAYER_PORTRAIT_STORAGE_PATH',
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'player-portraits'),
+)
+PLAYER_PORTRAIT_MAX_BYTES = int(
+    os.getenv('PLAYER_PORTRAIT_MAX_BYTES', str(10 * 1024 * 1024))
+)
+PLAYER_PORTRAIT_API_TIMEOUT = int(os.getenv('PLAYER_PORTRAIT_API_TIMEOUT', '25'))
+
 # DeepSeek-backed player season summaries. Credentials stay in the deployment
 # environment and are never persisted by the application.
 LLM_API_KEY = (os.getenv('LLM_API_KEY') or '').strip()

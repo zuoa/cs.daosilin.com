@@ -169,6 +169,25 @@ def _m015_api_performance_indexes():
     logger.info('API 热点查询索引已创建')
 
 
+def _m016_player_portrait():
+    if not _table_exists('player'):
+        return
+    columns = (
+        ('portrait_original', 'VARCHAR(255)'),
+        ('portrait_cutout', 'VARCHAR(255)'),
+        ('portrait_scale', 'DOUBLE PRECISION DEFAULT 1.0' if is_postgres() else 'REAL DEFAULT 1.0'),
+        ('portrait_offset_x', 'DOUBLE PRECISION DEFAULT 0.0' if is_postgres() else 'REAL DEFAULT 0.0'),
+        ('portrait_offset_y', 'DOUBLE PRECISION DEFAULT 0.0' if is_postgres() else 'REAL DEFAULT 0.0'),
+    )
+    for name, ddl in columns:
+        if not _column_exists('player', name):
+            _add_column('player', name, ddl)
+    db.execute_sql('UPDATE player SET portrait_scale = 1.0 WHERE portrait_scale IS NULL')
+    db.execute_sql('UPDATE player SET portrait_offset_x = 0.0 WHERE portrait_offset_x IS NULL')
+    db.execute_sql('UPDATE player SET portrait_offset_y = 0.0 WHERE portrait_offset_y IS NULL')
+    logger.info('player 人物照片与构图字段已补齐')
+
+
 MIGRATIONS = [
     ('001_player_in_library', _m001_player_in_library),
     ('002_season_hit_ratio', _m002_season_hit_ratio),
@@ -185,6 +204,7 @@ MIGRATIONS = [
     ('013_player_perfect_rank_history', _m013_player_perfect_rank_history),
     ('014_player_perfect_rank_stars', _m014_player_perfect_rank_stars),
     ('015_api_performance_indexes', _m015_api_performance_indexes),
+    ('016_player_portrait', _m016_player_portrait),
 ]
 
 

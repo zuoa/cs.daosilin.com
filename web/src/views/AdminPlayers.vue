@@ -222,6 +222,56 @@
             </div>
             <small>斗鱼头像会在保存时重新获取，头像展示统一使用图片代理避免盗链限制。</small>
           </div>
+          <div class="field-group portrait-editor-field">
+            <label for="player-portrait">人物展示照</label>
+            <div class="portrait-editor-grid">
+              <div
+                class="portrait-compose-preview"
+                :class="{ empty: !portraitPreviewSrc }"
+                :style="portraitTransformStyle"
+                @pointerdown="startPortraitDrag"
+                @pointermove="movePortraitDrag"
+                @pointerup="endPortraitDrag"
+                @pointercancel="endPortraitDrag"
+              >
+                <img v-if="portraitPreviewSrc" class="portrait-transform-image" :src="portraitPreviewSrc" :alt="`${form.alias || form.nick || '玩家'} 人物构图预览`">
+                <div v-else class="portrait-compose-empty">
+                  <AppIcon name="users" :size="26" />
+                  <strong>暂无人物照片</strong>
+                  <span>上传半身照或全身照</span>
+                </div>
+                <span v-if="portraitPreviewSrc" class="portrait-drag-hint">拖动人物调整位置</span>
+              </div>
+              <div class="portrait-editor-controls">
+                <input
+                  id="player-portrait"
+                  ref="portraitInput"
+                  class="sr-only"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  :disabled="saving || portraitBusy || !portraitServiceConfigured"
+                  @change="choosePortrait"
+                >
+                <div class="portrait-action-row">
+                  <button class="button subtle small" type="button" :disabled="saving || portraitBusy || !portraitServiceConfigured" @click="portraitInput?.click()">
+                    <AppIcon name="plus" />{{ portraitPreviewSrc ? '更换照片' : '选择照片' }}
+                  </button>
+                  <button v-if="portraitPreviewSrc" class="button danger-ghost small" type="button" :disabled="saving || portraitBusy" @click="markPortraitRemoved">删除</button>
+                </div>
+                <template v-if="portraitPreviewSrc">
+                  <label class="portrait-range-label" for="portrait-scale"><span>人物缩放</span><strong>{{ Number(form.portraitScale).toFixed(2) }}x</strong></label>
+                  <input id="portrait-scale" v-model.number="form.portraitScale" type="range" min="0.75" max="2.2" step="0.01">
+                  <div class="portrait-nudge-grid">
+                    <label for="portrait-x"><span>水平位置</span><input id="portrait-x" v-model.number="form.portraitX" type="number" min="-50" max="50" step="1"></label>
+                    <label for="portrait-y"><span>垂直位置</span><input id="portrait-y" v-model.number="form.portraitY" type="number" min="-50" max="50" step="1"></label>
+                  </div>
+                  <button class="button text-button small portrait-reset" type="button" @click="resetPortraitTransform">重置构图</button>
+                </template>
+                <p v-if="!portraitServiceConfigured" class="inline-field-error" role="alert">服务端尚未配置百度智能云人像分割凭据。</p>
+                <small v-else>支持 JPG、PNG、WebP，最大 10MB。保存时照片会发送至百度智能云自动去除背景。</small>
+              </div>
+            </div>
+          </div>
           <label class="switch-row" for="player-library">
             <span>
               <strong>加入玩家库</strong>
@@ -283,6 +333,12 @@ const resolvingLive = ref(false)
 const resolvingSteam = ref(false)
 const liveResolved = ref(false)
 const steamResolved = ref(false)
+const portraitServiceConfigured = ref(false)
+const portraitInput = ref(null)
+const portraitFile = ref(null)
+const portraitPreviewUrl = ref('')
+const portraitRemove = ref(false)
+const portraitBusy = ref(false)
 const busy = ref(false)
 const editorOpen = ref(false)
 const idInput = ref(null)
@@ -290,6 +346,7 @@ const emptyForm = () => ({
   id: '', nick: '', alias: '', steam: '', avatarSource: 'wanmei',
   wanmeiAvatar: '', steamAvatar: '', liveAvatar: '',
   livePlatform: 'DOUYU', liveRoom: '', lib: '1',
+  portrait: null, portraitScale: 1, portraitX: 0, portraitY: 0,
 })
 const form = ref(emptyForm())
 let searchTimer
@@ -309,6 +366,13 @@ const liveAvatarLabel = computed(() => {
   if (form.value.liveAvatar) return liveResolved.value ? '已获取斗鱼主播头像' : '已保存的斗鱼头像'
   return '请先填写并识别斗鱼直播间'
 })
+const portraitPreviewSrc = computed(() => portraitPreviewUrl.value || (!portraitRemove.value ? form.value.portrait?.url : '') || '')
+const portraitTransformStyle = computed(() => ({
+  '--portrait-scale': Number(form.value.portraitScale || 1),
+  '--portrait-x': `${Number(form.value.portraitX || 0)}%`,
+  '--portrait-y': `${Number(form.value.portraitY || 0)}%`,
+}))
+let portraitDrag = null
 
 function displayName(p) { return p.alias_name || p.nickname || p.player_id }
 function show(message, type = 'success') {
@@ -324,6 +388,7 @@ async function load() {
     if (filterLib.value !== '') params.set('in_library', filterLib.value)
     const data = await api.get('/api/admin/players?' + params)
     players.value = data.players || []
+    portraitServiceConfigured.value = Boolean(data.portrait_service_configured)
     checked.value = []
   } catch (e) {
     show(e.message, 'error')
@@ -344,12 +409,18 @@ function fill(p) {
     livePlatform: p.live_platform || 'DOUYU',
     liveRoom: p.live_room || p.live_url || '',
     lib: p.in_library ? '1' : '0',
+    portrait: p.portrait || null,
+    portraitScale: p.portrait?.scale ?? 1,
+    portraitX: p.portrait?.offset_x ?? 0,
+    portraitY: p.portrait?.offset_y ?? 0,
   }
+  clearPendingPortrait()
   liveResolved.value = false
   steamResolved.value = false
   editorOpen.value = true
 }
 function clearForm() {
+  clearPendingPortrait()
   form.value = emptyForm()
   liveResolved.value = false
   steamResolved.value = false
@@ -379,6 +450,23 @@ async function save() {
       live_room: form.value.liveRoom,
       in_library: form.value.lib,
     })
+    portraitBusy.value = true
+    if (portraitRemove.value && form.value.portrait) {
+      await api.delete(`/api/admin/player/${encodeURIComponent(form.value.id.trim())}/portrait`)
+    } else if (portraitFile.value) {
+      const upload = new FormData()
+      upload.append('portrait', portraitFile.value)
+      upload.append('scale', String(form.value.portraitScale))
+      upload.append('offset_x', String(form.value.portraitX))
+      upload.append('offset_y', String(form.value.portraitY))
+      await api.form(`/api/admin/player/${encodeURIComponent(form.value.id.trim())}/portrait`, upload)
+    } else if (form.value.portrait) {
+      await api.patch(`/api/admin/player/${encodeURIComponent(form.value.id.trim())}/portrait`, {
+        scale: form.value.portraitScale,
+        offset_x: form.value.portraitX,
+        offset_y: form.value.portraitY,
+      })
+    }
     show(typeof data === 'string' ? data : '玩家已保存')
     editorOpen.value = false
     clearForm()
@@ -386,8 +474,71 @@ async function save() {
   } catch (e) {
     show(e.message, 'error')
   } finally {
+    portraitBusy.value = false
     saving.value = false
   }
+}
+
+function clearPendingPortrait() {
+  if (portraitPreviewUrl.value) URL.revokeObjectURL(portraitPreviewUrl.value)
+  portraitPreviewUrl.value = ''
+  portraitFile.value = null
+  portraitRemove.value = false
+  if (portraitInput.value) portraitInput.value.value = ''
+}
+function choosePortrait(event) {
+  const file = event.target.files?.[0]
+  if (!file) return
+  if (file.type && !['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+    event.target.value = ''
+    return show('仅支持 JPG、PNG 或 WebP 图片', 'error')
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    event.target.value = ''
+    return show('人物照片不能超过 10MB', 'error')
+  }
+  if (portraitPreviewUrl.value) URL.revokeObjectURL(portraitPreviewUrl.value)
+  portraitFile.value = file
+  portraitPreviewUrl.value = URL.createObjectURL(file)
+  portraitRemove.value = false
+  resetPortraitTransform()
+}
+function markPortraitRemoved() {
+  if (portraitPreviewUrl.value) URL.revokeObjectURL(portraitPreviewUrl.value)
+  portraitPreviewUrl.value = ''
+  portraitFile.value = null
+  portraitRemove.value = true
+  if (portraitInput.value) portraitInput.value.value = ''
+  resetPortraitTransform()
+}
+function resetPortraitTransform() {
+  form.value.portraitScale = 1
+  form.value.portraitX = 0
+  form.value.portraitY = 0
+}
+function startPortraitDrag(event) {
+  if (!portraitPreviewSrc.value || event.button !== 0) return
+  event.currentTarget.setPointerCapture(event.pointerId)
+  portraitDrag = {
+    pointerId: event.pointerId,
+    x: event.clientX,
+    y: event.clientY,
+    offsetX: Number(form.value.portraitX || 0),
+    offsetY: Number(form.value.portraitY || 0),
+    width: event.currentTarget.clientWidth * 0.92,
+    height: event.currentTarget.clientHeight,
+  }
+}
+function movePortraitDrag(event) {
+  if (!portraitDrag || portraitDrag.pointerId !== event.pointerId) return
+  const nextX = portraitDrag.offsetX + ((event.clientX - portraitDrag.x) / portraitDrag.width) * 100
+  const nextY = portraitDrag.offsetY + ((event.clientY - portraitDrag.y) / portraitDrag.height) * 100
+  form.value.portraitX = Math.max(-50, Math.min(50, Math.round(nextX)))
+  form.value.portraitY = Math.max(-50, Math.min(50, Math.round(nextY)))
+}
+function endPortraitDrag(event) {
+  if (!portraitDrag || portraitDrag.pointerId !== event.pointerId) return
+  portraitDrag = null
 }
 async function resolveLiveRoom() {
   if (!form.value.liveRoom) return show('请填写直播间号或 URL', 'error')
@@ -454,6 +605,7 @@ watch([q, filterLib], () => {
 })
 onMounted(load)
 onBeforeUnmount(() => {
+  clearPendingPortrait()
   clearTimeout(searchTimer)
   clearTimeout(toastTimer)
 })

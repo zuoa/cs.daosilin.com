@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 from urllib.parse import urlsplit
 
-from flask import Flask, g, request, send_from_directory
+from flask import Flask, g, request, send_file, send_from_directory
 from peewee import fn
 
 import title_service
@@ -39,6 +39,9 @@ from steam_service import SteamAvatarError, fetch_steam_avatar
 from title_service import title_service
 from player_summary_service import (admin_row as player_summary_admin_row,
                                     get_public_summary, llm_configured)
+from portrait_service import (PortraitError, clamp_transform, configured as portrait_configured,
+                              delete_portrait_files, portrait_file_path,
+                              portrait_payload, save_portrait)
 from utils import success, error
 
 app = Flask(__name__)
@@ -193,6 +196,10 @@ def _player_detail_payload(player_id, cup, day=None):
     if not rec:
         return None, "选手不存在"
     player = rec.to_dict()
+    player['portrait'] = portrait_payload(rec)
+    for key in ('portrait_original', 'portrait_cutout', 'portrait_scale',
+                'portrait_offset_x', 'portrait_offset_y'):
+        player.pop(key, None)
     for key in ('created_at', 'updated_at', 'perfect_rank_updated_at'):
         if hasattr(player.get(key), 'isoformat'):
             player[key] = player[key].isoformat()
@@ -361,6 +368,11 @@ def api_players():
     all_champions.sort(key=lambda champion: champion.get('day', ''))
 
     all_players = Player.get_all()
+    for player in all_players:
+        player['portrait'] = portrait_payload(player)
+        for key in ('portrait_original', 'portrait_cutout', 'portrait_scale',
+                    'portrait_offset_x', 'portrait_offset_y'):
+            player.pop(key, None)
     exploits = MatchPlayer.get_match_exploits(
         cup, [player.get('player_id') for player in all_players], day,
     )
@@ -1080,6 +1092,10 @@ def api_admin_players():
         flag = False
     players = Player.search_players(q=q, in_library=flag)
     for player in players:
+        player['portrait'] = portrait_payload(player)
+        for key in ('portrait_original', 'portrait_cutout', 'portrait_scale',
+                    'portrait_offset_x', 'portrait_offset_y'):
+            player.pop(key, None)
         live_room_key = Player.live_room_id(player.get('live_url'))
         platform, separator, room_id = live_room_key.partition('_')
         player['live_platform'] = platform if separator else ''
@@ -1087,7 +1103,77 @@ def api_admin_players():
         player['avatar_source'] = player.get('avatar_source') or 'wanmei'
         if not player.get('wanmei_avatar') and player['avatar_source'] == 'wanmei':
             player['wanmei_avatar'] = player.get('avatar')
-    return success({"players": players})
+    return success({
+        "players": players,
+        "portrait_service_configured": portrait_configured(),
+    })
+
+
+@app.route('/media/player-portraits/<string:filename>')
+def player_portrait_media(filename):
+    path = portrait_file_path(filename)
+    if path is None or not filename.endswith('-cutout.webp'):
+        return error(404, '人物照片不存在'), 404
+    response = send_file(path, mimetype='image/webp', conditional=True, max_age=86400)
+    response.cache_control.public = True
+    response.cache_control.immutable = True
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    return response
+
+
+@app.route('/api/admin/player/<string:player_id>/portrait', methods=['POST', 'PATCH', 'DELETE'])
+def api_admin_player_portrait(player_id):
+    player = Player.get_or_none(Player.player_id == player_id)
+    if player is None:
+        return error(404, '玩家不存在'), 404
+
+    if request.method == 'DELETE':
+        old_paths = (player.portrait_original, player.portrait_cutout)
+        (Player.update(
+            portrait_original=None,
+            portrait_cutout=None,
+            portrait_scale=1.0,
+            portrait_offset_x=0.0,
+            portrait_offset_y=0.0,
+        ).where(Player.player_id == player_id).execute())
+        delete_portrait_files(*old_paths)
+        invalidate_profiles()
+        return success({'message': '人物照片已删除'})
+
+    values = request.form if request.method == 'POST' else (request.get_json(silent=True) or {})
+    try:
+        scale, offset_x, offset_y = clamp_transform(
+            values.get('scale', player.portrait_scale or 1.0),
+            values.get('offset_x', player.portrait_offset_x or 0.0),
+            values.get('offset_y', player.portrait_offset_y or 0.0),
+        )
+        if request.method == 'POST':
+            old_paths = (player.portrait_original, player.portrait_cutout)
+            original, cutout = save_portrait(player_id, request.files.get('portrait'))
+            fields = {'portrait_original': original, 'portrait_cutout': cutout}
+        else:
+            if not player.portrait_cutout:
+                return error(400, '请先上传人物照片'), 400
+            old_paths = ()
+            fields = {}
+    except PortraitError as exc:
+        return error(400, str(exc)), 400
+
+    fields.update({
+        'portrait_scale': scale,
+        'portrait_offset_x': offset_x,
+        'portrait_offset_y': offset_y,
+    })
+    Player.update(**fields).where(Player.player_id == player_id).execute()
+    if old_paths:
+        retained = {fields.get('portrait_original'), fields.get('portrait_cutout')}
+        delete_portrait_files(*(path for path in old_paths if path not in retained))
+    invalidate_profiles()
+    refreshed = Player.get(Player.player_id == player_id)
+    return success({
+        'message': '人物照片已保存' if request.method == 'POST' else '人物构图已保存',
+        'portrait': portrait_payload(refreshed),
+    })
 
 
 @app.route('/api/admin/live-room/resolve')

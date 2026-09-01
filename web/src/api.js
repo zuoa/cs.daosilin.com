@@ -38,6 +38,9 @@ export const api = {
   me: () => request('/api/admin/me'),
   get: (path) => request(path),
   post: (path, body) => request(path, { method: 'POST', body: JSON.stringify(body) }),
+  patch: (path, body) => request(path, { method: 'PATCH', body: JSON.stringify(body) }),
+  delete: (path) => request(path, { method: 'DELETE' }),
+  form: (path, body) => request(path, { method: 'POST', body, headers: {} }),
   send: (path, params) => request(path + (path.includes('?') ? '&' : '?') + new URLSearchParams(params)),
 }
 

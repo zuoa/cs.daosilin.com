@@ -33,6 +33,8 @@ Modern-minimal with a technical, utilitarian voice. The visual idea is “Tactic
 
 Signal green is the only brand accent and stays below roughly 5% of any viewport. Blue, amber, and red are semantic status colours only. Canvas and ink carry a subtle blue-green tint.
 
+Uploaded player portraits unlock one contained exception: the player showcase and its downloadable poster use a charcoal and competition-red palette inspired by broadcast player cards. The red does not escape that component, change control states, or recolour the surrounding dossier page. PWR Rating remains the lead figure.
+
 ## Typography
 
 - Display: DIN Alternate / Arial Narrow / SF Pro Display, weight 700–800, roman.

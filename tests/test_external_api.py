@@ -1,4 +1,5 @@
 import os
+import io
 import shutil
 import tempfile
 import unittest
@@ -359,6 +360,93 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(player.avatar_source, 'live')
         self.assertEqual(player.avatar, 'https://apic.douyucdn.cn/avatar.jpg')
         self.assertEqual(player.live_url, 'https://www.douyu.com/2602307')
+
+    def test_admin_portrait_upload_transform_and_delete(self):
+        player_id = 'portrait-admin-test'
+        Player.create(player_id=player_id, nickname='人物照片测试', in_library=True)
+        try:
+            unauthorized = self.client.post(
+                f'/api/admin/player/{player_id}/portrait',
+                data={'portrait': (io.BytesIO(b'image'), 'portrait.jpg')},
+                content_type='multipart/form-data',
+            )
+            self.assertEqual(unauthorized.status_code, 401)
+
+            self._login_admin()
+            with patch('app.save_portrait', return_value=(
+                'portrait-original.jpg', 'portrait-cutout.webp',
+            )):
+                response = self.client.post(
+                    f'/api/admin/player/{player_id}/portrait',
+                    data={
+                        'portrait': (io.BytesIO(b'image'), 'portrait.jpg'),
+                        'scale': '1.35', 'offset_x': '12', 'offset_y': '-8',
+                    },
+                    content_type='multipart/form-data',
+                )
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json()['data']['portrait']
+            self.assertEqual(payload['url'], '/media/player-portraits/portrait-cutout.webp')
+            self.assertEqual(payload['scale'], 1.35)
+            self.assertEqual(payload['offset_x'], 12.0)
+            self.assertEqual(payload['offset_y'], -8.0)
+
+            response = self.client.patch(
+                f'/api/admin/player/{player_id}/portrait',
+                json={'scale': 9, 'offset_x': -90, 'offset_y': 90},
+            )
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json()['data']['portrait']
+            self.assertEqual(payload['scale'], 2.2)
+            self.assertEqual(payload['offset_x'], -50.0)
+            self.assertEqual(payload['offset_y'], 50.0)
+
+            with patch('app.delete_portrait_files') as remove_files:
+                response = self.client.delete(f'/api/admin/player/{player_id}/portrait')
+            self.assertEqual(response.status_code, 200)
+            remove_files.assert_called_once_with(
+                'portrait-original.jpg', 'portrait-cutout.webp',
+            )
+            player = Player.get(Player.player_id == player_id)
+            self.assertIsNone(player.portrait_cutout)
+        finally:
+            Player.delete().where(Player.player_id == player_id).execute()
+
+    def test_public_players_exposes_only_safe_portrait_payload(self):
+        cache.clear()
+        (Player.update(
+            portrait_original='private-original.jpg',
+            portrait_cutout='versioned-cutout.webp',
+            portrait_scale=1.25,
+            portrait_offset_x=8,
+            portrait_offset_y=-6,
+        ).where(Player.player_id == 'p1').execute())
+        try:
+            response = self.client.get('/api/v1/players?cup=season-two')
+            self.assertEqual(response.status_code, 200)
+            players = response.get_json()['data']['players']
+            player = next(item for item in players if item['player_id'] == 'p1')
+            self.assertEqual(player['portrait'], {
+                'url': '/media/player-portraits/versioned-cutout.webp',
+                'scale': 1.25,
+                'offset_x': 8.0,
+                'offset_y': -6.0,
+            })
+            for item in players:
+                for private_field in (
+                    'portrait_original', 'portrait_cutout', 'portrait_scale',
+                    'portrait_offset_x', 'portrait_offset_y',
+                ):
+                    self.assertNotIn(private_field, item)
+        finally:
+            (Player.update(
+                portrait_original=None,
+                portrait_cutout=None,
+                portrait_scale=1.0,
+                portrait_offset_x=0.0,
+                portrait_offset_y=0.0,
+            ).where(Player.player_id == 'p1').execute())
+            cache.clear()
 
     def test_admin_can_generate_and_revoke_database_token(self):
         app.config['EXTERNAL_API_TOKEN'] = ''

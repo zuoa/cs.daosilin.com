@@ -18,7 +18,42 @@
       </div>
 
       <template v-else-if="player && stats">
-        <section class="player-profile-hero">
+        <section v-if="player.portrait" class="player-showcase-hero" aria-label="选手个人展示">
+          <PlayerShowcaseCard
+            :name="playerName"
+            :season="cupAlias"
+            :day="day"
+            :portrait="player.portrait"
+            :rating="n2(stats.avg_pw_rating)"
+            :perfect-level="player.perfect_level || ''"
+            :perfect-score="player.perfect_score || ''"
+            :metrics="showcaseMetrics"
+          />
+          <div class="player-showcase-toolbar">
+            <div class="showcase-context-actions">
+              <PerfectRankBadge
+                v-if="player.perfect_level"
+                :level="player.perfect_level"
+                :score="player.perfect_score"
+                :stars="player.perfect_stars"
+                :updated-at="player.perfect_rank_updated_at"
+                show-details
+              />
+              <span v-if="day" class="status-badge neutral">{{ day }}</span>
+              <a v-if="player.live_url" class="button subtle small" :href="player.live_url" target="_blank" rel="noopener noreferrer"><AppIcon name="external" />进入直播间</a>
+            </div>
+            <button class="button primary showcase-download" type="button" :disabled="exporting" @click="downloadPoster">
+              <span v-if="exporting" class="button-spinner"></span>
+              <AppIcon v-else name="save" />{{ exporting ? '生成中…' : '下载选手卡' }}
+            </button>
+          </div>
+          <p v-if="exportError" class="showcase-export-error" role="alert">{{ exportError }}</p>
+          <div v-if="trophies.length" class="showcase-honours">
+            <span v-for="(trophy, index) in trophies" :key="index"><AppIcon name="trophy" /><strong>{{ trophy.trophy === 'champion' ? '冠军' : '亚军' }}</strong><small>{{ trophy.day }} / {{ trophy.team_name || '暂无队名' }}</small></span>
+          </div>
+        </section>
+
+        <section v-else class="player-profile-hero">
           <div class="player-profile-main">
             <PlayerAvatar :src="player.avatar" :name="playerName" class="profile-avatar" />
             <div class="profile-copy">
@@ -329,6 +364,21 @@
       </template>
     </main>
 
+    <div v-if="player?.portrait && stats" class="player-poster-render" aria-hidden="true">
+      <PlayerShowcaseCard
+        ref="posterCard"
+        poster
+        :name="playerName"
+        :season="cupAlias"
+        :day="day"
+        :portrait="player.portrait"
+        :rating="n2(stats.avg_pw_rating)"
+        :perfect-level="player.perfect_level || ''"
+        :perfect-score="player.perfect_score || ''"
+        :metrics="showcaseMetrics"
+      />
+    </div>
+
     <AppModal
       :open="matchDetailOpen"
       :title="matchDetailTitle"
@@ -438,6 +488,7 @@ import { api, avatarUrl } from '../api'
 import AppModal from '../components/AppModal.vue'
 import AppIcon from '../components/AppIcon.vue'
 import PlayerAvatar from '../components/PlayerAvatar.vue'
+import PlayerShowcaseCard from '../components/PlayerShowcaseCard.vue'
 import PerfectRankBadge from '../components/PerfectRankBadge.vue'
 
 echarts.use([LineChart, RadarChart, GridComponent, RadarComponent, TooltipComponent, CanvasRenderer])
@@ -467,6 +518,9 @@ const matchDetailError = ref('')
 const lastCrawl = ref('')
 const error = ref('')
 const loading = ref(true)
+const exporting = ref(false)
+const exportError = ref('')
+const posterCard = ref(null)
 const radarEl = ref(null)
 const lineEl = ref(null)
 const rankLineEl = ref(null)
@@ -517,6 +571,15 @@ const heroStats = computed(() => !stats.value ? [] : [
   { label: '总击杀', value: stats.value.total_kills || 0, rank: ranks.value.total_kills },
   { label: 'MVP', value: stats.value.total_mvp || 0, rank: ranks.value.total_mvp },
 ])
+const showcaseMetrics = computed(() => {
+  const s = stats.value || {}
+  return [
+    { label: 'K / D', value: n2(s.kd_ratio), icon: 'target' },
+    { label: '总击杀', value: s.total_kills || 0, icon: 'trophy' },
+    { label: 'ADR', value: Number(s.avg_adpr || 0).toFixed(0), icon: 'activity' },
+    { label: '爆头率', value: pct(s.avg_headshot_ratio), icon: 'layers' },
+  ]
+})
 const validMatchups = computed(() => killMatchups.value.filter((opponent) => (
   Number(opponent.encounters ?? (Number(opponent.kills || 0) + Number(opponent.deaths || 0))) > 5
 )))
@@ -793,6 +856,34 @@ function drawCharts() {
   }
 }
 function resizeCharts() { radarChart?.resize(); lineChart?.resize(); rankLineChart?.resize() }
+function safeFilename(value) {
+  return String(value || 'player').replace(/[\\/:*?"<>|\s]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64) || 'player'
+}
+async function downloadPoster() {
+  const element = posterCard.value?.getElement?.()
+  if (!element || exporting.value) return
+  exporting.value = true
+  exportError.value = ''
+  try {
+    await document.fonts?.ready
+    const { toPng } = await import('html-to-image')
+    const dataUrl = await toPng(element, {
+      width: 768,
+      height: 1024,
+      pixelRatio: 2,
+      cacheBust: true,
+      backgroundColor: '#171418',
+    })
+    const link = document.createElement('a')
+    link.download = `${safeFilename(playerName.value)}-${safeFilename(day.value || cupAlias.value)}-选手卡.png`
+    link.href = dataUrl
+    link.click()
+  } catch (e) {
+    exportError.value = '选手卡生成失败，请刷新页面后重试。'
+  } finally {
+    exporting.value = false
+  }
+}
 async function load() {
   closeMatch()
   matchupSort.value = 'ratio'
@@ -803,6 +894,7 @@ async function load() {
   lineChart = null
   rankLineChart = null
   error.value = ''
+  exportError.value = ''
   loading.value = true
   try {
     const data = await api.player(id.value, cup.value, day.value || null)

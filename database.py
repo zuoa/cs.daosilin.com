@@ -200,6 +200,11 @@ class Player(BaseModel, CRUDMixin):
     perfect_level = CharField(max_length=16, null=True)  # S21+ 完美平台段位
     perfect_stars = IntegerField(null=True)  # S 段升星数；非 S 或未获取时为空
     perfect_rank_updated_at = DateTimeField(null=True)  # 段位最近成功更新时间
+    portrait_original = CharField(max_length=255, null=True)  # 本地规范化原图相对路径
+    portrait_cutout = CharField(max_length=255, null=True)  # 本地透明 WebP 相对路径
+    portrait_scale = FloatField(default=1.0)
+    portrait_offset_x = FloatField(default=0.0)
+    portrait_offset_y = FloatField(default=0.0)
 
     @staticmethod
     def live_room_id(live_url: str) -> str:
