@@ -376,6 +376,7 @@
         :perfect-level="player.perfect_level || ''"
         :perfect-score="player.perfect_score || ''"
         :metrics="showcaseMetrics"
+        :qr-code="posterQrCode"
       />
     </div>
 
@@ -521,6 +522,7 @@ const loading = ref(true)
 const exporting = ref(false)
 const exportError = ref('')
 const posterCard = ref(null)
+const posterQrCode = ref('')
 const radarEl = ref(null)
 const lineEl = ref(null)
 const rankLineEl = ref(null)
@@ -866,6 +868,16 @@ async function downloadPoster() {
   exportError.value = ''
   try {
     await document.fonts?.ready
+    const { toDataURL } = await import('qrcode')
+    const playerProfileUrl = new URL(route.path, window.location.origin).href
+    posterQrCode.value = await toDataURL(playerProfileUrl, {
+      errorCorrectionLevel: 'M',
+      margin: 1,
+      width: 192,
+      color: { dark: '#171418', light: '#00000000' },
+    })
+    await nextTick()
+    await element.querySelector('.showcase-qr-code')?.decode?.()
     const { toPng } = await import('html-to-image')
     const dataUrl = await toPng(element, {
       width: 768,

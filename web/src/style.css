@@ -1307,8 +1307,10 @@ h1, h2, h3 {
 .player-poster-render { position: fixed; z-index: -1; top: 0; left: -10000px; width: 768px; height: 1024px; overflow: hidden; pointer-events: none; }
 .player-showcase-card.poster-mode { width: 768px; height: 1024px; min-height: 1024px; aspect-ratio: 3 / 4; border-radius: 0; box-shadow: none; }
 .player-showcase-card.poster-mode .showcase-brandline { top: 28px; right: 30px; left: 30px; font-size: 12px; }
+.player-showcase-card.poster-mode .showcase-brandline > span:last-child { margin-right: 105px; }
 .player-showcase-card.poster-mode .showcase-brandline strong { font-size: 17px; }
 .player-showcase-card.poster-mode .showcase-mark { width: 44px; height: 44px; }
+.player-showcase-card.poster-mode .showcase-qr-code { position: absolute; z-index: 6; top: 21px; right: 22px; width: 92px; height: 92px; object-fit: contain; }
 .player-showcase-card.poster-mode .showcase-red-block { top: 25%; bottom: 27%; width: 92%; }
 .player-showcase-card.poster-mode .showcase-portrait { top: auto; bottom: 20%; left: -7%; width: auto; height: 75%; }
 .player-showcase-card.poster-mode .showcase-identity { top: 29%; right: 4%; width: 44%; }

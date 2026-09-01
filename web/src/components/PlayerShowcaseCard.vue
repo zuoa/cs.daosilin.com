@@ -8,6 +8,13 @@
       <span>PLAYER INTELLIGENCE</span>
     </header>
 
+    <img
+      v-if="poster && qrCode"
+      class="showcase-qr-code"
+      :src="qrCode"
+      alt=""
+    >
+
     <div class="showcase-portrait" :style="portraitStyle">
       <img class="portrait-transform-image" :src="portrait.url" :alt="`${name} 人物展示照`" crossorigin="anonymous">
     </div>
@@ -21,7 +28,7 @@
         <h1>{{ name }}</h1>
         <p>{{ scopeLabel }}</p>
       </div>
-      <div v-if="perfectLevel || perfectScore" class="showcase-rank">
+      <div v-if="hasPerfectRank" class="showcase-rank">
         <span>{{ perfectLevel || 'PWR' }}</span>
         <strong>{{ perfectScore || rating }}</strong>
         <small>PERFECT WORLD</small>
@@ -56,11 +63,16 @@ const props = defineProps({
   perfectScore: { type: [String, Number], default: '' },
   metrics: { type: Array, default: () => [] },
   poster: { type: Boolean, default: false },
+  qrCode: { type: String, default: '' },
 })
 
 const cardEl = ref(null)
 const scopeLabel = computed(() => [props.season, props.day].filter(Boolean).join(' / ') || '赛季档案')
 const footerScope = computed(() => props.day || props.season || 'CS PLAYER')
+const hasPerfectRank = computed(() => {
+  const level = String(props.perfectLevel || '').trim()
+  return Number(props.perfectScore) > 0 && level && !['未定位', '未定级'].includes(level)
+})
 const portraitStyle = computed(() => ({
   '--portrait-scale': Number(props.portrait?.scale || 1),
   '--portrait-x': `${Number(props.portrait?.offset_x || 0)}%`,
