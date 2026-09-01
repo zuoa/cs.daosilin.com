@@ -504,6 +504,62 @@ class ExternalPlayersApiTest(unittest.TestCase):
         finally:
             hidden.delete_instance()
 
+    def test_public_match_detail_uses_player_profile_avatar(self):
+        cup = 'season-two'
+        match_id = 'm-avatar-overlay'
+        profile_avatar = 'https://avatars.fastly.steamstatic.com/profile_full.jpg'
+        snapshot_avatar = 'https://img.wmpvp.com/match-snapshot.png'
+        Player.create(
+            player_id='p-avatar-overlay', nickname='头像覆盖选手',
+            alias_name='Overlay', avatar=profile_avatar,
+            wanmei_avatar=snapshot_avatar, avatar_source='steam',
+            in_library=True,
+        )
+        Player.create(
+            player_id='p-avatar-fallback', nickname='无档案头像选手',
+            alias_name='Fallback', in_library=True,
+        )
+        Match.create(
+            match_id=match_id, map_name='荒漠迷城', map_name_en='de_mirage',
+            start_time=datetime(2025, 2, 3, 21, 0, 0),
+            end_time=datetime(2025, 2, 3, 21, 40, 0), duration=2400,
+            win_team=1, team1_name='Alpha', team1_score=13, team1_half_score=7,
+            team2_name='Bravo', team2_score=8, team2_half_score=5,
+            game_mode='MR12', cup_name=cup, play_day='20250101',
+        )
+        MatchSelection.create(
+            match_id=match_id, season_cup_name=cup, status='approved',
+            source_type='custom', play_day='20250101', roster_hit_count=2,
+        )
+        create_match_player(
+            match_id, 'p-avatar-overlay', cup, avatar=snapshot_avatar,
+            team=1, game_count=21, kast=16,
+        )
+        create_match_player(
+            match_id, 'p-avatar-fallback', cup,
+            avatar='https://img.wmpvp.com/fallback.png',
+            team=2, game_count=21, kast=10,
+        )
+        try:
+            response = self.client.get(f'/api/v1/match?cup={cup}&match_id={match_id}')
+            self.assertEqual(response.status_code, 200)
+            players = {
+                player['player_id']: player
+                for player in response.get_json()['data']['players']
+            }
+            self.assertEqual(players['p-avatar-overlay']['avatar'], profile_avatar)
+            self.assertEqual(
+                players['p-avatar-fallback']['avatar'],
+                'https://img.wmpvp.com/fallback.png',
+            )
+        finally:
+            MatchPlayer.delete().where(MatchPlayer.match_id == match_id).execute()
+            MatchSelection.delete().where(MatchSelection.match_id == match_id).execute()
+            Match.delete().where(Match.match_id == match_id).execute()
+            Player.delete().where(Player.player_id.in_([
+                'p-avatar-overlay', 'p-avatar-fallback',
+            ])).execute()
+
     def test_public_match_detail_validates_required_parameters(self):
         self.assertEqual(self.client.get('/api/v1/match?match_id=m2').status_code, 400)
         self.assertEqual(self.client.get('/api/v1/match?cup=season-two').status_code, 400)

@@ -679,15 +679,20 @@ def _match_detail_payload(cup, match_id):
     player_rows = list(MatchPlayer.select().where(MatchPlayer.match_id == match_id))
     player_ids = [row.player_id for row in player_rows]
     alias_map = {}
+    avatar_map = {}
     if player_ids:
         for rec in Player.select().where(Player.player_id.in_(player_ids)):
             alias_map[rec.player_id] = rec.alias_name
+            avatar_map[rec.player_id] = rec.avatar
     players = []
     for row in player_rows:
         item = {field: getattr(row, field, None) for field in _MATCH_PLAYER_DETAIL_FIELDS}
         item['kast_ratio'] = round(float(row.kast or 0) / row.game_count, 4) if row.game_count else 0.0
         item['in_library'] = row.player_id in library_set
         item['alias_name'] = alias_map.get(row.player_id) or ''
+        profile_avatar = avatar_map.get(row.player_id)
+        if profile_avatar:
+            item['avatar'] = profile_avatar
         players.append(item)
     players.sort(key=lambda p: (
         p.get('team') or 99,
