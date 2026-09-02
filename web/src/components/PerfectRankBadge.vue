@@ -7,11 +7,11 @@
   >
     <i v-if="rankClass === 'rank-s'" class="rank-emblem" aria-hidden="true">
       <i class="rank-aura"></i>
-      <strong>{{ normalizedLevel }}</strong>
+      <strong>{{ displayLevel }}</strong>
     </i>
     <template v-else>
       <i class="rank-aura" aria-hidden="true"></i>
-      <strong>{{ normalizedLevel }}</strong>
+      <strong>{{ displayLevel }}</strong>
     </template>
     <span v-if="displayLabel" :class="{ 'rank-detail': showDetails && rankClass === 'rank-s' }">{{ displayLabel }}</span>
   </span>
@@ -37,6 +37,7 @@ const numericStars = computed(() => {
   return Number.isFinite(value) ? Math.max(0, Math.round(value)) : null
 })
 const normalizedLevel = computed(() => numericScore.value > 0 ? (props.level || '未定级') : '未定级')
+const displayLevel = computed(() => normalizedLevel.value === '未定级' ? '/' : normalizedLevel.value)
 const isElite = computed(() => normalizedLevel.value.startsWith('精英'))
 const rankClass = computed(() => {
   const level = normalizedLevel.value.toUpperCase()

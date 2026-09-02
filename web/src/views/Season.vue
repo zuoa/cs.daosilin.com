@@ -146,7 +146,7 @@
                             <small v-if="communityRatingCount(p)">{{ communityRatingCount(p) }}/{{ p.community_rating?.minimum_votes || 5 }} 票</small>
                           </template>
                         </span>
-                        <span class="quick-vote-cue" aria-hidden="true">快投<AppIcon name="chevronDown" :size="13" /></span>
+                        <span class="quick-vote-cue" aria-hidden="true">快投<AppIcon name="target" :size="13" /></span>
                       </button>
                     </td>
                     <td class="mono-data">{{ n2(p.avg_adpr) }}</td>
@@ -376,6 +376,7 @@ const defaultQuickVoteOptions = [
 const quickVoteCache = new Map()
 let quickVoteAnchor = null
 let quickVoteCloseTimer = 0
+let quickVoteSwitchTimer = 0
 let quickVoteRequest = 0
 
 const filteredPlayers = computed(() => {
@@ -409,26 +410,40 @@ function playerSortValue(p) {
 function togglePlayer(id) { open.value = open.value === id ? '' : id }
 function cancelQuickVoteClose() {
   window.clearTimeout(quickVoteCloseTimer)
+  window.clearTimeout(quickVoteSwitchTimer)
   quickVoteCloseTimer = 0
+  quickVoteSwitchTimer = 0
 }
 function scheduleQuickVoteClose() {
   cancelQuickVoteClose()
-  quickVoteCloseTimer = window.setTimeout(() => closeQuickVote(), 180)
+  quickVoteCloseTimer = window.setTimeout(() => closeQuickVote(), 240)
 }
 function updateQuickVotePosition() {
   if (!quickVotePlayer.value || !quickVoteAnchor?.isConnected) return
   const rect = quickVoteAnchor.getBoundingClientRect()
   const edge = 8
+  const gap = 6
   const width = Math.min(360, window.innerWidth - edge * 2)
   const height = quickVotePopoverEl.value?.offsetHeight || 174
-  const left = Math.min(
-    Math.max(edge, rect.left + rect.width / 2 - width / 2),
-    window.innerWidth - width - edge,
-  )
-  const roomBelow = window.innerHeight - rect.bottom
-  const top = roomBelow >= height + 12
-    ? rect.bottom + 8
-    : Math.max(edge, rect.top - height - 8)
+  const clampLeft = (value) => Math.min(Math.max(edge, value), window.innerWidth - width - edge)
+  const clampTop = (value) => Math.min(Math.max(edge, value), window.innerHeight - height - edge)
+  const roomLeft = rect.left - edge
+  const roomRight = window.innerWidth - rect.right - edge
+  const canUseSide = window.innerWidth >= 720
+  let left
+  let top
+  if (canUseSide && roomLeft >= width + gap) {
+    left = rect.left - width - gap
+    top = clampTop(rect.top + rect.height / 2 - height / 2)
+  } else if (canUseSide && roomRight >= width + gap) {
+    left = rect.right + gap
+    top = clampTop(rect.top + rect.height / 2 - height / 2)
+  } else {
+    left = clampLeft(rect.left + rect.width / 2 - width / 2)
+    top = rect.top >= height + gap + edge
+      ? rect.top - height - gap
+      : clampTop(rect.bottom + gap)
+  }
   quickVotePosition.value = { top: `${Math.round(top)}px`, left: `${Math.round(left)}px`, visibility: 'visible' }
 }
 async function loadQuickVote(player) {
@@ -456,11 +471,10 @@ async function loadQuickVote(player) {
     if (requestId === quickVoteRequest) quickVoteLoading.value = false
   }
 }
-function openQuickVote(player, event) {
-  cancelQuickVoteClose()
+function showQuickVote(player, anchor) {
   const playerId = String(player.player_id)
   const changed = String(quickVotePlayer.value?.player_id || '') !== playerId
-  quickVoteAnchor = event?.currentTarget || quickVoteAnchor
+  quickVoteAnchor = anchor || quickVoteAnchor
   if (changed) {
     quickVoteRequest += 1
     quickVotePlayer.value = player
@@ -474,6 +488,20 @@ function openQuickVote(player, event) {
     updateQuickVotePosition()
     if (!quickVoteCache.has(playerId) && !quickVoteLoading.value) loadQuickVote(player)
   })
+}
+function openQuickVote(player, event) {
+  const playerId = String(player.player_id)
+  const currentId = String(quickVotePlayer.value?.player_id || '')
+  const anchor = event?.currentTarget || quickVoteAnchor
+  const isPassingAnotherRow = event?.type === 'mouseenter' && currentId && currentId !== playerId
+  cancelQuickVoteClose()
+  if (isPassingAnotherRow) {
+    quickVoteSwitchTimer = window.setTimeout(() => {
+      if (anchor?.isConnected && anchor.matches(':hover')) showQuickVote(player, anchor)
+    }, 260)
+    return
+  }
+  showQuickVote(player, anchor)
 }
 function closeQuickVote(restoreFocus = false) {
   cancelQuickVoteClose()
