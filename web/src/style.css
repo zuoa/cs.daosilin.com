@@ -598,6 +598,37 @@ img.player-monogram { object-fit: cover; }
 .community-verdict span,
 .community-verdict small { color: var(--color-muted); font-size: .6rem; white-space: nowrap; }
 .community-verdict.formed span { font-family: var(--font-outlier); font-variant-numeric: tabular-nums; }
+.quick-vote-cell { min-width: 154px; }
+.quick-vote-trigger { display: flex; width: 100%; min-width: 130px; align-items: center; justify-content: space-between; gap: 8px; border: 0; border-radius: var(--radius-input); padding: 5px 6px; background: transparent; color: inherit; text-align: left; }
+.quick-vote-trigger:hover { background: var(--color-accent-faint); }
+.quick-vote-trigger:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
+.quick-vote-trigger .community-verdict { min-width: 0; }
+.quick-vote-cue { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 2px; color: var(--color-accent-strong); font-size: .58rem; font-weight: 800; opacity: 0; transform: translateY(-2px); transition: opacity var(--dur-short) var(--ease-out), transform var(--dur-short) var(--ease-out); white-space: nowrap; }
+.quick-vote-trigger:hover .quick-vote-cue,
+.quick-vote-trigger:focus-visible .quick-vote-cue,
+.quick-vote-trigger[aria-expanded="true"] .quick-vote-cue { opacity: 1; transform: translateY(0); }
+.season-quick-vote { position: fixed; z-index: var(--z-tooltip); width: min(360px, calc(100vw - 16px)); border: var(--rule-hair) solid var(--color-rule-2); border-top: 3px solid var(--color-accent); border-radius: var(--radius-card); padding: 12px; background: var(--color-surface); box-shadow: var(--shadow-float); color: var(--color-ink); }
+.season-quick-vote-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.season-quick-vote-heading > div { display: flex; min-width: 0; align-items: baseline; gap: 8px; }
+.season-quick-vote-heading span { flex: 0 0 auto; color: var(--color-accent-strong); font-family: var(--font-outlier); font-size: .57rem; font-weight: 800; letter-spacing: .1em; }
+.season-quick-vote-heading strong { overflow: hidden; font-family: var(--font-display); font-size: var(--text-sm); letter-spacing: -.02em; text-overflow: ellipsis; white-space: nowrap; }
+.season-quick-vote-heading > button { display: inline-flex; width: 28px; height: 28px; flex: 0 0 auto; align-items: center; justify-content: center; border: 0; border-radius: 50%; background: var(--color-paper-2); color: var(--color-muted); }
+.season-quick-vote-heading > button:hover { background: var(--color-paper-3); color: var(--color-ink); }
+.season-quick-vote-heading > button:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; }
+.season-quick-vote-question { margin: 7px 0 9px; color: var(--color-muted); font-size: .68rem; }
+.season-quick-vote-options { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); overflow: hidden; border: var(--rule-hair) solid var(--color-rule); border-radius: var(--radius-input); }
+.season-quick-vote-options > button { display: grid; min-width: 0; min-height: 55px; align-content: center; justify-items: center; gap: 2px; border: 0; border-right: var(--rule-hair) solid var(--color-rule); padding: 5px 2px; background: var(--color-surface); color: var(--color-ink); }
+.season-quick-vote-options > button:last-child { border-right: 0; }
+.season-quick-vote-options > button:hover { background: var(--color-accent-faint); }
+.season-quick-vote-options > button:focus-visible { position: relative; z-index: 1; outline: 2px solid var(--color-focus); outline-offset: -2px; }
+.season-quick-vote-options > button.selected { background: var(--color-ink); color: var(--color-dark-text); box-shadow: inset 0 3px var(--color-accent); }
+.season-quick-vote-options > button span { color: var(--color-muted); font-family: var(--font-outlier); font-size: .53rem; font-weight: 800; }
+.season-quick-vote-options > button strong { overflow: hidden; max-width: 100%; font-size: .68rem; text-overflow: ellipsis; white-space: nowrap; }
+.season-quick-vote-options > button.selected span { color: var(--color-accent); }
+.season-quick-vote-options > button.selected strong { color: var(--color-dark-text); }
+.season-quick-vote-status { display: flex; min-height: 18px; align-items: center; gap: 5px; margin-top: 7px; color: var(--color-muted); font-size: .61rem; }
+.season-quick-vote-status.success { color: var(--color-accent-strong); font-weight: 700; }
+.season-quick-vote-status.error { color: var(--color-danger-strong); }
 .player-name-link { display: inline-flex; width: fit-content; max-width: 190px; align-items: center; gap: 4px; overflow: hidden; color: var(--ink-900); font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
 .player-name-link:hover { color: var(--signal-dark); text-decoration: underline; text-underline-offset: 3px; }
 .player-name-link:focus-visible { border-radius: 3px; }
@@ -2418,18 +2449,25 @@ h1, h2, h3 {
 
   .mobile-community-verdict {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    width: calc(100% - var(--space-xs) * 2);
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
     align-items: baseline;
     gap: var(--space-xs);
     margin-inline: var(--space-xs);
+    border: 0;
     border-top: var(--rule-hair) solid var(--color-rule);
     padding: 9px 3px 8px;
+    background: transparent;
+    text-align: left;
   }
 
+  .mobile-community-verdict:hover { color: var(--color-accent-strong); }
+  .mobile-community-verdict:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -2px; }
   .mobile-community-verdict > span { color: var(--color-muted); font-size: .6rem; }
   .mobile-community-verdict strong { overflow: hidden; color: var(--color-ink-2); font-size: .72rem; text-overflow: ellipsis; white-space: nowrap; }
   .mobile-community-verdict.formed strong { color: var(--color-accent-strong); }
   .mobile-community-verdict small { color: var(--color-muted); font-family: var(--font-outlier); font-size: .62rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .mobile-community-verdict > svg { grid-column: 4; color: var(--color-accent-strong); }
 
   .mobile-key-stats,
   .mobile-extra-stats dl {

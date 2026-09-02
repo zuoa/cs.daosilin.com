@@ -121,17 +121,33 @@
                     <td><span :class="{ 'stat-positive': p.win_rate >= 0.6 }">{{ pct(p.win_rate) }}</span></td>
                     <td class="mono-data">{{ n2(p.kd_ratio) }}</td>
                     <td><strong class="rating-value" :class="{ hot: p.avg_pw_rating >= 1.57 }">{{ n2(p.avg_pw_rating) }}</strong></td>
-                    <td v-if="!day">
-                      <div class="community-verdict" :class="{ formed: communityRatingReady(p) }">
-                        <template v-if="communityRatingReady(p)">
-                          <strong>{{ p.community_rating.label }}</strong>
-                          <span>{{ n2(p.community_rating.score) }} · {{ p.community_rating.total_votes }} 票</span>
-                        </template>
-                        <template v-else>
-                          <span>{{ communityRatingCount(p) ? '样本积累中' : '暂无投票' }}</span>
-                          <small v-if="communityRatingCount(p)">{{ communityRatingCount(p) }}/{{ p.community_rating?.minimum_votes || 5 }} 票</small>
-                        </template>
-                      </div>
+                    <td
+                      v-if="!day"
+                      class="quick-vote-cell"
+                      @mouseenter="openQuickVote(p, $event)"
+                      @mouseleave="scheduleQuickVoteClose"
+                    >
+                      <button
+                        class="quick-vote-trigger"
+                        type="button"
+                        :aria-label="`快速评价 ${displayName(p)} 的本赛季表现`"
+                        aria-controls="season-quick-vote"
+                        :aria-expanded="quickVotePlayer?.player_id === p.player_id"
+                        @focus="openQuickVote(p, $event)"
+                        @click="openQuickVote(p, $event)"
+                      >
+                        <span class="community-verdict" :class="{ formed: communityRatingReady(p) }">
+                          <template v-if="communityRatingReady(p)">
+                            <strong>{{ p.community_rating.label }}</strong>
+                            <span>{{ n2(p.community_rating.score) }} · {{ p.community_rating.total_votes }} 票</span>
+                          </template>
+                          <template v-else>
+                            <span>{{ communityRatingCount(p) ? '样本积累中' : '暂无投票' }}</span>
+                            <small v-if="communityRatingCount(p)">{{ communityRatingCount(p) }}/{{ p.community_rating?.minimum_votes || 5 }} 票</small>
+                          </template>
+                        </span>
+                        <span class="quick-vote-cue" aria-hidden="true">快投<AppIcon name="chevronDown" :size="13" /></span>
+                      </button>
                     </td>
                     <td class="mono-data">{{ n2(p.avg_adpr) }}</td>
                     <td class="mono-data">{{ n2(p.avg_we) }}</td>
@@ -203,7 +219,17 @@
                   </div>
                 </div>
 
-                <div v-if="!day" class="mobile-community-verdict" :class="{ formed: communityRatingReady(p) }">
+                <button
+                  v-if="!day"
+                  class="mobile-community-verdict quick-vote-mobile-trigger"
+                  :class="{ formed: communityRatingReady(p) }"
+                  type="button"
+                  :aria-label="`快速评价 ${displayName(p)} 的本赛季表现`"
+                  aria-controls="season-quick-vote"
+                  :aria-expanded="quickVotePlayer?.player_id === p.player_id"
+                  @click="openQuickVote(p, $event)"
+                  @focus="openQuickVote(p, $event)"
+                >
                   <span>社区票选</span>
                   <template v-if="communityRatingReady(p)">
                     <strong>{{ p.community_rating.label }}</strong>
@@ -213,7 +239,8 @@
                     <strong>{{ communityRatingCount(p) ? '样本积累中' : '等待首票' }}</strong>
                     <small v-if="communityRatingCount(p)">{{ communityRatingCount(p) }}/{{ p.community_rating?.minimum_votes || 5 }} 票</small>
                   </template>
-                </div>
+                  <AppIcon name="chevronDown" :size="14" aria-hidden="true" />
+                </button>
 
                 <dl class="mobile-key-stats">
                   <div><dt>K/D</dt><dd>{{ n2(p.kd_ratio) }}</dd></div>
@@ -264,11 +291,54 @@
       </section>
     </main>
     <footer class="public-footer"><router-link to="/">返回全部赛季</router-link><span>{{ cupAlias || cup }} · 熊掌CS Major</span></footer>
+
+    <Teleport to="body">
+      <section
+        v-if="quickVotePlayer"
+        id="season-quick-vote"
+        ref="quickVotePopoverEl"
+        class="season-quick-vote"
+        :style="quickVotePosition"
+        role="dialog"
+        :aria-label="`快速评价 ${displayName(quickVotePlayer)}`"
+        @mouseenter="cancelQuickVoteClose"
+        @mouseleave="scheduleQuickVoteClose"
+        @focusin="cancelQuickVoteClose"
+        @focusout="handleQuickVoteFocusOut"
+        @keydown.esc.stop="closeQuickVote(true)"
+      >
+        <header class="season-quick-vote-heading">
+          <div><span>QUICK VOTE</span><strong>{{ displayName(quickVotePlayer) }}</strong></div>
+          <button type="button" aria-label="关闭快速投票" @click="closeQuickVote(true)"><AppIcon name="x" :size="16" /></button>
+        </header>
+        <p class="season-quick-vote-question">这赛季，你给什么档？</p>
+        <div class="season-quick-vote-options" :aria-busy="quickVoteSubmitting">
+          <button
+            v-for="option in quickVoteOptions"
+            :key="option.score"
+            type="button"
+            :class="{ selected: quickVoteData?.viewer_score === option.score }"
+            :disabled="quickVoteSubmitting"
+            :aria-label="`${option.label}：${option.hint}`"
+            :title="option.hint"
+            @click="submitQuickVote(option.score)"
+          >
+            <span>0{{ option.score }}</span><strong>{{ option.label }}</strong>
+          </button>
+        </div>
+        <p v-if="quickVoteError" class="season-quick-vote-status error" role="alert"><AppIcon name="alert" :size="14" />{{ quickVoteError }}</p>
+        <p v-else-if="quickVoteSubmitting" class="season-quick-vote-status">正在记录你的选择…</p>
+        <p v-else-if="quickVoteData?.voted_today" class="season-quick-vote-status success"><AppIcon name="check" :size="14" />今日已投{{ selectedQuickVoteLabel }}，今天内可改</p>
+        <p v-else-if="quickVoteLoading" class="season-quick-vote-status">正在读取今日投票状态…</p>
+        <p v-else class="season-quick-vote-status">每天一票，当天可改</p>
+      </section>
+    </Teleport>
+    <p class="sr-only" aria-live="polite">{{ quickVoteAnnouncement }}</p>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '../api'
 import AppIcon from '../components/AppIcon.vue'
@@ -287,6 +357,26 @@ const loading = ref(true)
 const open = ref('')
 const query = ref('')
 const sortKey = ref('avg_pw_rating')
+const quickVotePlayer = ref(null)
+const quickVoteData = ref(null)
+const quickVoteLoading = ref(false)
+const quickVoteSubmitting = ref(false)
+const quickVoteError = ref('')
+const quickVoteAnnouncement = ref('')
+const quickVotePopoverEl = ref(null)
+const quickVotePosition = ref({ top: '0px', left: '0px', visibility: 'hidden' })
+
+const defaultQuickVoteOptions = [
+  { score: 5, label: '夯', hint: '统治级，没得说' },
+  { score: 4, label: '顶级', hint: '大腿表现，很硬' },
+  { score: 3, label: '人上人', hint: '高于平均，有说法' },
+  { score: 2, label: 'NPC', hint: '中规中矩，正常发挥' },
+  { score: 1, label: '拉完了', hint: '这季状态不在线' },
+]
+const quickVoteCache = new Map()
+let quickVoteAnchor = null
+let quickVoteCloseTimer = 0
+let quickVoteRequest = 0
 
 const filteredPlayers = computed(() => {
   const search = query.value.trim().toLowerCase()
@@ -297,6 +387,10 @@ const filteredPlayers = computed(() => {
 })
 const topRating = computed(() => players.value.length ? n2(Math.max(...players.value.map((p) => Number(p.avg_pw_rating || 0)))) : '0.00')
 const averageRating = computed(() => players.value.length ? n2(players.value.reduce((sum, p) => sum + Number(p.avg_pw_rating || 0), 0) / players.value.length) : '0.00')
+const quickVoteOptions = computed(() => quickVoteData.value?.options || defaultQuickVoteOptions)
+const selectedQuickVoteLabel = computed(() => quickVoteOptions.value.find(
+  (option) => option.score === quickVoteData.value?.viewer_score,
+)?.label || '')
 
 function displayName(p) { return p.alias_name || p.nickname || p.player_id }
 function n2(value) { return Number(value || 0).toFixed(2) }
@@ -313,6 +407,138 @@ function playerSortValue(p) {
   return Number(p[sortKey.value] || 0)
 }
 function togglePlayer(id) { open.value = open.value === id ? '' : id }
+function cancelQuickVoteClose() {
+  window.clearTimeout(quickVoteCloseTimer)
+  quickVoteCloseTimer = 0
+}
+function scheduleQuickVoteClose() {
+  cancelQuickVoteClose()
+  quickVoteCloseTimer = window.setTimeout(() => closeQuickVote(), 180)
+}
+function updateQuickVotePosition() {
+  if (!quickVotePlayer.value || !quickVoteAnchor?.isConnected) return
+  const rect = quickVoteAnchor.getBoundingClientRect()
+  const edge = 8
+  const width = Math.min(360, window.innerWidth - edge * 2)
+  const height = quickVotePopoverEl.value?.offsetHeight || 174
+  const left = Math.min(
+    Math.max(edge, rect.left + rect.width / 2 - width / 2),
+    window.innerWidth - width - edge,
+  )
+  const roomBelow = window.innerHeight - rect.bottom
+  const top = roomBelow >= height + 12
+    ? rect.bottom + 8
+    : Math.max(edge, rect.top - height - 8)
+  quickVotePosition.value = { top: `${Math.round(top)}px`, left: `${Math.round(left)}px`, visibility: 'visible' }
+}
+async function loadQuickVote(player) {
+  const playerId = String(player.player_id)
+  const cached = quickVoteCache.get(playerId)
+  if (cached) {
+    quickVoteData.value = cached
+    return
+  }
+  const requestId = ++quickVoteRequest
+  quickVoteLoading.value = true
+  try {
+    const data = await api.playerCommunityRating(playerId, cup.value)
+    quickVoteCache.set(playerId, data)
+    if (requestId === quickVoteRequest && String(quickVotePlayer.value?.player_id) === playerId) {
+      quickVoteData.value = data
+      await nextTick()
+      updateQuickVotePosition()
+    }
+  } catch (e) {
+    if (requestId === quickVoteRequest && String(quickVotePlayer.value?.player_id) === playerId) {
+      quickVoteError.value = e.message || '今日投票状态暂时无法读取。'
+    }
+  } finally {
+    if (requestId === quickVoteRequest) quickVoteLoading.value = false
+  }
+}
+function openQuickVote(player, event) {
+  cancelQuickVoteClose()
+  const playerId = String(player.player_id)
+  const changed = String(quickVotePlayer.value?.player_id || '') !== playerId
+  quickVoteAnchor = event?.currentTarget || quickVoteAnchor
+  if (changed) {
+    quickVoteRequest += 1
+    quickVotePlayer.value = player
+    quickVoteData.value = quickVoteCache.get(playerId) || null
+    quickVoteLoading.value = false
+    quickVoteSubmitting.value = false
+    quickVoteError.value = ''
+  }
+  quickVotePosition.value = { ...quickVotePosition.value, visibility: 'hidden' }
+  nextTick(() => {
+    updateQuickVotePosition()
+    if (!quickVoteCache.has(playerId) && !quickVoteLoading.value) loadQuickVote(player)
+  })
+}
+function closeQuickVote(restoreFocus = false) {
+  cancelQuickVoteClose()
+  const anchor = quickVoteAnchor
+  quickVoteRequest += 1
+  quickVotePlayer.value = null
+  quickVoteData.value = null
+  quickVoteLoading.value = false
+  quickVoteSubmitting.value = false
+  quickVoteError.value = ''
+  quickVoteAnchor = null
+  if (restoreFocus && anchor?.isConnected) anchor.focus?.()
+}
+function handleQuickVoteFocusOut(event) {
+  const next = event.relatedTarget
+  if (next && (quickVotePopoverEl.value?.contains(next) || quickVoteAnchor?.contains?.(next))) return
+  scheduleQuickVoteClose()
+}
+function updatePlayerCommunityRating(playerId, data) {
+  const player = players.value.find((item) => String(item.player_id) === String(playerId))
+  if (!player) return
+  const consensus = data.consensus || {}
+  player.community_rating = {
+    status: consensus.status || 'collecting',
+    score: consensus.score ?? null,
+    raw_average: consensus.raw_average ?? null,
+    label: consensus.label ?? null,
+    total_votes: Number(data.total_votes || 0),
+    minimum_votes: Number(data.minimum_votes || 5),
+    method: consensus.method || 'bayesian_average',
+  }
+}
+async function submitQuickVote(score) {
+  const player = quickVotePlayer.value
+  if (!player || quickVoteSubmitting.value) return
+  const playerId = String(player.player_id)
+  quickVoteRequest += 1
+  quickVoteLoading.value = false
+  quickVoteSubmitting.value = true
+  quickVoteError.value = ''
+  try {
+    const data = await api.ratePlayer(playerId, cup.value, score)
+    quickVoteCache.set(playerId, data)
+    updatePlayerCommunityRating(playerId, data)
+    if (String(quickVotePlayer.value?.player_id) === playerId) quickVoteData.value = data
+    const selected = data.options?.find((option) => option.score === data.viewer_score)
+    quickVoteAnnouncement.value = `已给 ${displayName(player)} 投${selected?.label || ''}，今天内可修改。`
+    await nextTick()
+    updateQuickVotePosition()
+  } catch (e) {
+    if (String(quickVotePlayer.value?.player_id) === playerId) {
+      quickVoteError.value = e.message || '投票没有提交成功，请稍后重试。'
+    }
+  } finally {
+    if (String(quickVotePlayer.value?.player_id) === playerId) quickVoteSubmitting.value = false
+  }
+}
+function handleQuickVoteViewportChange() {
+  if (quickVotePlayer.value) updateQuickVotePosition()
+}
+function handleQuickVoteOutside(event) {
+  if (!quickVotePlayer.value) return
+  if (quickVotePopoverEl.value?.contains(event.target) || quickVoteAnchor?.contains?.(event.target)) return
+  closeQuickVote()
+}
 function uniqueTitles(list) {
   const seen = new Set()
   return (list || []).filter((title) => {
@@ -322,6 +548,8 @@ function uniqueTitles(list) {
   })
 }
 async function load() {
+  closeQuickVote()
+  quickVoteCache.clear()
   error.value = ''
   loading.value = true
   open.value = ''
@@ -340,6 +568,17 @@ async function load() {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  window.addEventListener('resize', handleQuickVoteViewportChange)
+  window.addEventListener('scroll', handleQuickVoteViewportChange, true)
+  document.addEventListener('pointerdown', handleQuickVoteOutside)
+})
+onBeforeUnmount(() => {
+  cancelQuickVoteClose()
+  window.removeEventListener('resize', handleQuickVoteViewportChange)
+  window.removeEventListener('scroll', handleQuickVoteViewportChange, true)
+  document.removeEventListener('pointerdown', handleQuickVoteOutside)
+})
 watch(() => [route.params.cup, route.params.day], load)
 </script>
