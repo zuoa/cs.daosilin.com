@@ -336,7 +336,8 @@ def api_seasons():
 
 
 @app.route('/api/v1/cup/<string:cup>')
-@cached_response(timeout=900, scopes=lambda: (season_scope(request.view_args['cup']), 'profiles'))
+@cached_response(timeout=900, scopes=lambda: (
+    season_scope(request.view_args['cup']), 'profiles', 'community-verdict-v2'))
 def api_cup(cup):
     day = request.args.get('day') or None
     players, cup_days = _build_cup_players(cup, day)

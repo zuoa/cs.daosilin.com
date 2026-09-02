@@ -615,7 +615,7 @@ const ratingConsensusText = computed(() => {
   const total = Number(communityRating.value?.total_votes || 0)
   if (!result) return ''
   if (result.status === 'collecting') return `已收集 ${total} 票，样本积累中`
-  return `社区共识：${result.label}（${Number(result.score).toFixed(2)}）· 共 ${total} 票`
+  return `社区共识：${result.label} · 加权分 ${Number(result.score).toFixed(2)} · 共 ${total} 票`
 })
 const matchDetailTitle = computed(() => matchDetail.value?.map_name || '比赛详情')
 const matchDetailSubtitle = computed(() => {

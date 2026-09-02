@@ -193,6 +193,7 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(payload['consensus']['score'], 4.4)
         self.assertEqual(payload['consensus']['raw_average'], 4.4)
         self.assertEqual(payload['consensus']['label'], '顶级')
+        self.assertEqual(payload['consensus']['label_method'], 'raw_average')
         self.assertEqual(payload['consensus']['method'], 'bayesian_average')
 
         updated = app.test_client().post(
@@ -222,9 +223,38 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(rating['status'], 'formed')
         self.assertEqual(rating['raw_average'], 5.0)
         self.assertEqual(rating['score'], 4.0)
-        self.assertEqual(rating['label'], '顶级')
+        self.assertEqual(rating['label'], '夯')
+        self.assertEqual(rating['label_method'], 'raw_average')
         self.assertEqual(rating['total_votes'], 5)
         self.assertEqual(rating['minimum_votes'], 5)
+
+    def test_community_label_follows_real_votes_not_weighted_prior(self):
+        today = date(2026, 9, 2)
+        for index in range(5):
+            PlayerCommunityRating.create(
+                player_id='p1', cup_name='season-one', voter_hash=f'low-{index}',
+                vote_date=today, score=1,
+            )
+        PlayerCommunityRating.create(
+            player_id='p1', cup_name='season-one', voter_hash='npc',
+            vote_date=today, score=2,
+        )
+        for index in range(10):
+            PlayerCommunityRating.create(
+                player_id='p2', cup_name='season-one', voter_hash=f'high-{index}',
+                vote_date=today, score=5,
+            )
+        cache.clear()
+
+        payload = self.client.get('/api/v1/cup/season-one').get_json()['data']
+        rating = next(
+            player['community_rating'] for player in payload['players']
+            if player['player_id'] == 'p1'
+        )
+        self.assertEqual(rating['raw_average'], 1.17)
+        self.assertEqual(rating['score'], 2.26)
+        self.assertEqual(rating['label'], '拉完了')
+        self.assertEqual(rating['label_method'], 'raw_average')
 
     def test_community_rating_vote_invalidates_cup_leaderboard_cache(self):
         cache.clear()

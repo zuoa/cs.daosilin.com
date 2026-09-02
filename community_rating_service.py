@@ -57,7 +57,10 @@ def _summary_from_counts(counts, prior_mean):
         'status': 'formed',
         'score': round(adjusted_average, 2),
         'raw_average': round(raw_average, 2),
-        'label': _label_for_average(adjusted_average),
+        # The weighted score is useful for stable leaderboard sorting, but the
+        # visible verdict should still describe what people actually voted.
+        'label': _label_for_average(raw_average),
+        'label_method': 'raw_average',
         'total_votes': total_votes,
         'minimum_votes': MINIMUM_RATINGS,
         'method': 'bayesian_average',

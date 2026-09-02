@@ -139,7 +139,7 @@
                         <span class="community-verdict" :class="{ formed: communityRatingReady(p) }">
                           <template v-if="communityRatingReady(p)">
                             <strong>{{ p.community_rating.label }}</strong>
-                            <span>{{ n2(p.community_rating.score) }} · {{ p.community_rating.total_votes }} 票</span>
+                            <span>加权 {{ n2(p.community_rating.score) }} · {{ p.community_rating.total_votes }} 票</span>
                           </template>
                           <template v-else>
                             <span>{{ communityRatingCount(p) ? '样本积累中' : '暂无投票' }}</span>
@@ -233,7 +233,7 @@
                   <span>社区票选</span>
                   <template v-if="communityRatingReady(p)">
                     <strong>{{ p.community_rating.label }}</strong>
-                    <small>{{ n2(p.community_rating.score) }} · {{ p.community_rating.total_votes }} 票</small>
+                    <small>加权 {{ n2(p.community_rating.score) }} · {{ p.community_rating.total_votes }} 票</small>
                   </template>
                   <template v-else>
                     <strong>{{ communityRatingCount(p) ? '样本积累中' : '等待首票' }}</strong>
@@ -501,6 +501,7 @@ function updatePlayerCommunityRating(playerId, data) {
     score: consensus.score ?? null,
     raw_average: consensus.raw_average ?? null,
     label: consensus.label ?? null,
+    label_method: consensus.label_method || 'raw_average',
     total_votes: Number(data.total_votes || 0),
     minimum_votes: Number(data.minimum_votes || 5),
     method: consensus.method || 'bayesian_average',
