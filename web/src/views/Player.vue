@@ -254,56 +254,6 @@
           </div>
         </section>
 
-        <section class="panel player-section player-matches-section">
-          <div class="panel-header">
-            <h2>比赛记录</h2>
-            <span class="result-count">{{ matchRecords.length }} 场</span>
-          </div>
-          <div v-if="matchRecords.length" class="table-scroll">
-            <table class="data-table player-match-table">
-              <thead>
-                <tr>
-                  <th>比赛时间</th><th>地图</th><th class="player-match-score-heading">对阵 / 比分</th><th>结果</th>
-                  <th class="num">K / D / A</th><th class="num">Rating</th><th class="num">ADR</th><th class="num">KAST</th><th class="player-match-open-heading"><span class="sr-only">查看详情</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="match in matchRecords"
-                  :key="match.match_id"
-                  class="player-match-row"
-                  tabindex="0"
-                  title="查看比赛详情"
-                  @click="openMatch(match)"
-                  @keydown.enter.prevent="openMatch(match)"
-                  @keydown.space.prevent="openMatch(match)"
-                >
-                  <td class="player-match-time"><strong>{{ formatMatchDate(match) }}</strong><small>{{ formatMatchClock(match.start_time) }}</small></td>
-                  <td><strong>{{ match.map_name || '未知地图' }}</strong><small>{{ match.game_mode || match.map_name_en || '—' }} · Demo {{ match.demo_analysis?.status || 'pending' }}</small></td>
-                  <td class="player-match-score-cell">
-                    <div class="player-match-score">
-                      <span>{{ match.team1_name || '队伍 A' }}</span>
-                      <strong>{{ match.team1_score ?? '—' }} : {{ match.team2_score ?? '—' }}</strong>
-                      <span>{{ match.team2_name || '队伍 B' }}</span>
-                    </div>
-                  </td>
-                  <td><span class="match-result" :class="Number(match.win) ? 'win' : 'loss'">{{ Number(match.win) ? '胜' : '负' }}</span></td>
-                  <td class="num mono-data">{{ match.kill ?? 0 }} / {{ match.death ?? 0 }} / {{ match.assist ?? 0 }}</td>
-                  <td class="num"><strong class="rating-value">{{ n2(match.pw_rating || match.rating) }}</strong></td>
-                  <td class="num mono-data">{{ Number(match.adpr || 0).toFixed(0) }}</td>
-                  <td class="num mono-data">{{ pct(match.kast_ratio) }}</td>
-                  <td class="player-match-open">
-                    <button class="button text-button small" type="button" :aria-label="`查看 ${match.map_name || '比赛'} 详情`" @click.stop="openMatch(match)">
-                      详情<AppIcon name="chevronRight" />
-                    </button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div v-else class="empty-state compact"><span><AppIcon name="database" /></span><h3>暂无比赛记录</h3><p>该统计范围内还没有可展示的逐场数据。</p></div>
-        </section>
-
         <section class="panel player-section">
           <div class="panel-header">
             <h2>地图表现</h2>
@@ -429,6 +379,56 @@
         </section>
 
         <p v-if="lastCrawl" class="player-update-note"><AppIcon name="activity" />数据更新于 {{ formatTime(lastCrawl) }}</p>
+
+        <section class="panel player-section player-matches-section">
+          <div class="panel-header">
+            <h2>比赛记录</h2>
+            <span class="result-count">{{ matchRecords.length }} 场</span>
+          </div>
+          <div v-if="matchRecords.length" class="table-scroll">
+            <table class="data-table player-match-table">
+              <thead>
+                <tr>
+                  <th>比赛时间</th><th>地图</th><th class="player-match-score-heading">对阵 / 比分</th><th>结果</th>
+                  <th class="num">K / D / A</th><th class="num">Rating</th><th class="num">ADR</th><th class="num">KAST</th><th class="player-match-open-heading"><span class="sr-only">查看详情</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="match in matchRecords"
+                  :key="match.match_id"
+                  class="player-match-row"
+                  tabindex="0"
+                  title="查看比赛详情"
+                  @click="openMatch(match)"
+                  @keydown.enter.prevent="openMatch(match)"
+                  @keydown.space.prevent="openMatch(match)"
+                >
+                  <td class="player-match-time"><strong>{{ formatMatchDate(match) }}</strong><small>{{ formatMatchClock(match.start_time) }}</small></td>
+                  <td><strong>{{ match.map_name || '未知地图' }}</strong><small>{{ match.game_mode || match.map_name_en || '—' }} · Demo {{ match.demo_analysis?.status || 'pending' }}</small></td>
+                  <td class="player-match-score-cell">
+                    <div class="player-match-score">
+                      <span>{{ match.team1_name || '队伍 A' }}</span>
+                      <strong>{{ match.team1_score ?? '—' }} : {{ match.team2_score ?? '—' }}</strong>
+                      <span>{{ match.team2_name || '队伍 B' }}</span>
+                    </div>
+                  </td>
+                  <td><span class="match-result" :class="Number(match.win) ? 'win' : 'loss'">{{ Number(match.win) ? '胜' : '负' }}</span></td>
+                  <td class="num mono-data">{{ match.kill ?? 0 }} / {{ match.death ?? 0 }} / {{ match.assist ?? 0 }}</td>
+                  <td class="num"><strong class="rating-value">{{ n2(match.pw_rating || match.rating) }}</strong></td>
+                  <td class="num mono-data">{{ Number(match.adpr || 0).toFixed(0) }}</td>
+                  <td class="num mono-data">{{ pct(match.kast_ratio) }}</td>
+                  <td class="player-match-open">
+                    <button class="button text-button small" type="button" :aria-label="`查看 ${match.map_name || '比赛'} 详情`" @click.stop="openMatch(match)">
+                      详情<AppIcon name="chevronRight" />
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-else class="empty-state compact"><span><AppIcon name="database" /></span><h3>暂无比赛记录</h3><p>该统计范围内还没有可展示的逐场数据。</p></div>
+        </section>
       </template>
     </main>
 
