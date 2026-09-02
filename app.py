@@ -42,6 +42,10 @@ from player_summary_service import (admin_row as player_summary_admin_row,
 from portrait_service import (PortraitError, clamp_transform, configured as portrait_configured,
                               delete_portrait_files, portrait_file_path,
                               portrait_payload, save_portrait)
+from community_rating_service import (COOKIE_MAX_AGE as RATING_COOKIE_MAX_AGE,
+                                      COOKIE_NAME as RATING_COOKIE_NAME,
+                                      hash_voter, new_voter, rating_payload,
+                                      read_voter_id, save_daily_rating)
 from utils import success, error
 
 app = Flask(__name__)
@@ -352,6 +356,56 @@ def api_player_detail(player_id):
     if err:
         return error(404, err)
     return success(payload)
+
+
+def _community_rating_target_exists(player_id, cup):
+    return bool(
+        Player.get_or_none(Player.player_id == player_id)
+        and Season.get_or_none(Season.cup_name == cup)
+        and MatchPlayer.select().where(
+            MatchPlayer.player_id == player_id,
+            MatchPlayer.cup_name == cup,
+        ).exists()
+    )
+
+
+@app.route('/api/v1/player/<string:player_id>/community-rating', methods=['GET', 'POST'])
+def api_player_community_rating(player_id):
+    cup = (request.args.get('cup') or '').strip()
+    if not cup:
+        return error(400, "参数 cup 不能为空"), 400
+    if not _community_rating_target_exists(player_id, cup):
+        return error(404, "未找到该选手的赛季数据"), 404
+
+    voter_id = read_voter_id(app.secret_key, request.cookies.get(RATING_COOKIE_NAME))
+    voter_token = None
+    if request.method == 'POST':
+        body = request.get_json(silent=True) or {}
+        score = body.get('score')
+        if isinstance(score, bool) or not isinstance(score, int) or score not in range(1, 6):
+            return error(400, "score 必须是 1 到 5 的整数"), 400
+        if not voter_id:
+            voter_id, voter_token = new_voter(app.secret_key)
+        payload = save_daily_rating(
+            player_id, cup, hash_voter(app.secret_key, voter_id), score,
+        )
+    else:
+        voter_hash = hash_voter(app.secret_key, voter_id) if voter_id else None
+        payload = rating_payload(player_id, cup, voter_hash)
+
+    response = success(payload)
+    if voter_token:
+        response.set_cookie(
+            RATING_COOKIE_NAME,
+            voter_token,
+            max_age=RATING_COOKIE_MAX_AGE,
+            httponly=True,
+            secure=request.is_secure,
+            samesite='Lax',
+            path='/',
+        )
+    response.headers['Cache-Control'] = 'no-store'
+    return response
 
 
 @app.route('/api/v1/players')

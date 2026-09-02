@@ -353,6 +353,22 @@ class PlayerPerfectRankHistory(BaseModel, CRUDMixin):
         return list(query.dicts())
 
 
+class PlayerCommunityRating(BaseModel, CRUDMixin):
+    """One anonymous browser's rating for a player on one Shanghai date."""
+    player_id = CharField(max_length=64)
+    cup_name = CharField(max_length=128)
+    voter_hash = CharField(max_length=64)
+    vote_date = DateField(index=True)
+    score = SmallIntegerField()
+
+    class Meta:
+        table_name = 'player_community_rating'
+        indexes = (
+            (('player_id', 'cup_name', 'voter_hash', 'vote_date'), True),
+            (('player_id', 'cup_name', 'score'), False),
+        )
+
+
 def backfill_current_perfect_rank_history() -> int:
     """Use the last known rank as the initial sample for an empty history table."""
     if PlayerPerfectRankHistory.select().exists():
@@ -1716,6 +1732,7 @@ def create_tables():
     """Create database tables if they don't exist, then apply migrations."""
     with db:
         db.create_tables([Config, Match, MatchPlayer, Player, PlayerPerfectRankHistory,
+                          PlayerCommunityRating,
                           CupDayChampion, PlayerTitle,
                           PlayerSeasonSummary,
                           DemoCredential, DemoAnalysis, DemoPlayerStats, Season, SeasonRoster,

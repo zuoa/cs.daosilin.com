@@ -96,6 +96,63 @@
           </div>
         </section>
 
+        <section class="player-community-rating" aria-labelledby="community-rating-title">
+          <div class="community-rating-heading">
+            <span class="summary-kicker"><AppIcon name="target" />COMMUNITY RATING</span>
+            <h2 id="community-rating-title">给本赛季表现定个档</h2>
+            <p id="community-rating-guidance">只评赛场表现，不上升本人；凭第一感觉点一下。</p>
+            <small>{{ cupAlias }}整季 · 每天一票，当天可改</small>
+          </div>
+
+          <div v-if="ratingLoading" class="community-rating-skeleton" aria-live="polite" aria-label="正在读取社区评分">
+            <span v-for="index in 5" :key="index"></span>
+          </div>
+          <template v-else-if="communityRating">
+            <fieldset class="community-rating-options" aria-describedby="community-rating-guidance">
+              <legend class="sr-only">选择对该选手本赛季表现的评价</legend>
+              <label
+                v-for="option in communityRating.options"
+                :key="option.score"
+                :class="{ active: communityRating.viewer_score === option.score, submitting: ratingSubmitting }"
+              >
+                <input
+                  type="radio"
+                  :name="`community-rating-${id}-${cup}`"
+                  :value="option.score"
+                  :checked="communityRating.viewer_score === option.score"
+                  :disabled="ratingSubmitting"
+                  @change="submitCommunityRating(option.score)"
+                >
+                <strong>{{ option.label }}</strong>
+                <small>{{ option.hint }}</small>
+              </label>
+            </fieldset>
+            <p class="community-rating-mobile-hint">{{ activeRatingHint }}</p>
+
+            <div v-if="communityRating.results_visible" class="community-rating-results">
+              <div class="community-rating-result-copy">
+                <span><strong>今日已投「{{ selectedRating?.label }}」</strong><small>今天内仍可修改选择</small></span>
+                <p>{{ ratingConsensusText }}</p>
+              </div>
+              <ol class="community-rating-distribution" aria-label="社区评分分布">
+                <li
+                  v-for="option in communityRating.options"
+                  :key="option.score"
+                  :class="{ selected: communityRating.viewer_score === option.score }"
+                >
+                  <span>{{ option.label }}</span>
+                  <strong>{{ Number(option.percentage || 0).toFixed(1) }}%</strong>
+                  <small>{{ option.count }} 票</small>
+                </li>
+              </ol>
+            </div>
+            <p v-else class="community-rating-footnote">每天可投一次，提交后即可查看社区结果。</p>
+          </template>
+
+          <p v-if="ratingError" class="community-rating-error" role="alert"><AppIcon name="alert" />{{ ratingError }}</p>
+          <p class="sr-only" aria-live="polite">{{ ratingAnnouncement }}</p>
+        </section>
+
         <section v-if="seasonSummary" class="panel player-season-summary" aria-labelledby="season-summary-title">
           <div v-if="seasonSummary.status === 'pending'" class="season-summary-pending" aria-live="polite">
             <span class="loader small"></span>
@@ -512,6 +569,11 @@ const matchRecords = ref([])
 const killMatchups = ref([])
 const matchupSort = ref('ratio')
 const seasonSummary = ref(null)
+const communityRating = ref(null)
+const ratingLoading = ref(true)
+const ratingSubmitting = ref(false)
+const ratingError = ref('')
+const ratingAnnouncement = ref('')
 const matchDetailOpen = ref(false)
 const matchDetail = ref(null)
 const matchDetailLoading = ref(false)
@@ -530,8 +592,21 @@ let radarChart
 let lineChart
 let rankLineChart
 let matchDetailRequest = 0
+let ratingRequest = 0
 
 const playerName = computed(() => player.value?.alias_name || player.value?.nickname || player.value?.player_id || '选手')
+const selectedRating = computed(() => communityRating.value?.options?.find(
+  (option) => option.score === communityRating.value?.viewer_score,
+) || null)
+const activeRatingHint = computed(() => selectedRating.value?.hint || '选一个最符合你直觉的档位')
+const ratingConsensusText = computed(() => {
+  const result = communityRating.value?.consensus
+  const total = Number(communityRating.value?.total_votes || 0)
+  if (!result) return ''
+  if (result.status === 'collecting') return `已收集 ${total} 票，样本积累中`
+  if (result.status === 'tied') return `已收集 ${total} 票，意见还没统一`
+  return `社区共识：${result.label} · 共 ${total} 票`
+})
 const matchDetailTitle = computed(() => matchDetail.value?.map_name || '比赛详情')
 const matchDetailSubtitle = computed(() => {
   if (!matchDetail.value) return '查看双方选手的当场数据。'
@@ -758,6 +833,37 @@ async function openMatch(match) {
     if (requestId === matchDetailRequest) matchDetailLoading.value = false
   }
 }
+async function loadCommunityRating() {
+  const requestId = ++ratingRequest
+  communityRating.value = null
+  ratingLoading.value = true
+  ratingError.value = ''
+  ratingAnnouncement.value = ''
+  try {
+    const data = await api.playerCommunityRating(id.value, cup.value)
+    if (requestId === ratingRequest) communityRating.value = data
+  } catch (e) {
+    if (requestId === ratingRequest) ratingError.value = e.message || '社区评分暂时无法读取。'
+  } finally {
+    if (requestId === ratingRequest) ratingLoading.value = false
+  }
+}
+async function submitCommunityRating(score) {
+  if (ratingSubmitting.value) return
+  ratingSubmitting.value = true
+  ratingError.value = ''
+  ratingAnnouncement.value = ''
+  try {
+    const data = await api.ratePlayer(id.value, cup.value, score)
+    communityRating.value = data
+    const selected = data.options?.find((option) => option.score === data.viewer_score)
+    ratingAnnouncement.value = `今天已投${selected?.label || ''}，今天内可以修改。`
+  } catch (e) {
+    ratingError.value = e.message || '投票没有提交成功，请稍后重试。'
+  } finally {
+    ratingSubmitting.value = false
+  }
+}
 function closeMatch() {
   matchDetailRequest += 1
   matchDetailOpen.value = false
@@ -907,6 +1013,12 @@ async function load() {
   rankLineChart = null
   error.value = ''
   exportError.value = ''
+  ratingRequest += 1
+  communityRating.value = null
+  ratingLoading.value = true
+  ratingSubmitting.value = false
+  ratingError.value = ''
+  ratingAnnouncement.value = ''
   loading.value = true
   try {
     const data = await api.player(id.value, cup.value, day.value || null)
@@ -931,6 +1043,7 @@ async function load() {
     loading.value = false
     await nextTick()
     drawCharts()
+    loadCommunityRating()
   } catch (e) {
     error.value = e.message
   } finally {

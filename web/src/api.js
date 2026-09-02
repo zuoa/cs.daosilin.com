@@ -32,6 +32,13 @@ export const api = {
     const qs = q.toString()
     return request(`/api/v1/player/${encodeURIComponent(id)}${qs ? `?${qs}` : ''}`)
   },
+  playerCommunityRating: (id, cup) => request(
+    `/api/v1/player/${encodeURIComponent(id)}/community-rating?${new URLSearchParams({ cup })}`,
+  ),
+  ratePlayer: (id, cup, score) => request(
+    `/api/v1/player/${encodeURIComponent(id)}/community-rating?${new URLSearchParams({ cup })}`,
+    { method: 'POST', body: JSON.stringify({ score }) },
+  ),
   match: (matchId, cup) => request(`/api/v1/match?${new URLSearchParams({ match_id: matchId, cup })}`),
   login: (body) => request('/api/admin/login', { method: 'POST', body: JSON.stringify(body) }),
   logout: () => request('/api/admin/logout', { method: 'POST' }),

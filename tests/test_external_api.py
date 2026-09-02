@@ -4,7 +4,7 @@ import shutil
 import tempfile
 import unittest
 import json
-from datetime import datetime
+from datetime import date, datetime
 from unittest.mock import patch
 
 
@@ -19,7 +19,7 @@ from app import app  # noqa: E402
 from cache_service import cache, invalidate_season  # noqa: E402
 from auth import EXTERNAL_TOKEN_HASH_KEY, EXTERNAL_TOKEN_HINT_KEY  # noqa: E402
 from database import (Config, CupDayChampion, Match, MatchPlayer, MatchSelection,
-                      Player, PlayerSeasonSummary, PlayerTitle, Season,
+                      Player, PlayerCommunityRating, PlayerSeasonSummary, PlayerTitle, Season,
                       SeasonRoster, db)  # noqa: E402
 from peewee import BooleanField, FloatField, IntegerField  # noqa: E402
 from scheduler import set_crawl_status  # noqa: E402
@@ -133,6 +133,83 @@ class ExternalPlayersApiTest(unittest.TestCase):
     def setUp(self):
         self.client = app.test_client()
         self.auth = {'Authorization': 'Bearer test-token'}
+        PlayerCommunityRating.delete().execute()
+
+    def test_community_rating_is_hidden_until_today_vote(self):
+        response = self.client.get(
+            '/api/v1/player/p1/community-rating?cup=season-one',
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()['data']
+        self.assertFalse(payload['voted_today'])
+        self.assertFalse(payload['results_visible'])
+        self.assertIsNone(payload['total_votes'])
+        self.assertNotIn('count', payload['options'][0])
+
+    def test_community_rating_same_day_updates_instead_of_adding(self):
+        first = self.client.post(
+            '/api/v1/player/p1/community-rating?cup=season-one',
+            json={'score': 5},
+        )
+        self.assertEqual(first.status_code, 200)
+        self.assertIn('cs_community_voter=', first.headers.get('Set-Cookie', ''))
+        self.assertEqual(first.get_json()['data']['total_votes'], 1)
+
+        changed = self.client.post(
+            '/api/v1/player/p1/community-rating?cup=season-one',
+            json={'score': 2},
+        )
+        payload = changed.get_json()['data']
+        self.assertEqual(payload['viewer_score'], 2)
+        self.assertEqual(payload['total_votes'], 1)
+        self.assertEqual(PlayerCommunityRating.select().count(), 1)
+
+    def test_community_rating_allows_one_new_vote_next_day(self):
+        with patch('community_rating_service.rating_today', return_value=date(2026, 9, 2)):
+            self.client.post(
+                '/api/v1/player/p1/community-rating?cup=season-one',
+                json={'score': 4},
+            )
+        with patch('community_rating_service.rating_today', return_value=date(2026, 9, 3)):
+            response = self.client.post(
+                '/api/v1/player/p1/community-rating?cup=season-one',
+                json={'score': 5},
+            )
+        payload = response.get_json()['data']
+        self.assertEqual(payload['viewer_score'], 5)
+        self.assertEqual(payload['total_votes'], 2)
+        self.assertEqual(PlayerCommunityRating.select().count(), 2)
+
+    def test_community_rating_consensus_uses_independent_browsers(self):
+        payload = None
+        for score in (4, 4, 4, 5, 5):
+            response = app.test_client().post(
+                '/api/v1/player/p1/community-rating?cup=season-one',
+                json={'score': score},
+            )
+            payload = response.get_json()['data']
+        self.assertEqual(payload['total_votes'], 5)
+        self.assertEqual(payload['consensus'], {
+            'status': 'formed', 'score': 4, 'label': '顶级',
+        })
+
+        tied = app.test_client().post(
+            '/api/v1/player/p1/community-rating?cup=season-one',
+            json={'score': 5},
+        ).get_json()['data']
+        self.assertEqual(tied['total_votes'], 6)
+        self.assertEqual(tied['consensus']['status'], 'tied')
+
+    def test_community_rating_validates_score_and_target(self):
+        invalid_score = self.client.post(
+            '/api/v1/player/p1/community-rating?cup=season-one',
+            json={'score': 6},
+        )
+        self.assertEqual(invalid_score.status_code, 400)
+        missing_target = self.client.get(
+            '/api/v1/player/missing/community-rating?cup=season-one',
+        )
+        self.assertEqual(missing_target.status_code, 404)
 
     def test_token_is_required(self):
         response = self.client.get('/api/v1/external/players?season=all')

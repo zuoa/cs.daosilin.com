@@ -4,7 +4,7 @@ from datetime import datetime
 from ajlog import logger
 from config import ADMIN_PASSWORD, ADMIN_USERNAME
 from database import (AdminUser, DemoAnalysis, DemoCredential, DemoPlayerStats,
-                      PlayerPerfectRankHistory, PlayerSeasonSummary,
+                      PlayerCommunityRating, PlayerPerfectRankHistory, PlayerSeasonSummary,
                       SchemaMigration, _add_column, _column_exists, _table_exists,
                       backfill_current_perfect_rank_history, db, is_postgres)
 
@@ -188,6 +188,11 @@ def _m016_player_portrait():
     logger.info('player 人物照片与构图字段已补齐')
 
 
+def _m017_player_community_rating():
+    db.create_tables([PlayerCommunityRating], safe=True)
+    logger.info('选手社区每日评分表已创建')
+
+
 MIGRATIONS = [
     ('001_player_in_library', _m001_player_in_library),
     ('002_season_hit_ratio', _m002_season_hit_ratio),
@@ -205,6 +210,7 @@ MIGRATIONS = [
     ('014_player_perfect_rank_stars', _m014_player_perfect_rank_stars),
     ('015_api_performance_indexes', _m015_api_performance_indexes),
     ('016_player_portrait', _m016_player_portrait),
+    ('017_player_community_rating', _m017_player_community_rating),
 ]
 
 
