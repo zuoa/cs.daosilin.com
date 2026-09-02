@@ -457,6 +457,36 @@
       @close="closeMatch"
     >
       <div v-if="matchDetail" class="match-detail public-match-detail">
+        <div class="match-detail-tabs" role="tablist" aria-label="比赛详情视图" @keydown="handleMatchDetailTabKeydown">
+          <button
+            id="public-match-info-tab"
+            type="button"
+            role="tab"
+            :aria-selected="matchDetailTab === 'info'"
+            aria-controls="public-match-info-panel"
+            :tabindex="matchDetailTab === 'info' ? 0 : -1"
+            :class="{ active: matchDetailTab === 'info' }"
+            @click="matchDetailTab = 'info'"
+          >比赛信息</button>
+          <button
+            id="public-match-matchup-tab"
+            type="button"
+            role="tab"
+            :aria-selected="matchDetailTab === 'matchup'"
+            aria-controls="public-match-matchup-panel"
+            :tabindex="matchDetailTab === 'matchup' ? 0 : -1"
+            :class="{ active: matchDetailTab === 'matchup' }"
+            @click="matchDetailTab = 'matchup'"
+          >对位详情</button>
+        </div>
+
+        <section
+          v-if="matchDetailTab === 'info'"
+          id="public-match-info-panel"
+          class="match-detail-tab-panel"
+          role="tabpanel"
+          aria-labelledby="public-match-info-tab"
+        >
         <section
           class="match-scoreboard"
           :style="matchDetail.map_url ? { '--map-image': `url(${matchDetail.map_url})` } : {}"
@@ -539,6 +569,27 @@
           </section>
           <div v-if="!matchTeamBoards.length" class="empty-state compact"><span><AppIcon name="database" /></span><h3>暂无选手数据</h3><p>这场比赛暂时没有可展示的详细数据。</p></div>
         </template>
+        </section>
+
+        <section
+          v-else
+          id="public-match-matchup-panel"
+          class="match-detail-tab-panel"
+          role="tabpanel"
+          aria-labelledby="public-match-matchup-tab"
+        >
+          <div v-if="matchDetailLoading" class="loading-state compact"><span class="loader"></span><p>正在读取对位数据…</p></div>
+          <div v-else-if="matchDetailError" class="inline-alert error" role="alert">
+            <AppIcon name="alert" />
+            <span><strong>无法读取对位详情</strong>{{ matchDetailError }}</span>
+          </div>
+          <MatchupMatrix
+            v-else
+            :players="matchDetail.players || []"
+            :matrix="matchDetail.matchup_matrix || {}"
+            :current-player-id="player?.player_id || ''"
+          />
+        </section>
       </div>
     </AppModal>
 
@@ -556,6 +607,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { api, avatarUrl } from '../api'
 import AppModal from '../components/AppModal.vue'
 import AppIcon from '../components/AppIcon.vue'
+import MatchupMatrix from '../components/MatchupMatrix.vue'
 import PlayerAvatar from '../components/PlayerAvatar.vue'
 import PlayerShowcaseCard from '../components/PlayerShowcaseCard.vue'
 import PerfectRankBadge from '../components/PerfectRankBadge.vue'
@@ -589,6 +641,7 @@ const matchDetailOpen = ref(false)
 const matchDetail = ref(null)
 const matchDetailLoading = ref(false)
 const matchDetailError = ref('')
+const matchDetailTab = ref('info')
 const lastCrawl = ref('')
 const error = ref('')
 const loading = ref(true)
@@ -832,6 +885,7 @@ async function openMatch(match) {
   const requestId = ++matchDetailRequest
   matchDetailOpen.value = true
   matchDetail.value = match
+  matchDetailTab.value = 'info'
   matchDetailLoading.value = true
   matchDetailError.value = ''
   try {
@@ -880,6 +934,20 @@ function closeMatch() {
   matchDetail.value = null
   matchDetailLoading.value = false
   matchDetailError.value = ''
+  matchDetailTab.value = 'info'
+}
+function handleMatchDetailTabKeydown(event) {
+  const tabs = ['info', 'matchup']
+  const current = tabs.indexOf(matchDetailTab.value)
+  let next = current
+  if (event.key === 'ArrowRight') next = (current + 1) % tabs.length
+  else if (event.key === 'ArrowLeft') next = (current - 1 + tabs.length) % tabs.length
+  else if (event.key === 'Home') next = 0
+  else if (event.key === 'End') next = tabs.length - 1
+  else return
+  event.preventDefault()
+  matchDetailTab.value = tabs[next]
+  nextTick(() => document.getElementById(`public-match-${tabs[next]}-tab`)?.focus())
 }
 function uniqueTitles(list) {
   const seen = new Set()

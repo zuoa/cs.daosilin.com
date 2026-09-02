@@ -1,3 +1,4 @@
+import json
 import os
 import secrets
 import threading
@@ -738,6 +739,45 @@ _MATCH_PLAYER_DETAIL_FIELDS = (
 )
 
 
+def _matchup_matrix(player_rows):
+    """Build a row-player perspective matrix from per-player kill maps."""
+    player_ids = [str(row.player_id) for row in player_rows]
+    player_id_set = set(player_ids)
+    directed_kills = {player_id: {} for player_id in player_ids}
+
+    for row in player_rows:
+        attacker_id = str(row.player_id)
+        try:
+            values = json.loads(row.kill_map or '{}')
+        except (TypeError, ValueError):
+            values = {}
+        if not isinstance(values, dict):
+            values = {}
+        for victim_id, kills in values.items():
+            victim_id = str(victim_id)
+            if victim_id not in player_id_set or victim_id == attacker_id:
+                continue
+            try:
+                count = max(0, int(kills or 0))
+            except (TypeError, ValueError):
+                count = 0
+            directed_kills[attacker_id][victim_id] = count
+
+    matrix = {}
+    for player_id in player_ids:
+        matrix[player_id] = {}
+        for opponent_id in player_ids:
+            if opponent_id == player_id:
+                continue
+            kills = directed_kills[player_id].get(opponent_id, 0)
+            deaths = directed_kills[opponent_id].get(player_id, 0)
+            matrix[player_id][opponent_id] = {
+                'kills': kills,
+                'deaths': deaths,
+            }
+    return matrix
+
+
 def _iso_dt(value):
     if isinstance(value, datetime):
         return value.isoformat(timespec='seconds')
@@ -798,6 +838,7 @@ def _match_detail_payload(cup, match_id):
         'team2_half_score': match.get('team2_half_score'),
         'team2_extra_score': match.get('team2_extra_score'),
         'players': players,
+        'matchup_matrix': _matchup_matrix(player_rows),
     }
 
 

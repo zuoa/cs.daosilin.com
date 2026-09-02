@@ -747,6 +747,40 @@ class ExternalPlayersApiTest(unittest.TestCase):
         finally:
             hidden.delete_instance()
 
+    def test_public_match_detail_includes_player_matchup_matrix(self):
+        cup = 'season-two'
+        match_id = 'm-matchup-matrix'
+        Match.create(
+            match_id=match_id, map_name='炙热沙城', map_name_en='de_dust2',
+            start_time=datetime(2025, 2, 4, 20, 0, 0),
+            end_time=datetime(2025, 2, 4, 20, 40, 0), duration=2400,
+            win_team=1, team1_name='Alpha', team1_score=13, team1_half_score=7,
+            team2_name='Bravo', team2_score=10, team2_half_score=5,
+            game_mode='MR12', cup_name=cup, play_day='20250101',
+        )
+        MatchSelection.create(
+            match_id=match_id, season_cup_name=cup, status='approved',
+            source_type='custom', play_day='20250101', roster_hit_count=2,
+        )
+        create_match_player(
+            match_id, 'p1', cup, team=1, kill_map=json.dumps({'p2': 7, 'outsider': 9}),
+        )
+        create_match_player(
+            match_id, 'p2', cup, team=2, kill_map=json.dumps({'p1': 4}),
+        )
+        try:
+            response = self.client.get(f'/api/v1/match?cup={cup}&match_id={match_id}')
+            self.assertEqual(response.status_code, 200)
+            matrix = response.get_json()['data']['matchup_matrix']
+            self.assertEqual(matrix['p1']['p2'], {'kills': 7, 'deaths': 4})
+            self.assertEqual(matrix['p2']['p1'], {'kills': 4, 'deaths': 7})
+            self.assertNotIn('outsider', matrix['p1'])
+            self.assertNotIn('p1', matrix['p1'])
+        finally:
+            MatchPlayer.delete().where(MatchPlayer.match_id == match_id).execute()
+            MatchSelection.delete().where(MatchSelection.match_id == match_id).execute()
+            Match.delete().where(Match.match_id == match_id).execute()
+
     def test_public_match_detail_uses_player_profile_avatar(self):
         cup = 'season-two'
         match_id = 'm-avatar-overlay'
