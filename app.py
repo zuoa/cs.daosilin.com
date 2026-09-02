@@ -44,7 +44,8 @@ from portrait_service import (PortraitError, clamp_transform, configured as port
                               portrait_payload, save_portrait)
 from community_rating_service import (COOKIE_MAX_AGE as RATING_COOKIE_MAX_AGE,
                                       COOKIE_NAME as RATING_COOKIE_NAME,
-                                      hash_voter, new_voter, rating_payload,
+                                      community_rating_summaries, hash_voter,
+                                      new_voter, rating_payload,
                                       read_voter_id, save_daily_rating)
 from utils import success, error
 
@@ -192,6 +193,11 @@ def _build_cup_players(cup, day=None):
     else:
         for player in player_data:
             player['titles'] = stored_titles.get(str(player['player_id']), [])
+        community_ratings = community_rating_summaries(
+            cup, [player['player_id'] for player in player_data],
+        )
+        for player in player_data:
+            player['community_rating'] = community_ratings.get(str(player['player_id']))
     return player_data, MatchPlayer.get_cup_day_set(cup)
 
 
@@ -389,6 +395,7 @@ def api_player_community_rating(player_id):
         payload = save_daily_rating(
             player_id, cup, hash_voter(app.secret_key, voter_id), score,
         )
+        invalidate_season(cup, external=False)
     else:
         voter_hash = hash_voter(app.secret_key, voter_id) if voter_id else None
         payload = rating_payload(player_id, cup, voter_hash)

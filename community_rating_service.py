@@ -2,6 +2,7 @@
 
 import hashlib
 import hmac
+import math
 import secrets
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -24,6 +25,77 @@ RATING_OPTIONS = (
     (2, 'NPC', '中规中矩，正常发挥'),
     (1, '拉完了', '这季状态不在线'),
 )
+MINIMUM_RATINGS = 5
+PRIOR_WEIGHT = 5
+NEUTRAL_PRIOR = 3.0
+
+
+def _label_for_average(value):
+    """Map a continuous 1–5 result to the nearest community tier."""
+    score = max(1, min(5, math.floor(float(value) + 0.5)))
+    return next(label for option_score, label, _ in RATING_OPTIONS if option_score == score)
+
+
+def _summary_from_counts(counts, prior_mean):
+    total_votes = sum(counts.values())
+    if total_votes < MINIMUM_RATINGS:
+        return {
+            'status': 'collecting',
+            'score': None,
+            'label': None,
+            'total_votes': total_votes,
+            'minimum_votes': MINIMUM_RATINGS,
+            'method': 'bayesian_average',
+        }
+
+    score_sum = sum(score * count for score, count in counts.items())
+    raw_average = score_sum / total_votes
+    adjusted_average = (
+        score_sum + PRIOR_WEIGHT * prior_mean
+    ) / (total_votes + PRIOR_WEIGHT)
+    return {
+        'status': 'formed',
+        'score': round(adjusted_average, 2),
+        'raw_average': round(raw_average, 2),
+        'label': _label_for_average(adjusted_average),
+        'total_votes': total_votes,
+        'minimum_votes': MINIMUM_RATINGS,
+        'method': 'bayesian_average',
+    }
+
+
+def community_rating_summaries(cup_name, player_ids):
+    """Return stable, season-relative rating summaries for leaderboard rows."""
+    player_ids = tuple(dict.fromkeys(str(player_id) for player_id in player_ids))
+    if not player_ids:
+        return {}
+
+    counts_by_player = {
+        player_id: {score: 0 for score, _, _ in RATING_OPTIONS}
+        for player_id in player_ids
+    }
+    rows = (PlayerCommunityRating
+            .select(PlayerCommunityRating.player_id,
+                    PlayerCommunityRating.score,
+                    fn.COUNT(PlayerCommunityRating.id).alias('count'))
+            .where(PlayerCommunityRating.cup_name == cup_name)
+            .group_by(PlayerCommunityRating.player_id, PlayerCommunityRating.score))
+
+    cup_score_sum = 0
+    cup_vote_count = 0
+    for row in rows:
+        count = int(row.count or 0)
+        cup_score_sum += int(row.score) * count
+        cup_vote_count += count
+        player_counts = counts_by_player.get(str(row.player_id))
+        if player_counts is not None and row.score in player_counts:
+            player_counts[row.score] = count
+
+    prior_mean = cup_score_sum / cup_vote_count if cup_vote_count else NEUTRAL_PRIOR
+    return {
+        player_id: _summary_from_counts(counts, prior_mean)
+        for player_id, counts in counts_by_player.items()
+    }
 
 
 def rating_today():
@@ -121,17 +193,11 @@ def rating_payload(player_id, cup_name, voter_hash=None, reveal=False):
 
     consensus = None
     if results_visible:
-        if total_votes < 5:
-            consensus = {'status': 'collecting', 'score': None, 'label': None}
-        else:
-            highest = max(counts.values())
-            leaders = [score for score, count in counts.items() if count == highest]
-            if len(leaders) != 1:
-                consensus = {'status': 'tied', 'score': None, 'label': None}
-            else:
-                score = leaders[0]
-                label = next(label for value, label, _ in RATING_OPTIONS if value == score)
-                consensus = {'status': 'formed', 'score': score, 'label': label}
+        summary = community_rating_summaries(cup_name, [player_id])[str(player_id)]
+        consensus = {
+            key: value for key, value in summary.items()
+            if key not in ('total_votes', 'minimum_votes')
+        }
 
     return {
         'viewer_score': today_score,
@@ -140,5 +206,6 @@ def rating_payload(player_id, cup_name, voter_hash=None, reveal=False):
         'total_votes': total_votes,
         'options': options,
         'consensus': consensus,
+        'minimum_votes': MINIMUM_RATINGS,
         'timezone': 'Asia/Shanghai',
     }

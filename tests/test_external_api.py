@@ -180,7 +180,7 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(payload['total_votes'], 2)
         self.assertEqual(PlayerCommunityRating.select().count(), 2)
 
-    def test_community_rating_consensus_uses_independent_browsers(self):
+    def test_community_rating_consensus_uses_weighted_average(self):
         payload = None
         for score in (4, 4, 4, 5, 5):
             response = app.test_client().post(
@@ -189,16 +189,60 @@ class ExternalPlayersApiTest(unittest.TestCase):
             )
             payload = response.get_json()['data']
         self.assertEqual(payload['total_votes'], 5)
-        self.assertEqual(payload['consensus'], {
-            'status': 'formed', 'score': 4, 'label': '顶级',
-        })
+        self.assertEqual(payload['consensus']['status'], 'formed')
+        self.assertEqual(payload['consensus']['score'], 4.4)
+        self.assertEqual(payload['consensus']['raw_average'], 4.4)
+        self.assertEqual(payload['consensus']['label'], '顶级')
+        self.assertEqual(payload['consensus']['method'], 'bayesian_average')
 
-        tied = app.test_client().post(
+        updated = app.test_client().post(
             '/api/v1/player/p1/community-rating?cup=season-one',
             json={'score': 5},
         ).get_json()['data']
-        self.assertEqual(tied['total_votes'], 6)
-        self.assertEqual(tied['consensus']['status'], 'tied')
+        self.assertEqual(updated['total_votes'], 6)
+        self.assertEqual(updated['consensus']['status'], 'formed')
+        self.assertEqual(updated['consensus']['score'], 4.5)
+        self.assertEqual(updated['consensus']['label'], '夯')
+
+    def test_cup_leaderboard_uses_season_prior_and_minimum_sample(self):
+        today = date(2026, 9, 2)
+        for index in range(5):
+            PlayerCommunityRating.create(
+                player_id='p1', cup_name='season-one', voter_hash=f'high-{index}',
+                vote_date=today, score=5,
+            )
+            PlayerCommunityRating.create(
+                player_id='p2', cup_name='season-one', voter_hash=f'low-{index}',
+                vote_date=today, score=1,
+            )
+        cache.clear()
+
+        payload = self.client.get('/api/v1/cup/season-one').get_json()['data']
+        rating = payload['players'][0]['community_rating']
+        self.assertEqual(rating['status'], 'formed')
+        self.assertEqual(rating['raw_average'], 5.0)
+        self.assertEqual(rating['score'], 4.0)
+        self.assertEqual(rating['label'], '顶级')
+        self.assertEqual(rating['total_votes'], 5)
+        self.assertEqual(rating['minimum_votes'], 5)
+
+    def test_community_rating_vote_invalidates_cup_leaderboard_cache(self):
+        cache.clear()
+        path = '/api/v1/cup/season-one'
+        self.assertEqual(self.client.get(path).headers.get('X-Cache'), 'MISS')
+        self.assertEqual(self.client.get(path).headers.get('X-Cache'), 'HIT')
+
+        response = self.client.post(
+            '/api/v1/player/p1/community-rating?cup=season-one',
+            json={'score': 4},
+        )
+        self.assertEqual(response.status_code, 200)
+
+        refreshed = self.client.get(path)
+        self.assertEqual(refreshed.headers.get('X-Cache'), 'MISS')
+        rating = refreshed.get_json()['data']['players'][0]['community_rating']
+        self.assertEqual(rating['status'], 'collecting')
+        self.assertEqual(rating['total_votes'], 1)
 
     def test_community_rating_validates_score_and_target(self):
         invalid_score = self.client.post(

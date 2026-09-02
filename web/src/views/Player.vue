@@ -96,61 +96,72 @@
           </div>
         </section>
 
-        <section class="player-community-rating" aria-labelledby="community-rating-title">
-          <div class="community-rating-heading">
-            <span class="summary-kicker"><AppIcon name="target" />COMMUNITY RATING</span>
-            <h2 id="community-rating-title">给本赛季表现定个档</h2>
-            <p id="community-rating-guidance">只评赛场表现，不上升本人；凭第一感觉点一下。</p>
-            <small>{{ cupAlias }}整季 · 每天一票，当天可改</small>
-          </div>
+        <section class="player-community-rating" :class="{ 'has-error': ratingError }" aria-labelledby="community-rating-title">
+          <header class="community-rating-heading">
+            <div>
+              <h2 id="community-rating-title">这赛季，你给什么档？</h2>
+              <p id="community-rating-guidance">看完数据，凭第一感觉点一下。只评表现，不评本人。</p>
+            </div>
+            <div class="community-rating-policy">
+              <span>{{ cupAlias }}整季</span>
+              <strong>每天一票</strong>
+              <small>当天可改</small>
+            </div>
+          </header>
 
-          <div v-if="ratingLoading" class="community-rating-skeleton" aria-live="polite" aria-label="正在读取社区评分">
-            <span v-for="index in 5" :key="index"></span>
-          </div>
-          <template v-else-if="communityRating">
-            <fieldset class="community-rating-options" aria-describedby="community-rating-guidance">
-              <legend class="sr-only">选择对该选手本赛季表现的评价</legend>
-              <label
-                v-for="option in communityRating.options"
-                :key="option.score"
-                :class="{ active: communityRating.viewer_score === option.score, submitting: ratingSubmitting }"
-              >
-                <input
-                  type="radio"
-                  :name="`community-rating-${id}-${cup}`"
-                  :value="option.score"
-                  :checked="communityRating.viewer_score === option.score"
-                  :disabled="ratingSubmitting"
-                  @change="submitCommunityRating(option.score)"
-                >
-                <strong>{{ option.label }}</strong>
-                <small>{{ option.hint }}</small>
-              </label>
-            </fieldset>
-            <p class="community-rating-mobile-hint">{{ activeRatingHint }}</p>
-
-            <div v-if="communityRating.results_visible" class="community-rating-results">
-              <div class="community-rating-result-copy">
-                <span><strong>今日已投「{{ selectedRating?.label }}」</strong><small>今天内仍可修改选择</small></span>
-                <p>{{ ratingConsensusText }}</p>
-              </div>
-              <ol class="community-rating-distribution" aria-label="社区评分分布">
-                <li
+          <div class="community-rating-body">
+            <div v-if="ratingLoading" class="community-rating-skeleton" aria-live="polite" aria-label="正在读取社区评分">
+              <span v-for="index in 5" :key="index"></span>
+            </div>
+            <template v-else-if="communityRating">
+              <fieldset class="community-rating-options" :aria-busy="ratingSubmitting" aria-describedby="community-rating-guidance">
+                <legend class="sr-only">选择对该选手本赛季表现的评价</legend>
+                <label
                   v-for="option in communityRating.options"
                   :key="option.score"
-                  :class="{ selected: communityRating.viewer_score === option.score }"
+                  :class="{ active: communityRating.viewer_score === option.score, submitting: ratingSubmitting }"
                 >
-                  <span>{{ option.label }}</span>
-                  <strong>{{ Number(option.percentage || 0).toFixed(1) }}%</strong>
-                  <small>{{ option.count }} 票</small>
-                </li>
-              </ol>
-            </div>
-            <p v-else class="community-rating-footnote">每天可投一次，提交后即可查看社区结果。</p>
-          </template>
+                  <input
+                    type="radio"
+                    :name="`community-rating-${id}-${cup}`"
+                    :value="option.score"
+                    :checked="communityRating.viewer_score === option.score"
+                    :disabled="ratingSubmitting"
+                    @change="submitCommunityRating(option.score)"
+                  >
+                  <span class="community-rating-rank" aria-hidden="true">0{{ option.score }}</span>
+                  <span class="community-rating-option-copy">
+                    <strong>{{ option.label }}</strong>
+                    <small>{{ option.hint }}</small>
+                  </span>
+                  <span class="community-rating-reticle" aria-hidden="true"><AppIcon name="target" :size="18" /></span>
+                </label>
+              </fieldset>
+              <p class="community-rating-mobile-hint">{{ activeRatingHint }}</p>
 
-          <p v-if="ratingError" class="community-rating-error" role="alert"><AppIcon name="alert" />{{ ratingError }}</p>
-          <p class="sr-only" aria-live="polite">{{ ratingAnnouncement }}</p>
+              <div v-if="communityRating.results_visible" class="community-rating-results">
+                <div class="community-rating-result-copy">
+                  <span><small>今日判定</small><strong>{{ selectedRating?.label }}</strong></span>
+                  <p>{{ ratingConsensusText }} · 今天内仍可改</p>
+                </div>
+                <ol class="community-rating-distribution" aria-label="社区评分分布">
+                  <li
+                    v-for="option in communityRating.options"
+                    :key="option.score"
+                    :class="{ selected: communityRating.viewer_score === option.score }"
+                  >
+                    <span>{{ option.label }}</span>
+                    <strong>{{ Number(option.percentage || 0).toFixed(1) }}%</strong>
+                    <small>{{ option.count }} 票</small>
+                  </li>
+                </ol>
+              </div>
+              <p v-else class="community-rating-footnote">投下今天这一票，看看大家站哪边。</p>
+            </template>
+
+            <p v-if="ratingError" class="community-rating-error" role="alert"><AppIcon name="alert" />{{ ratingError }}</p>
+            <p class="sr-only" aria-live="polite">{{ ratingAnnouncement }}</p>
+          </div>
         </section>
 
         <section v-if="seasonSummary" class="panel player-season-summary" aria-labelledby="season-summary-title">
@@ -604,8 +615,7 @@ const ratingConsensusText = computed(() => {
   const total = Number(communityRating.value?.total_votes || 0)
   if (!result) return ''
   if (result.status === 'collecting') return `已收集 ${total} 票，样本积累中`
-  if (result.status === 'tied') return `已收集 ${total} 票，意见还没统一`
-  return `社区共识：${result.label} · 共 ${total} 票`
+  return `社区共识：${result.label}（${Number(result.score).toFixed(2)}）· 共 ${total} 票`
 })
 const matchDetailTitle = computed(() => matchDetail.value?.map_name || '比赛详情')
 const matchDetailSubtitle = computed(() => {

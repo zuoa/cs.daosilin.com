@@ -41,7 +41,7 @@
       <section class="leaderboard-section">
         <div class="section-heading public-heading leaderboard-heading">
           <h2>选手榜单</h2>
-          <p>{{ day ? '数据按当日表现计算' : '数据按综合 Rating 默认排序' }}</p>
+          <p>{{ day ? '数据按当日表现计算' : '数据按综合 Rating 默认排序；社区票选满 5 票后按加权均分显示' }}</p>
         </div>
 
         <div class="leaderboard-panel">
@@ -57,6 +57,7 @@
                 <option value="win_rate">按胜率</option>
                 <option value="avg_adpr">按 ADPR</option>
                 <option value="total_mvp">按 MVP</option>
+                <option v-if="!day" value="community_rating">按社区票选</option>
               </select>
             </label>
             <span class="toolbar-summary">{{ filteredPlayers.length }} 名选手</span>
@@ -73,7 +74,7 @@
               <thead>
                 <tr>
                   <th class="rank-cell">排名</th><th>选手</th><th>完美段位</th><th v-if="day">称号</th><th>荣誉</th>
-                  <th>场次</th><th>胜率</th><th>K/D</th><th>Rating</th><th>ADPR</th><th>WE</th><th>爆头率</th><th>MVP</th><th class="action-cell"><span class="sr-only">查看详情</span></th>
+                  <th>场次</th><th>胜率</th><th>K/D</th><th>Rating</th><th v-if="!day" title="满 5 票后，使用向本赛季社区均值收缩的加权均分">社区票选</th><th>ADPR</th><th>WE</th><th>爆头率</th><th>MVP</th><th class="action-cell"><span class="sr-only">查看详情</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -120,6 +121,18 @@
                     <td><span :class="{ 'stat-positive': p.win_rate >= 0.6 }">{{ pct(p.win_rate) }}</span></td>
                     <td class="mono-data">{{ n2(p.kd_ratio) }}</td>
                     <td><strong class="rating-value" :class="{ hot: p.avg_pw_rating >= 1.57 }">{{ n2(p.avg_pw_rating) }}</strong></td>
+                    <td v-if="!day">
+                      <div class="community-verdict" :class="{ formed: communityRatingReady(p) }">
+                        <template v-if="communityRatingReady(p)">
+                          <strong>{{ p.community_rating.label }}</strong>
+                          <span>{{ n2(p.community_rating.score) }} · {{ p.community_rating.total_votes }} 票</span>
+                        </template>
+                        <template v-else>
+                          <span>{{ communityRatingCount(p) ? '样本积累中' : '暂无投票' }}</span>
+                          <small v-if="communityRatingCount(p)">{{ communityRatingCount(p) }}/{{ p.community_rating?.minimum_votes || 5 }} 票</small>
+                        </template>
+                      </div>
+                    </td>
                     <td class="mono-data">{{ n2(p.avg_adpr) }}</td>
                     <td class="mono-data">{{ n2(p.avg_we) }}</td>
                     <td class="mono-data">{{ pct(p.avg_headshot_ratio) }}</td>
@@ -140,7 +153,7 @@
                     </td>
                   </tr>
                   <tr v-if="open === p.player_id" class="detail-drawer">
-                    <td :colspan="day ? 14 : 13">
+                    <td :colspan="14">
                       <div class="drawer-content">
                         <div v-if="uniqueTitles(p.titles).length" class="drawer-section titles-drawer">
                           <h3>称号信息</h3>
@@ -188,6 +201,18 @@
                     <span>Rating</span>
                     <strong :class="{ hot: p.avg_pw_rating >= 1.57 }">{{ n2(p.avg_pw_rating) }}</strong>
                   </div>
+                </div>
+
+                <div v-if="!day" class="mobile-community-verdict" :class="{ formed: communityRatingReady(p) }">
+                  <span>社区票选</span>
+                  <template v-if="communityRatingReady(p)">
+                    <strong>{{ p.community_rating.label }}</strong>
+                    <small>{{ n2(p.community_rating.score) }} · {{ p.community_rating.total_votes }} 票</small>
+                  </template>
+                  <template v-else>
+                    <strong>{{ communityRatingCount(p) ? '样本积累中' : '等待首票' }}</strong>
+                    <small v-if="communityRatingCount(p)">{{ communityRatingCount(p) }}/{{ p.community_rating?.minimum_votes || 5 }} 票</small>
+                  </template>
                 </div>
 
                 <dl class="mobile-key-stats">
@@ -268,7 +293,7 @@ const filteredPlayers = computed(() => {
   return players.value
     .filter((p) => !search || `${displayName(p)} ${p.nickname || ''} ${p.team_name || ''}`.toLowerCase().includes(search))
     .slice()
-    .sort((a, b) => Number(b[sortKey.value] || 0) - Number(a[sortKey.value] || 0))
+    .sort((a, b) => playerSortValue(b) - playerSortValue(a))
 })
 const topRating = computed(() => players.value.length ? n2(Math.max(...players.value.map((p) => Number(p.avg_pw_rating || 0)))) : '0.00')
 const averageRating = computed(() => players.value.length ? n2(players.value.reduce((sum, p) => sum + Number(p.avg_pw_rating || 0), 0) / players.value.length) : '0.00')
@@ -279,6 +304,14 @@ function pct(value) { return `${(Number(value || 0) * 100).toFixed(1)}%` }
 function pad(value) { return String(value || 0).padStart(2, '0') }
 function formatTime(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '' }
 function playerLink(p) { return `/player/${p.player_id}/${cup.value}${day.value ? `/${day.value}` : ''}/` }
+function communityRatingReady(p) { return p.community_rating?.status === 'formed' }
+function communityRatingCount(p) { return Number(p.community_rating?.total_votes || 0) }
+function playerSortValue(p) {
+  if (sortKey.value === 'community_rating') {
+    return communityRatingReady(p) ? Number(p.community_rating.score) : -1
+  }
+  return Number(p[sortKey.value] || 0)
+}
 function togglePlayer(id) { open.value = open.value === id ? '' : id }
 function uniqueTitles(list) {
   const seen = new Set()
