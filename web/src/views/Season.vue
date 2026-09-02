@@ -156,6 +156,15 @@
                     <td class="action-cell">
                       <div class="row-actions">
                         <button
+                          class="icon-button compare-row-toggle"
+                          :class="{ selected: compareIncludes(p.player_id) }"
+                          type="button"
+                          :aria-label="`${compareIncludes(p.player_id) ? '从对比中移除' : '加入对比'} ${displayName(p)}`"
+                          :aria-pressed="compareIncludes(p.player_id)"
+                          :title="compareIncludes(p.player_id) ? '移出对比' : '加入对比'"
+                          @click="toggleCompare(p)"
+                        ><AppIcon :name="compareIncludes(p.player_id) ? 'check' : 'plus'" /></button>
+                        <button
                           class="icon-button"
                           type="button"
                           :aria-label="`${open === p.player_id ? '收起' : '展开'} ${displayName(p)} 的快速数据`"
@@ -272,6 +281,17 @@
                 </div>
 
                 <button
+                  class="mobile-compare-button"
+                  :class="{ selected: compareIncludes(p.player_id) }"
+                  type="button"
+                  :aria-pressed="compareIncludes(p.player_id)"
+                  @click="toggleCompare(p)"
+                >
+                  <AppIcon :name="compareIncludes(p.player_id) ? 'check' : 'plus'" :size="15" />
+                  {{ compareIncludes(p.player_id) ? '已加入对比' : '加入对比' }}
+                </button>
+
+                <button
                   class="mobile-expand-button"
                   type="button"
                   :aria-label="`${open === p.player_id ? '收起' : '展开'} ${displayName(p)} 的更多数据`"
@@ -291,6 +311,7 @@
       </section>
     </main>
     <footer class="public-footer"><router-link to="/">返回全部赛季</router-link><span>{{ cupAlias || cup }} · 熊掌CS Major</span></footer>
+    <CompareTray :cup="String(cup || '')" :day="String(day || '')" />
 
     <Teleport to="body">
       <section
@@ -333,7 +354,7 @@
         <p v-else class="season-quick-vote-status">每天一票，当天可改</p>
       </section>
     </Teleport>
-    <p class="sr-only" aria-live="polite">{{ quickVoteAnnouncement }}</p>
+    <p class="sr-only" aria-live="polite">{{ quickVoteAnnouncement }} {{ compareAnnouncement }}</p>
   </div>
 </template>
 
@@ -342,8 +363,10 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '../api'
 import AppIcon from '../components/AppIcon.vue'
+import CompareTray from '../components/CompareTray.vue'
 import PlayerAvatar from '../components/PlayerAvatar.vue'
 import PerfectRankBadge from '../components/PerfectRankBadge.vue'
+import { addComparedPlayer, hydrateComparedPlayers, isPlayerCompared, removeComparedPlayer } from '../playerCompare'
 
 const route = useRoute()
 const cup = computed(() => route.params.cup)
@@ -363,6 +386,7 @@ const quickVoteLoading = ref(false)
 const quickVoteSubmitting = ref(false)
 const quickVoteError = ref('')
 const quickVoteAnnouncement = ref('')
+const compareAnnouncement = ref('')
 const quickVotePopoverEl = ref(null)
 const quickVotePosition = ref({ top: '0px', left: '0px', visibility: 'hidden' })
 
@@ -408,6 +432,18 @@ function playerSortValue(p) {
   return Number(p[sortKey.value] || 0)
 }
 function togglePlayer(id) { open.value = open.value === id ? '' : id }
+function compareIncludes(playerId) { return isPlayerCompared(cup.value, day.value, playerId) }
+function toggleCompare(player) {
+  if (compareIncludes(player.player_id)) {
+    removeComparedPlayer(cup.value, day.value, player.player_id)
+    compareAnnouncement.value = `已从对比中移除 ${displayName(player)}`
+    return
+  }
+  const result = addComparedPlayer(cup.value, day.value, player)
+  compareAnnouncement.value = result.ok
+    ? `已将 ${displayName(player)} 加入对比`
+    : '最多只能同时对比 4 名选手'
+}
 function cancelQuickVoteClose() {
   window.clearTimeout(quickVoteCloseTimer)
   window.clearTimeout(quickVoteSwitchTimer)
@@ -586,6 +622,7 @@ async function load() {
     const data = await api.cup(cup.value, day.value || null)
     cupAlias.value = data.cup_alias || data.cup
     players.value = data.players || []
+    hydrateComparedPlayers(cup.value, day.value, players.value)
     // “赛季总览”在模板中单独置顶；比赛日统一按日期倒序展示。
     cupDays.value = [...new Set((data.cup_days || []).filter(Boolean))].sort().reverse()
     lastCrawl.value = data.last_crawl_time || ''

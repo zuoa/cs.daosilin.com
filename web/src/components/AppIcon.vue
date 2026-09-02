@@ -7,6 +7,7 @@ const icons = {
   archive: [['rect', { x: '3', y: '5', width: '18', height: '4', rx: '1' }], ['path', { d: 'M5 9v10h14V9M10 13h4' }]],
   arrowLeft: [['path', { d: 'm15 18-6-6 6-6' }]],
   arrowRight: [['path', { d: 'm9 18 6-6-6-6' }]],
+  arrowUp: [['path', { d: 'm6 15 6-6 6 6' }]],
   calendar: [['rect', { x: '3', y: '5', width: '18', height: '16', rx: '2' }], ['path', { d: 'M16 3v4M8 3v4M3 10h18' }]],
   check: [['path', { d: 'm5 12 4 4L19 6' }]],
   chevronDown: [['path', { d: 'm6 9 6 6 6-6' }]],

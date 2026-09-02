@@ -41,6 +41,9 @@
               />
               <span v-if="day" class="status-badge neutral">{{ day }}</span>
               <a v-if="player.live_url" class="button subtle small" :href="player.live_url" target="_blank" rel="noopener noreferrer"><AppIcon name="external" />进入直播间</a>
+              <button class="button subtle small" :class="{ 'compare-selected': compareIncludes }" type="button" :aria-pressed="compareIncludes" @click="toggleCompare">
+                <AppIcon :name="compareIncludes ? 'check' : 'plus'" />{{ compareIncludes ? '已加入对比' : '加入对比' }}
+              </button>
             </div>
             <button class="button primary showcase-download" type="button" :disabled="exporting" @click="downloadPoster">
               <span v-if="exporting" class="button-spinner"></span>
@@ -77,6 +80,9 @@
                     target="_blank"
                     rel="noopener noreferrer"
                   ><AppIcon name="external" />进入直播间</a>
+                  <button class="button subtle small" :class="{ 'compare-selected': compareIncludes }" type="button" :aria-pressed="compareIncludes" @click="toggleCompare">
+                    <AppIcon :name="compareIncludes ? 'check' : 'plus'" />{{ compareIncludes ? '已加入对比' : '加入对比' }}
+                  </button>
                 </div>
               </div>
               <p><span>{{ cupAlias }}</span></p>
@@ -594,6 +600,8 @@
     </AppModal>
 
     <footer class="public-footer"><router-link :to="cup ? `/${cup}/` : '/'">返回 {{ cupAlias || '赛季榜单' }}</router-link><span>PLAYER INTELLIGENCE · 熊掌CS Major</span></footer>
+    <CompareTray v-if="cup" :cup="String(cup)" :day="String(day || '')" />
+    <p class="sr-only" aria-live="polite">{{ compareAnnouncement }}</p>
   </div>
 </template>
 
@@ -607,10 +615,13 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { api, avatarUrl } from '../api'
 import AppModal from '../components/AppModal.vue'
 import AppIcon from '../components/AppIcon.vue'
+import CompareTray from '../components/CompareTray.vue'
 import MatchupMatrix from '../components/MatchupMatrix.vue'
 import PlayerAvatar from '../components/PlayerAvatar.vue'
 import PlayerShowcaseCard from '../components/PlayerShowcaseCard.vue'
 import PerfectRankBadge from '../components/PerfectRankBadge.vue'
+import { addComparedPlayer, isPlayerCompared, removeComparedPlayer } from '../playerCompare'
+import { buildPlayerDetailGroups } from '../playerMetrics'
 
 echarts.use([LineChart, RadarChart, GridComponent, RadarComponent, TooltipComponent, CanvasRenderer])
 
@@ -647,6 +658,7 @@ const error = ref('')
 const loading = ref(true)
 const exporting = ref(false)
 const exportError = ref('')
+const compareAnnouncement = ref('')
 const posterCard = ref(null)
 const posterQrCode = ref('')
 const radarEl = ref(null)
@@ -659,6 +671,7 @@ let matchDetailRequest = 0
 let ratingRequest = 0
 
 const playerName = computed(() => player.value?.alias_name || player.value?.nickname || player.value?.player_id || '选手')
+const compareIncludes = computed(() => isPlayerCompared(cup.value, day.value, id.value))
 const selectedRating = computed(() => communityRating.value?.options?.find(
   (option) => option.score === communityRating.value?.viewer_score,
 ) || null)
@@ -741,42 +754,7 @@ const hardTargets = computed(() => [...validMatchups.value].sort((a, b) => (
   || Number(b.encounters || 0) - Number(a.encounters || 0)
   || Number(b.deaths || 0) - Number(a.deaths || 0)
 )).slice(0, 3))
-const statGroups = computed(() => {
-  const s = stats.value || {}
-  return [
-    { title: '基础数据', icon: 'activity', items: [
-      { label: '比赛场次', value: s.match_count || 0 }, { label: '胜场', value: s.win_count || 0 }, { label: '胜率', value: pct(s.win_rate) },
-      { label: '总回合', value: s.total_rounds || 0 }, { label: '每回合击杀', value: n2(s.kills_per_round) }, { label: '每回合死亡', value: n2(s.deaths_per_round) },
-      { label: '每回合助攻', value: n2(s.assists_per_round) }, { label: '总击杀', value: s.total_kills || 0 }, { label: '总助攻', value: s.total_assists || 0 },
-    ] },
-    { title: '击杀效率', icon: 'target', items: [
-      { label: '首杀 / 首死', value: `${s.total_first_kills || 0} / ${s.total_first_deaths || 0}` }, { label: 'FK / FD', value: n2(s.fk_fd_ratio) },
-      { label: '开局对枪胜率', value: pct(s.opening_duel_win_rate) }, { label: '开局对枪/回合', value: n2(s.opening_duels_per_round) },
-      { label: '爆头数', value: s.total_headshots || 0 }, { label: '爆头率', value: pct(s.avg_headshot_ratio) }, { label: 'K / D', value: n2(s.kd_ratio) },
-    ] },
-    { title: '多杀与残局', icon: 'trophy', items: [
-      { label: '2K / 3K', value: `${s.total_2k || 0} / ${s.total_3k || 0}` }, { label: '4K / 5K', value: `${s.total_4k || 0} / ${s.total_5k || 0}` },
-      { label: '多杀回合', value: s.multi_kill_rounds || 0 }, { label: '多杀回合率', value: pct(s.multi_kill_round_rate) },
-      { label: '1V1 / 1V2', value: `${s.total_1v1 || 0} / ${s.total_1v2 || 0}` }, { label: '1V3 / 1V4 / 1V5', value: `${s.total_1v3 || 0} / ${s.total_1v4 || 0} / ${s.total_1v5 || 0}` },
-    ] },
-    { title: '高级数据', icon: 'database', items: [
-      { label: 'PWR Rating', value: n2(s.avg_pw_rating) }, { label: 'RWS', value: n2(s.avg_rws) }, { label: 'WE', value: n2(s.avg_we) },
-      { label: 'ADR（回合加权）', value: n2(s.avg_adpr) }, { label: 'KAST', value: pct(s.avg_kast) }, { label: '比赛 MVP', value: s.match_mvp_count || 0 },
-      { label: 'MVP 场次占比', value: pct(s.mvp_match_rate) }, { label: '狙击击杀', value: s.total_snipe_num || 0 },
-    ] },
-    { title: '投掷物', icon: 'layers', items: [
-      { label: '敌方致盲', value: s.total_flash_success || 0 }, { label: '敌方致盲/回合', value: n2(s.enemy_flashes_per_round) },
-      { label: '队友致盲', value: s.total_flash_teammate || 0 }, { label: '队友致盲占比', value: pct(s.team_flash_share) },
-      { label: '投掷物总数', value: s.total_throws_count || 0 }, { label: '投掷物/回合', value: n2(s.throws_per_round) },
-      { label: '手雷伤害', value: s.total_grenade_damage || 0 }, { label: '燃烧伤害', value: s.total_inferno_damage || 0 },
-      { label: '道具伤害/回合', value: n2(s.utility_damage_per_round) },
-    ] },
-    { title: '团队协作', icon: 'users', items: [
-      { label: '补枪击杀', value: s.total_trade_frags || 0 }, { label: '补枪击杀占比', value: pct(s.trade_kill_share) },
-      { label: '总道具伤害', value: s.total_utility_damage || 0 },
-    ] },
-  ]
-})
+const statGroups = computed(() => buildPlayerDetailGroups(stats.value))
 const demoGroups = computed(() => {
   const s = stats.value?.demo_data || {}
   return [
@@ -809,6 +787,18 @@ const demoGroups = computed(() => {
 
 function n2(value) { return Number(value || 0).toFixed(2) }
 function pct(value) { return `${(Number(value || 0) * 100).toFixed(1)}%` }
+function toggleCompare() {
+  if (!player.value) return
+  if (compareIncludes.value) {
+    removeComparedPlayer(cup.value, day.value, id.value)
+    compareAnnouncement.value = `已从对比中移除 ${playerName.value}`
+    return
+  }
+  const result = addComparedPlayer(cup.value, day.value, player.value)
+  compareAnnouncement.value = result.ok
+    ? `已将 ${playerName.value} 加入对比`
+    : '最多只能同时对比 4 名选手'
+}
 function titleMeta(title) { return titleCategories[title?.title_category] || { label: '赛季画像', icon: 'activity' } }
 function titleCategory(title) { return titleMeta(title).label }
 function titleIcon(title) { return titleMeta(title).icon }

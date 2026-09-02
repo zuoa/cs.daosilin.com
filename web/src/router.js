@@ -10,6 +10,7 @@ const router = createRouter({
     { path: '/admin/players', component: () => import('./views/AdminPlayers.vue'), meta: { admin: true, title: '玩家库' } },
     { path: '/admin/tasks', component: () => import('./views/AdminTasks.vue'), meta: { admin: true, title: '任务中心' } },
     { path: '/admin/settings', component: () => import('./views/AdminSettings.vue'), meta: { admin: true, title: 'API 与安全' } },
+    { path: '/compare/:cup/:day?', component: () => import('./views/Compare.vue') },
     { path: '/player/:id/:cup?/:day?', component: () => import('./views/Player.vue') },
     { path: '/:cup/:day?', component: () => import('./views/Season.vue') },
   ],

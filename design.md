@@ -69,6 +69,7 @@ Four-point named scale in `tokens.css`. Production CSS uses semantic tokens rath
 
 - Home may use the existing CSS-built radar as Tier-A enrichment below the marquee fold.
 - Season and player pages may use real data visualisation only.
+- Player comparison uses an esports-broadcast Workbench: a charcoal vertical specification matrix, P1–P4 rails, a sticky metric column, and one finite signal sweep. It may mark per-metric leaders but must not invent a composite winner.
 - Admin pages use no enrichment; function carries the page.
 - Login may use the crosshair grid as a restrained background signature.
 

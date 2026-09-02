@@ -1,10 +1,12 @@
 {
-  "date": "2026-08-27",
-  "package_mtime": 1787814802,
+  "date": "2026-09-02",
+  "package_mtime": 1788353146,
   "framework": "Vue 3.5 with Vite 6",
   "font_stack": "Inter body, DIN Alternate display, SFMono data",
   "palette": "Tactical Data Terminal: cool paper, ink, signal green; blue/amber/red semantic only",
   "motion": "motion-cut; no animation library installed",
   "spacing": "4-point scale documented in docs/UI_UX_GUIDELINES.md",
-  "preserve": ["routes", "copy intent", "API and auth logic", "radar/crosshair motif", "status semantics"]
+  "preserve": ["existing public navigation", "season and player routes", "API response shape", "Tactical Signal tokens", "status semantics"],
+  "comparison_scope": "same cup and same day only; 2–4 players; URL-shareable IDs",
+  "responsive_strategy": "page overflow clipped; metric rail sticky inside an explicit horizontal table scroller"
 }
