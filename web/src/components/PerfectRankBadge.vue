@@ -1,18 +1,18 @@
 <template>
   <span
     class="perfect-rank-badge"
-    :class="[rankClass, sTierClass, { 'rank-elite': isElite, 'show-details': showDetails, large, compact }]"
+    :class="[rankClass, sTierClass, { 'rank-elite': isElite, 'rank-unranked': isUnranked, 'show-details': showDetails, large, compact }]"
     :aria-label="ariaLabel"
     :title="title"
   >
     <i v-if="rankClass === 'rank-s'" class="rank-emblem" aria-hidden="true">
-      <i class="rank-aura"></i>
       <strong>{{ displayLevel }}</strong>
     </i>
-    <template v-else>
+    <template v-else-if="!isUnranked">
       <i class="rank-aura" aria-hidden="true"></i>
       <strong>{{ displayLevel }}</strong>
     </template>
+    <strong v-else>{{ displayLevel }}</strong>
     <span v-if="displayLabel" :class="{ 'rank-detail': showDetails && rankClass === 'rank-s' }">{{ displayLabel }}</span>
   </span>
 </template>
@@ -37,7 +37,8 @@ const numericStars = computed(() => {
   return Number.isFinite(value) ? Math.max(0, Math.round(value)) : null
 })
 const normalizedLevel = computed(() => numericScore.value > 0 ? (props.level || '未定级') : '未定级')
-const displayLevel = computed(() => normalizedLevel.value === '未定级' ? '/' : normalizedLevel.value)
+const isUnranked = computed(() => ['未定级', '未定位'].includes(normalizedLevel.value))
+const displayLevel = computed(() => isUnranked.value ? '/' : normalizedLevel.value)
 const isElite = computed(() => normalizedLevel.value.startsWith('精英'))
 const rankClass = computed(() => {
   const level = normalizedLevel.value.toUpperCase()

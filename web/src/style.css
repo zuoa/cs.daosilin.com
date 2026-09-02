@@ -1567,23 +1567,25 @@ h1, h2, h3 {
 }
 
 .perfect-rank-badge.rank-s {
-  --rank-color: #d88732;
-  --rank-rgb: 216, 113, 35;
-  min-width: 58px;
-  min-height: 44px;
+  --rank-color: #c87632;
+  --rank-rgb: 200, 118, 50;
+  --rank-panel: #1c2026;
+  --rank-letter: #f3b46f;
+  min-width: 50px;
+  min-height: 40px;
   justify-content: center;
   overflow: visible;
   border: 0;
   border-radius: 0;
-  padding: 2px 10px 4px;
+  padding: 0 6px;
   background: transparent;
   box-shadow: none;
 }
 
-/* S 段沿用官方独立立体字标语言，不增加可见的等级文字。 */
+/* S 段使用克制的切角竞技徽记，与页面的 Tactical Data Terminal 语言保持一致。 */
 .perfect-rank-badge.rank-s:hover {
   box-shadow: none;
-  transform: translateY(-2px) scale(1.04);
+  transform: translateY(-1px);
 }
 
 .perfect-rank-badge.rank-s::before,
@@ -1595,203 +1597,81 @@ h1, h2, h3 {
   position: relative;
   display: inline-flex;
   isolation: isolate;
-  width: 58px;
-  height: 44px;
+  width: 48px;
+  height: 38px;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  filter: drop-shadow(0 5px 5px rgba(77, 35, 7, .24));
+  background: linear-gradient(145deg, rgba(var(--rank-rgb), .96), rgba(var(--rank-rgb), .3) 48%, rgba(var(--rank-rgb), .76));
+  clip-path: polygon(9px 0, calc(100% - 6px) 0, 100% 6px, 100% calc(100% - 9px), calc(100% - 9px) 100%, 6px 100%, 0 calc(100% - 6px), 0 9px);
+  filter: drop-shadow(0 3px 5px rgba(11, 17, 27, .18));
+  transition: filter var(--dur-short) var(--ease-out), transform var(--dur-short) var(--ease-out);
 }
 
 .perfect-rank-badge.rank-s .rank-emblem::before {
   position: absolute;
-  z-index: -2;
-  inset: 18% 8%;
-  border-radius: 50%;
-  background: radial-gradient(ellipse, rgba(var(--rank-rgb), .42), transparent 70%);
+  z-index: -1;
+  inset: 1px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, .08), transparent 38%),
+    var(--rank-panel);
+  clip-path: inherit;
   content: "";
-  filter: blur(5px);
-  opacity: .48;
-  animation: rankEmblemAura 2.8s var(--ease-in-out) infinite;
 }
 
 .perfect-rank-badge.rank-s .rank-emblem::after {
   position: absolute;
-  z-index: 3;
-  top: 3px;
-  right: 5px;
-  width: 5px;
-  height: 5px;
-  background: #fff4ca;
-  clip-path: polygon(50% 0, 61% 39%, 100% 50%, 61% 61%, 50% 100%, 39% 61%, 0 50%, 39% 39%);
+  right: 7px;
+  bottom: 5px;
+  width: 11px;
+  height: 1px;
+  background: rgba(var(--rank-rgb), .8);
   content: "";
-  opacity: 0;
+  opacity: .9;
   pointer-events: none;
-}
-
-.perfect-rank-badge.rank-s .rank-aura {
-  z-index: -1;
-  inset: 13% 16%;
-  background: rgba(var(--rank-rgb), .28);
-  filter: blur(5px);
-  opacity: .54;
 }
 
 .perfect-rank-badge.rank-s strong {
   position: relative;
-  z-index: 2;
-  color: transparent;
-  background-image: linear-gradient(112deg, #6c2f0d 3%, #bc5c1e 24%, #f0a44b 46%, #9a4315 70%, #5a260c 96%);
-  background-clip: text;
-  -webkit-background-clip: text;
-  font-size: 2rem;
-  font-style: italic;
-  font-weight: 950;
-  letter-spacing: -.09em;
-  line-height: .9;
-  -webkit-text-stroke: .7px rgba(78, 32, 8, .86);
-  text-shadow: 0 1px 0 rgba(255, 183, 84, .4);
-  transform: skewX(-7deg) scaleX(1.12);
-  transform-origin: center;
-}
-
-.perfect-rank-badge.rank-s strong::before {
-  position: absolute;
-  z-index: -1;
-  top: 3px;
-  left: -3px;
-  color: #3a1909;
-  content: "S";
-  -webkit-text-stroke: 1px #241006;
-  text-shadow: 0 2px 4px rgba(30, 13, 4, .55);
-}
-
-.perfect-rank-badge.rank-s strong::after {
-  position: absolute;
-  z-index: 1;
-  inset: -1px 0 0 -1px;
-  color: transparent;
-  content: "S";
-  opacity: .72;
-  -webkit-text-stroke: .55px rgba(255, 217, 159, .9);
+  color: var(--rank-letter);
+  font-family: var(--font-display);
+  font-size: 1.55rem;
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: -.06em;
+  line-height: 1;
+  text-shadow: none;
 }
 
 .perfect-rank-badge.rank-s.s-tier-gold {
-  --rank-color: #ffd85e;
-  --rank-rgb: 255, 190, 44;
+  --rank-color: #b99332;
+  --rank-rgb: 185, 147, 50;
+  --rank-panel: #202017;
+  --rank-letter: #efd270;
 }
 
 .perfect-rank-badge.rank-s.s-tier-diamond {
-  --rank-color: #b9f6ff;
-  --rank-rgb: 101, 220, 255;
-}
-
-.perfect-rank-badge.rank-s.s-tier-diamond .rank-emblem {
-  filter:
-    drop-shadow(-2px 2px 0 rgba(41, 62, 127, .82))
-    drop-shadow(2px -1px 0 rgba(166, 116, 226, .38))
-    drop-shadow(0 5px 5px rgba(32, 94, 177, .28));
+  --rank-color: #5fadb7;
+  --rank-rgb: 95, 173, 183;
+  --rank-panel: #162128;
+  --rank-letter: #c9eff2;
 }
 
 .perfect-rank-badge.rank-s.s-tier-demon {
-  --rank-color: #ff7a27;
-  --rank-rgb: 255, 80, 28;
+  --rank-color: #c95942;
+  --rank-rgb: 201, 89, 66;
+  --rank-panel: #251817;
+  --rank-letter: #f39a80;
 }
 
-.perfect-rank-badge.rank-s.s-tier-gold .rank-emblem { filter: drop-shadow(0 5px 5px rgba(135, 77, 0, .3)); }
-.perfect-rank-badge.rank-s.s-tier-demon .rank-emblem { filter: drop-shadow(0 5px 6px rgba(143, 27, 6, .38)); }
-
-.perfect-rank-badge.rank-s.s-tier-gold strong {
-  background-image: linear-gradient(108deg, #9b5b08 2%, #ffd43f 22%, #fff7b5 43%, #f7bd18 61%, #fff1a0 76%, #a46008 98%);
-  background-size: 250% 100%;
-  -webkit-text-stroke-color: rgba(113, 61, 2, .86);
-  animation: rankGoldS 2.9s var(--ease-in-out) infinite;
-}
-
-.perfect-rank-badge.rank-s.s-tier-diamond strong {
-  background-image:
-    linear-gradient(158deg, transparent 0 34%, rgba(83, 124, 222, .62) 35% 48%, transparent 49%),
-    linear-gradient(72deg, #4faedf 0 18%, #eaffff 19% 34%, #829ee9 35% 51%, #f7f2ff 52% 65%, #8d6dd4 66% 79%, #58d4f0 80% 100%);
-  background-size: 100% 100%, 230% 100%;
-  -webkit-text-stroke: 1px rgba(231, 253, 255, .92);
-  text-shadow:
-    -2px 1px 0 rgba(50, 75, 154, .78),
-    1px -1px 0 rgba(255, 255, 255, .86),
-    0 0 4px rgba(155, 232, 255, .78);
-  animation: rankDiamondS 2.15s cubic-bezier(.4, 0, .2, 1) infinite;
-}
-
-.perfect-rank-badge.rank-s.s-tier-demon strong {
-  background-image: linear-gradient(108deg, #8f1907 2%, #ff5b16 28%, #ffd45d 44%, #f62d0d 62%, #ff9d22 78%, #751407 98%);
-  background-size: 240% 100%;
-  -webkit-text-stroke-color: rgba(84, 15, 3, .92);
-  animation: rankDemonS 2.1s var(--ease-in-out) infinite;
-}
-
-.perfect-rank-badge.rank-s.s-tier-gold .rank-emblem::after {
-  opacity: .95;
-  animation: rankGoldSpark 2.9s var(--ease-in-out) infinite;
-}
-
-.perfect-rank-badge.rank-s.s-tier-diamond .rank-emblem::before {
-  inset: 5% 3%;
-  border-radius: 0;
-  background:
-    conic-gradient(from 30deg, transparent 0 12%, rgba(89, 223, 255, .42) 13% 20%, transparent 21% 47%, rgba(188, 132, 255, .36) 48% 56%, transparent 57% 100%),
-    radial-gradient(circle, rgba(118, 221, 255, .26), transparent 68%);
-  clip-path: polygon(7% 31%, 30% 17%, 48% 2%, 68% 17%, 94% 31%, 81% 54%, 91% 79%, 62% 76%, 47% 98%, 30% 78%, 5% 68%, 17% 49%);
-  filter: blur(2px);
-  opacity: .64;
-  animation: rankDiamondHalo 2.9s var(--ease-in-out) infinite;
-}
-
-.perfect-rank-badge.rank-s.s-tier-diamond .rank-emblem::after {
-  top: 1px;
-  right: 2px;
-  width: 9px;
-  height: 11px;
-  background: linear-gradient(145deg, #fff 0 22%, #74dcff 23% 48%, #a987f4 49% 72%, transparent 73%);
-  clip-path: polygon(50% 0, 64% 36%, 100% 50%, 64% 64%, 50% 100%, 36% 64%, 0 50%, 36% 36%);
-  opacity: .96;
-  filter: drop-shadow(0 0 5px #82e8ff);
-  animation: rankDiamondSpark 2.15s var(--ease-in-out) infinite;
-}
-
-.perfect-rank-badge.rank-s.s-tier-diamond .rank-aura {
-  inset: 8% 10%;
-  background:
-    linear-gradient(135deg, transparent 0 27%, rgba(138, 231, 255, .34) 28% 42%, transparent 43% 62%, rgba(174, 129, 255, .3) 63% 77%, transparent 78%),
-    radial-gradient(circle, rgba(113, 215, 255, .24), transparent 66%);
-  clip-path: polygon(50% 0, 96% 24%, 88% 79%, 50% 100%, 10% 78%, 3% 27%);
-  filter: blur(.5px);
-  animation: rankDiamondFacet 2.15s var(--ease-in-out) infinite;
-}
-
-.perfect-rank-badge.rank-s.s-tier-diamond strong::before {
-  color: #263d7b;
-  -webkit-text-stroke-color: #1c2757;
-}
-
-.perfect-rank-badge.rank-s.s-tier-diamond strong::after {
-  -webkit-text-stroke-color: rgba(255, 255, 255, .96);
-}
-
-.perfect-rank-badge.rank-s.s-tier-demon .rank-emblem::after {
-  top: -2px;
-  right: 8px;
-  width: 34px;
-  height: 14px;
-  background: linear-gradient(90deg, #7d1305, #ff6a16 18% 30%, transparent 31% 69%, #ff6a16 70% 82%, #7d1305);
-  clip-path: polygon(0 0, 25% 54%, 37% 100%, 30% 44%, 17% 18%, 17% 0, 0 0, 100% 0, 83% 0, 83% 18%, 70% 44%, 63% 100%, 75% 54%);
-  opacity: .95;
-  filter: drop-shadow(0 0 4px rgba(255, 68, 14, .72));
-  animation: rankDemonCrown 2.1s var(--ease-in-out) infinite;
-}
-
-.perfect-rank-badge.rank-s .rank-aura,
 .perfect-rank-badge.rank-elite .rank-aura {
   animation: rankAura 2.4s var(--ease-in-out) infinite;
   opacity: .72;
+}
+
+.perfect-rank-badge.rank-s:hover .rank-emblem {
+  filter: drop-shadow(0 5px 8px rgba(11, 17, 27, .24));
+  transform: scale(1.025);
 }
 
 .perfect-rank-badge.large {
@@ -1803,21 +1683,21 @@ h1, h2, h3 {
 .perfect-rank-badge.large strong { font-size: var(--text-xl); }
 
 .perfect-rank-badge.rank-s.large {
-  min-width: 78px;
-  min-height: 60px;
-  padding: 3px 15px 6px;
+  min-width: 64px;
+  min-height: 52px;
+  padding: 0 9px;
 }
 
 .perfect-rank-badge.rank-s.large .rank-emblem {
-  width: 72px;
-  height: 60px;
+  width: 60px;
+  height: 48px;
 }
 
-.perfect-rank-badge.rank-s.large strong { font-size: 3.15rem; }
+.perfect-rank-badge.rank-s.large strong { font-size: 2.15rem; }
 
 .perfect-rank-badge.rank-s.show-details {
   min-width: 0;
-  gap: 18px;
+  gap: 13px;
   justify-content: flex-start;
 }
 
@@ -1827,8 +1707,8 @@ h1, h2, h3 {
   display: inline-flex;
   min-height: 30px;
   align-items: center;
-  border-left: 1px solid rgba(var(--rank-rgb), .42);
-  padding: 2px 0 2px 13px;
+  border-left: 1px solid rgba(var(--rank-rgb), .34);
+  padding: 2px 0 2px 12px;
   color: var(--ink-800);
   font-family: var(--font-outlier);
   font-size: .76rem;
@@ -1850,17 +1730,53 @@ h1, h2, h3 {
 .perfect-rank-badge.compact span { font-size: .58rem; }
 
 .perfect-rank-badge.rank-s.compact {
-  min-width: 54px;
-  min-height: 40px;
-  padding: 2px 9px 4px;
+  min-width: 44px;
+  min-height: 36px;
+  padding: 0 5px;
 }
 
 .perfect-rank-badge.rank-s.compact .rank-emblem {
-  width: 54px;
-  height: 40px;
+  width: 42px;
+  height: 34px;
 }
 
-.perfect-rank-badge.rank-s.compact strong { font-size: 1.85rem; }
+.perfect-rank-badge.rank-s.compact strong { font-size: 1.4rem; }
+
+.perfect-rank-badge.rank-unranked,
+.perfect-rank-badge.rank-unranked.large,
+.perfect-rank-badge.rank-unranked.compact {
+  min-width: 0;
+  min-height: 0;
+  overflow: visible;
+  gap: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 0 4px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--color-muted);
+  opacity: .5;
+}
+
+.perfect-rank-badge.rank-unranked::before {
+  content: none;
+}
+
+.perfect-rank-badge.rank-unranked:hover {
+  box-shadow: none;
+  transform: none;
+}
+
+.perfect-rank-badge.rank-unranked strong,
+.perfect-rank-badge.rank-unranked.large strong,
+.perfect-rank-badge.rank-unranked.compact strong {
+  font-family: var(--font-outlier);
+  font-size: .72rem;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1;
+  text-shadow: none;
+}
 
 .perfect-rank-cell { min-width: 118px; }
 
@@ -1871,54 +1787,6 @@ h1, h2, h3 {
 
 @keyframes rankAura {
   50% { opacity: .32; transform: scale(.84); }
-}
-
-@keyframes rankEmblemAura {
-  0%, 100% { opacity: .42; transform: scale(.88); }
-  50% { opacity: .72; transform: scale(1.08); }
-}
-
-@keyframes rankGoldS {
-  0%, 100% { background-position: 100% 50%; filter: drop-shadow(0 0 3px rgba(255, 203, 82, .45)); }
-  50% { background-position: 0 50%; filter: drop-shadow(0 0 7px rgba(255, 220, 121, .82)); }
-}
-
-@keyframes rankGoldSpark {
-  0%, 54%, 100% { opacity: 0; transform: scale(.35) rotate(0); }
-  64% { opacity: 1; transform: scale(1.55) rotate(90deg); }
-  75% { opacity: .25; transform: scale(.7) rotate(160deg); }
-}
-
-@keyframes rankDiamondS {
-  0%, 100% { background-position: 0 0, 100% 50%; filter: brightness(.94) saturate(1.05); }
-  48% { background-position: 0 0, 0 50%; filter: brightness(1.2) saturate(1.22); }
-  54% { background-position: 0 0, 8% 50%; filter: brightness(1.05) saturate(1.12); }
-}
-
-@keyframes rankDiamondHalo {
-  0%, 100% { opacity: .46; transform: rotate(-2deg) scale(.94); }
-  50% { opacity: .7; transform: rotate(2deg) scale(1.04); }
-}
-
-@keyframes rankDiamondFacet {
-  0%, 100% { opacity: .48; transform: scale(.9) rotate(-2deg); }
-  48% { opacity: .94; transform: scale(1.08) rotate(2deg); }
-}
-
-@keyframes rankDiamondSpark {
-  0%, 42%, 100% { opacity: .22; transform: scale(.55) rotate(0); }
-  52% { opacity: 1; transform: scale(1.18) rotate(90deg); }
-  64% { opacity: .38; transform: scale(.72) rotate(150deg); }
-}
-
-@keyframes rankDemonS {
-  0%, 100% { background-position: 100% 50%; filter: drop-shadow(0 0 4px rgba(255, 67, 18, .55)); }
-  50% { background-position: 0 50%; filter: drop-shadow(0 0 9px rgba(255, 132, 28, .94)); }
-}
-
-@keyframes rankDemonCrown {
-  0%, 100% { opacity: .72; transform: translateY(1px) scale(.95); }
-  50% { opacity: 1; transform: translateY(-1px) scale(1.04); }
 }
 
 .player-profile-proof {
