@@ -13,7 +13,7 @@ const router = createRouter({
     { path: '/draft', component: () => import('./views/Draft.vue'), meta: { title: '选人结果' } },
     { path: '/compare/:cup/:day?', component: () => import('./views/Compare.vue') },
     { path: '/player/:id/:cup?/:day?', component: () => import('./views/Player.vue') },
-    { path: '/:cup/community', component: () => import('./views/CommunityShelves.vue'), meta: { title: '社区票选货架' } },
+    { path: '/:cup/community', component: () => import('./views/CommunityShelves.vue'), meta: { title: '从夯到拉排名' } },
     { path: '/:cup/:day?', component: () => import('./views/Season.vue') },
   ],
   scrollBehavior() {

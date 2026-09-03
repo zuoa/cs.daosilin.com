@@ -13,22 +13,21 @@
     <main class="community-shelves-main">
       <section class="community-shelves-hero">
         <div>
-          <p class="section-kicker">{{ cupAlias || cup }}</p>
-          <h1>社区票选货架</h1>
+          <h1><span>{{ cupAlias || cup }}</span><span>从夯到拉排名</span></h1>
           <p>按票选结果分层展示，满 5 票后正式上架。</p>
         </div>
-        <dl class="community-shelves-summary" aria-label="票选货架概览">
+        <dl class="community-shelves-summary" aria-label="票选排名概览">
           <div><dt>参评选手</dt><dd>{{ players.length }}</dd></div>
           <div><dt>已经成榜</dt><dd>{{ formedCount }}</dd></div>
           <div><dt>等待成榜</dt><dd>{{ pendingCount }}</dd></div>
         </dl>
       </section>
 
-      <section class="community-shelf-board" aria-label="社区票选五档货架">
+      <section class="community-shelf-board" aria-label="社区票选五档排名">
         <div v-if="loading" class="community-shelves-loading" aria-live="polite" aria-label="正在读取社区票选结果">
           <article v-for="tier in tiers" :key="tier.score" class="community-shelf-tier shelf-tier-skeleton">
             <header class="community-shelf-label">
-              <span>{{ pad(tier.score) }}</span><strong>{{ tier.label }}</strong>
+              <span>{{ pad(tier.score) }}</span><AppIcon :name="tier.icon" :size="27" /><strong>{{ tier.label }}</strong>
             </header>
             <div class="community-shelf-runway">
               <div class="community-shelf-players" aria-hidden="true">
@@ -40,7 +39,7 @@
 
         <div v-else-if="error" class="empty-state community-shelves-error" role="alert">
           <span><AppIcon name="alert" :size="25" /></span>
-          <h2>无法读取票选货架</h2>
+          <h2>无法读取票选排名</h2>
           <p>{{ error }}</p>
           <button class="button subtle" type="button" @click="load">重新加载</button>
         </div>
@@ -49,6 +48,7 @@
           <article v-for="tier in tiers" :key="tier.score" class="community-shelf-tier">
             <header class="community-shelf-label">
               <span>{{ pad(tier.score) }}</span>
+              <AppIcon :name="tier.icon" :size="27" />
               <strong>{{ tier.label }}</strong>
               <small>{{ groupedPlayers[tier.label].length }} 名</small>
             </header>
@@ -87,11 +87,11 @@ import AppIcon from '../components/AppIcon.vue'
 import PlayerAvatar from '../components/PlayerAvatar.vue'
 
 const tiers = [
-  { score: 5, label: '夯' },
-  { score: 4, label: '顶级' },
-  { score: 3, label: '人上人' },
-  { score: 2, label: 'NPC' },
-  { score: 1, label: '拉完了' },
+  { score: 5, label: '夯', icon: 'tierHam' },
+  { score: 4, label: '顶级', icon: 'tierElite' },
+  { score: 3, label: '人上人', icon: 'tierUpper' },
+  { score: 2, label: 'NPC', icon: 'tierNpc' },
+  { score: 1, label: '拉完了', icon: 'tierBottom' },
 ]
 
 const route = useRoute()
@@ -139,7 +139,7 @@ async function load() {
     const data = await api.cup(cup.value)
     cupAlias.value = data.cup_alias || data.cup
     players.value = data.players || []
-    document.title = `${cupAlias.value} · 社区票选货架 · 熊掌CS Major`
+    document.title = `${cupAlias.value}从夯到拉排名 · 熊掌CS Major`
   } catch (e) {
     error.value = e.message || '票选结果暂时无法读取。'
   } finally {
@@ -214,7 +214,7 @@ watch(cup, load)
 .community-shelf-tier {
   display: grid;
   min-width: 0;
-  grid-template-columns: 148px minmax(0, 1fr);
+  grid-template-columns: 172px minmax(0, 1fr);
   overflow: hidden;
   border: var(--rule-hair) solid var(--color-rule-2);
   border-radius: var(--radius-panel);
@@ -224,6 +224,7 @@ watch(cup, load)
 
 .community-shelf-label {
   display: grid;
+  grid-template-columns: 35px minmax(0, 1fr);
   align-content: center;
   border-right: var(--rule-hair) solid var(--color-dark-rule);
   padding: 18px 20px;
@@ -232,13 +233,22 @@ watch(cup, load)
 }
 
 .community-shelf-label span {
+  grid-column: 1 / -1;
   color: var(--color-accent);
   font-family: var(--font-outlier);
   font-size: .65rem;
   font-weight: 800;
 }
 
+.community-shelf-label > svg {
+  grid-column: 1;
+  grid-row: 2 / 4;
+  align-self: center;
+  color: var(--color-accent);
+}
+
 .community-shelf-label strong {
+  grid-column: 2;
   margin-top: 3px;
   font-family: var(--font-display);
   font-size: var(--text-xl);
@@ -247,6 +257,7 @@ watch(cup, load)
 }
 
 .community-shelf-label small {
+  grid-column: 2;
   margin-top: 7px;
   color: var(--color-dark-muted);
   font-size: .64rem;
@@ -374,6 +385,7 @@ watch(cup, load)
   .community-shelves-main { width: calc(100% - 32px); padding: 18px 0 54px; }
   .community-shelves-hero { min-height: auto; gap: var(--space-lg); padding: 18px 0 24px; }
   .community-shelves-hero h1 { font-size: clamp(2.4rem, 12vw, 3.5rem); }
+  .community-shelves-hero h1 > span:last-child { display: block; }
   .community-shelves-summary > div { min-height: 72px; padding: 12px 10px; }
   .community-shelves-summary dd { font-size: var(--text-lg); }
   .community-shelf-board { margin-top: var(--space-lg); }
@@ -382,12 +394,16 @@ watch(cup, load)
   .community-shelf-tier { grid-template-columns: minmax(0, 1fr); }
   .community-shelf-label {
     min-height: 56px;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: baseline;
+    grid-template-columns: auto 28px minmax(0, 1fr) auto;
+    align-items: center;
     gap: 10px;
     border-right: 0;
     padding: 12px 15px;
   }
+  .community-shelf-label span { grid-column: 1; }
+  .community-shelf-label > svg { grid-column: 2; grid-row: 1; }
+  .community-shelf-label strong { grid-column: 3; }
+  .community-shelf-label small { grid-column: 4; }
   .community-shelf-label strong { margin-top: 0; font-size: var(--text-lg); }
   .community-shelf-label small { margin-top: 0; }
   .community-shelf-runway { min-height: 122px; padding: 13px 13px 23px; }

@@ -81,8 +81,8 @@
                       <router-link
                         class="community-shelf-link"
                         :to="`/${cup}/community`"
-                        aria-label="查看社区票选货架"
-                        title="查看票选货架"
+                        aria-label="查看社区票选排名"
+                        title="查看票选排名"
                       ><AppIcon name="layers" :size="15" /></router-link>
                     </span>
                   </th>
