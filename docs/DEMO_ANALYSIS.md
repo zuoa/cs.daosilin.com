@@ -50,3 +50,5 @@
 Demo 专属指标的分母只包含已完成 Demo，缺失不等于 0。`demo_coverage` 返回 `completed`、`total`、`ratio`，前端以 `X/Y` 显示覆盖率。
 
 首期事件指标包括补枪/被补枪、闪光投掷与敌友致盲、去重致盲时长、六类投掷物、HE/火焰伤害、未使用道具价值、多杀/ACE、残局、开局对枪及转化、CT/T 分边数据、武器击杀和队友击杀。`demo_rating` 与六项子评分是实验性近似 Rating 3.0，明确不替代 PWR。
+
+`approx_round_swing_percent` 是解析器的有符号近似 Round Swing 百分比，跨场按 Demo 回合数加权：`sum(单场百分比 × 单场回合数) / sum(回合数)`。它与归一化到 1.00 附近、下限为 0 的 `rating_round_swing` 子评分不是同一个量；页面分别显示两者，且明确标注前者为近似值。

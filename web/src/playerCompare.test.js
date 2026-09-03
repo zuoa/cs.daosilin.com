@@ -15,6 +15,7 @@ import {
   formatPlayerMetric,
   leadingPlayerIds,
   metricHasDifference,
+  signedPercent,
 } from './playerMetrics.js'
 
 test('compare ids are de-duplicated and capped at four', () => {
@@ -68,4 +69,11 @@ test('higher and lower metrics mark ties without treating missing as zero', () =
   assert.deepEqual(leadingPlayerIds(lower, players), ['p1'])
   assert.equal(formatPlayerMetric(higher, players[2]), '—')
   assert.equal(metricHasDifference(higher, players), true)
+})
+
+test('round swing percentage keeps its sign and percentage-point scale', () => {
+  assert.equal(signedPercent(4.0056), '+4.01%')
+  assert.equal(signedPercent(-0.5), '-0.50%')
+  assert.equal(signedPercent(0), '0.00%')
+  assert.equal(signedPercent(null), '—')
 })

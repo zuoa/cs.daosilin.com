@@ -287,6 +287,7 @@ class DemoAnalysisTest(unittest.TestCase):
         self.assertEqual(result['demo_data']['avg_trade_frags_per_match'], 3)
         self.assertEqual(result['demo_data']['ct_kills_per_round'], 1.6)
         self.assertEqual(result['demo_data']['t_kills_per_round'], 1.4)
+        self.assertEqual(result['demo_data']['approx_round_swing_percent'], 4)
         self.assertEqual(result['demo_coverage'], {'completed': 1, 'total': 2, 'ratio': 0.5})
         self.assertEqual(result['metric_source'], 'mixed')
         self.assertEqual(result['platform_data']['total_kills'], 25)
@@ -309,6 +310,31 @@ class DemoAnalysisTest(unittest.TestCase):
         self.assertEqual(demo['unused_utility_value'], 1200)
         self.assertEqual(demo['avg_unused_utility_value_per_match'], 600)
         self.assertEqual(result['demo_coverage'], {'completed': 2, 'total': 2, 'ratio': 1.0})
+
+    def test_round_swing_percent_is_weighted_by_demo_rounds(self):
+        steam_id = '76561198000000001'
+        Player.create(player_id='swing-player', nickname='Player', steam_id=steam_id)
+        fixtures = (
+            ('m-swing-short', 10, 4),
+            ('m-swing-long', 30, -2),
+        )
+        for match_id, rounds, swing in fixtures:
+            create_platform_row(match_id, 'swing-player', game_count=rounds)
+            DemoAnalysis.create(match_id=match_id, status='completed', metric_version='v1')
+            payload = parsed_payload(steam_id)
+            payload['map_data']['total_rounds'] = rounds
+            player = payload['players'][steam_id]
+            player['side_stats']['rounds'] = {
+                'total': rounds, 'ct': rounds // 2, 't': rounds - rounds // 2,
+            }
+            player['player_map_stats']['approx_round_swing_percent'] = swing
+            persist_analysis(match_id, payload)
+
+        result = attach_demo_stats({'match_count': 2}, 'demo-cup', 'swing-player')
+
+        self.assertEqual(result['demo_data']['total_rounds'], 40)
+        self.assertEqual(result['demo_data']['approx_round_swing_percent'], -0.5)
+        self.assertEqual(result['approx_round_swing_percent'], -0.5)
 
     def test_roster_mismatch_is_rejected_without_partial_rows(self):
         Player.create(player_id='platform-player', nickname='Player', steam_id='76561198000000009')

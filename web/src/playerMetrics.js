@@ -1,5 +1,10 @@
 export function n2(value) { return Number(value || 0).toFixed(2) }
 export function pct(value) { return `${(Number(value || 0) * 100).toFixed(1)}%` }
+export function signedPercent(value, digits = 2) {
+  if (value == null || !Number.isFinite(Number(value))) return '—'
+  const number = Number(value)
+  return `${number > 0 ? '+' : ''}${number.toFixed(digits)}%`
+}
 
 const integer = (value) => value == null ? '—' : String(Math.round(Number(value)))
 const decimal = (value) => value == null ? '—' : Number(value).toFixed(2)
@@ -79,6 +84,10 @@ export const playerMetricGroups = [
         format: (value) => value ? `${value.completed || 0} / ${value.total || 0} 场` : '未覆盖',
       }),
       metric('demo_data.demo_rating', '高级 Rating', { requiresDemo: true }),
+      metric('demo_data.approx_round_swing_percent', '近似 Round Swing', {
+        requiresDemo: true,
+        format: signedPercent,
+      }),
       metric('demo_data.avg_flash_thrown_per_match', '场均闪光投掷', { requiresDemo: true }),
       metric('demo_data.enemies_per_flash', '每颗闪光致盲敌人', { requiresDemo: true }),
       metric('demo_data.average_enemy_flash_seconds', '平均单次致盲', { requiresDemo: true, format: seconds }),

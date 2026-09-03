@@ -312,6 +312,8 @@ def get_demo_player_stats(cup_name, player_id: str, play_day: str = None):
         'rating_kast': ratio(sum(row.rating_kast * row.rounds_total for row in rows), rounds),
         'rating_multi_kill': ratio(sum(row.rating_multi_kill * row.rounds_total for row in rows), rounds),
         'rating_round_swing': ratio(sum(row.rating_round_swing * row.rounds_total for row in rows), rounds),
+        'approx_round_swing_percent': ratio(
+            sum(row.approx_round_swing_percent * row.rounds_total for row in rows), rounds),
         'metric_version': DEMO_METRIC_VERSION, 'source': 'demo',
     }
     weapon_kills = {}
@@ -405,7 +407,8 @@ def attach_demo_stats(platform_data, cup_name, player_id, play_day=None):
             'unused_utility_value', 'ct_rounds', 't_rounds', 'ct_kills', 't_kills',
             'ct_deaths', 't_deaths', 'ct_adr', 't_adr', 'ct_kast', 't_kast',
             'demo_rating', 'rating_kills', 'rating_damage', 'rating_survival',
-            'rating_kast', 'rating_multi_kill', 'rating_round_swing', 'weapon_kills',
+            'rating_kast', 'rating_multi_kill', 'rating_round_swing',
+            'approx_round_swing_percent', 'weapon_kills',
         )
         effective.update({key: demo['metrics'][key] for key in demo_only
                           if key in demo['metrics']})

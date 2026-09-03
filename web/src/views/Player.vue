@@ -307,7 +307,7 @@
               <dl><div v-for="item in group.items" :key="item.label"><dt>{{ item.label }}</dt><dd>{{ item.value }}</dd></div></dl>
             </article>
           </div>
-          <p class="player-update-note">高级 Rating 为实验性估算值，按回合加权计算，不替代平台 PWR。</p>
+          <p class="player-update-note">近似 Round Swing 表示选手每回合带来的平均胜率变化；高级 Rating 及其子评分均为实验性估算，不替代平台 PWR。</p>
         </section>
 
         <section v-if="sortedSoftMatchups.length" class="panel player-section soft-targets-section" aria-labelledby="soft-targets-title">
@@ -621,7 +621,7 @@ import PlayerAvatar from '../components/PlayerAvatar.vue'
 import PlayerShowcaseCard from '../components/PlayerShowcaseCard.vue'
 import PerfectRankBadge from '../components/PerfectRankBadge.vue'
 import { addComparedPlayer, isPlayerCompared, removeComparedPlayer } from '../playerCompare'
-import { buildPlayerDetailGroups } from '../playerMetrics'
+import { buildPlayerDetailGroups, signedPercent } from '../playerMetrics'
 
 echarts.use([LineChart, RadarChart, GridComponent, RadarComponent, TooltipComponent, CanvasRenderer])
 
@@ -780,7 +780,8 @@ const demoGroups = computed(() => {
       { label: 'CT / T ADR', value: `${n2(s.ct_adr)} / ${n2(s.t_adr)}` }, { label: 'CT / T KAST', value: `${pct(s.ct_kast)} / ${pct(s.t_kast)}` },
     ] },
     { title: '回合加权 Rating', icon: 'target', items: [
-      { label: '高级 Rating', value: n2(s.demo_rating) }, { label: '击杀 / 伤害', value: `${n2(s.rating_kills)} / ${n2(s.rating_damage)}` },
+      { label: '高级 Rating', value: n2(s.demo_rating) }, { label: '近似 Round Swing', value: signedPercent(s.approx_round_swing_percent) },
+      { label: '击杀 / 伤害', value: `${n2(s.rating_kills)} / ${n2(s.rating_damage)}` },
       { label: '生存 / eKAST', value: `${n2(s.rating_survival)} / ${n2(s.rating_kast)}` }, { label: '多杀 / 回合影响', value: `${n2(s.rating_multi_kill)} / ${n2(s.rating_round_swing)}` },
     ] },
   ]

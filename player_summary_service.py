@@ -50,6 +50,7 @@ RANK_FIELDS = {
 
 DEMO_FIELDS = {
     'demo_rating': 'Demo Rating',
+    'approx_round_swing_percent': '近似 Round Swing (%)',
     'death_trade_rate': '被补枪率',
     'opening_round_conversion': '首杀转回合胜率',
     'total_clutches_won': '残局胜利',
