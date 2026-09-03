@@ -1602,6 +1602,65 @@ class MatchSelection(BaseModel, CRUDMixin):
         return True
 
 
+class DraftSession(BaseModel, CRUDMixin):
+    """One roll-finalized Baokemeng draft board."""
+    play_day = CharField(max_length=8, index=True)
+    started_at = DateTimeField(null=True)
+    completed_at = DateTimeField(index=True)
+    roster_fingerprint = CharField(max_length=64)
+    roll_fingerprint = CharField(max_length=64)
+    team_count = IntegerField()
+    status = CharField(max_length=16, default='complete')
+
+    class Meta:
+        table_name = 'draft_session'
+        indexes = (
+            (('play_day', 'roster_fingerprint', 'roll_fingerprint'), True),
+            (('play_day', 'status', 'completed_at'), False),
+        )
+
+
+class DraftTeam(BaseModel, CRUDMixin):
+    session = ForeignKeyField(
+        DraftSession, backref='teams', column_name='session_id', on_delete='CASCADE'
+    )
+    team_num = IntegerField()
+    area = CharField(max_length=64)
+    roster_size = IntegerField()
+    captain_nickname = CharField(max_length=128, null=True)
+    group_name = CharField(max_length=64)
+    roll = IntegerField(null=True)
+
+    class Meta:
+        table_name = 'draft_team'
+        indexes = (
+            (('session', 'team_num'), True),
+            (('session', 'group_name'), False),
+        )
+
+
+class DraftPlayer(BaseModel, CRUDMixin):
+    session = ForeignKeyField(
+        DraftSession, backref='players', column_name='session_id', on_delete='CASCADE'
+    )
+    team_num = IntegerField()
+    slot = IntegerField()
+    is_captain = BooleanField(default=False)
+    nickname = CharField(max_length=128)
+    steam_id = CharField(max_length=64, null=True)
+    site_id = CharField(max_length=128, null=True)
+    zbj_id = CharField(max_length=128, null=True)
+    needs_steam = BooleanField(default=True)
+    steam_id_source = CharField(max_length=24, null=True)
+
+    class Meta:
+        table_name = 'draft_player'
+        indexes = (
+            (('session', 'team_num', 'slot'), True),
+            (('steam_id',), False),
+        )
+
+
 class AdminUser(BaseModel, CRUDMixin):
     """后台管理员"""
     username = CharField(max_length=64, unique=True)
@@ -1736,5 +1795,6 @@ def create_tables():
                           CupDayChampion, PlayerTitle,
                           PlayerSeasonSummary,
                           DemoCredential, DemoAnalysis, DemoPlayerStats, Season, SeasonRoster,
-                          MatchSelection, AdminUser, SchemaMigration], safe=True)
+                          MatchSelection, DraftSession, DraftTeam, DraftPlayer,
+                          AdminUser, SchemaMigration], safe=True)
     migrate_schema()

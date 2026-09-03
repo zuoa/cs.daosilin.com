@@ -18,6 +18,10 @@ REDIS_URL = (os.getenv('REDIS_URL') or '').strip()
 SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-change-me')
 SITE_NAME = os.getenv('SITE_NAME', '熊掌CS Major')
 
+BAOKEMENG_PASSWORD = (os.getenv('BAOKEMENG_PASSWORD') or '').strip()
+BAOKEMENG_SERVER = (os.getenv('BAOKEMENG_SERVER') or 'https://www.baokemeng.xyz').strip()
+BAOKEMENG_STABLE_SECONDS = float(os.getenv('BAOKEMENG_STABLE_SECONDS', '5'))
+
 # Player portrait segmentation. Credentials are supplied by Baidu AI Cloud and
 # stay server-side; uploaded portraits are persisted below the shared /data
 # volume in production.

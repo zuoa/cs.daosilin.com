@@ -336,6 +336,30 @@ def api_seasons():
     })
 
 
+@app.route('/api/v1/draft')
+def api_draft():
+    day = (request.args.get('day') or '').strip() or None
+    if day and (len(day) != 8 or not day.isdigit()):
+        return error(400, '参数 day 必须是 YYYYMMDD'), 400
+    raw_session_id = (request.args.get('session_id') or '').strip()
+    session_id = None
+    if raw_session_id:
+        try:
+            session_id = int(raw_session_id)
+        except ValueError:
+            return error(400, '参数 session_id 必须是正整数'), 400
+        if session_id <= 0:
+            return error(400, '参数 session_id 必须是正整数'), 400
+    from baokemeng_service import DraftValidationError, public_draft_payload
+    try:
+        payload = public_draft_payload(day, session_id)
+    except DraftValidationError as exc:
+        return error(404, str(exc)), 404
+    response = success({'site_name': SITE_NAME, **payload})
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
 @app.route('/api/v1/cup/<string:cup>')
 @cached_response(timeout=900, scopes=lambda: (
     season_scope(request.view_args['cup']), 'profiles', 'community-verdict-v2'))

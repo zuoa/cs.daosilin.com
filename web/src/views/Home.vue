@@ -7,6 +7,7 @@
       </router-link>
       <nav aria-label="首页导航">
         <a href="#seasons">赛季</a>
+        <router-link to="/draft">选人</router-link>
         <router-link :to="adminUser ? '/admin/season' : '/admin/login'" class="button subtle small">
           <AppIcon name="shield" />{{ adminUser ? '管理后台' : '管理登录' }}
         </router-link>

@@ -24,6 +24,13 @@ async function request(path, options = {}) {
 export const api = {
   meta: () => request('/api/v1/meta'),
   seasons: () => request('/api/v1/seasons'),
+  draft: (day, sessionId) => {
+    const q = new URLSearchParams()
+    if (day) q.set('day', day)
+    if (sessionId) q.set('session_id', sessionId)
+    const query = q.toString()
+    return request(`/api/v1/draft${query ? `?${query}` : ''}`)
+  },
   cup: (cup, day) => request(`/api/v1/cup/${encodeURIComponent(cup)}${day ? `?day=${encodeURIComponent(day)}` : ''}`),
   player: (id, cup, day) => {
     const q = new URLSearchParams()

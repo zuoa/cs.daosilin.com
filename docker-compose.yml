@@ -104,5 +104,22 @@ services:
       LLM_REQUEST_TIMEOUT: ${LLM_REQUEST_TIMEOUT:-45}
       PLAYER_SUMMARY_PROMPT_VERSION: ${PLAYER_SUMMARY_PROMPT_VERSION:-v1}
 
+  baokemeng-worker:
+    image: ghcr.io/zuoa/cs.daosilin.com:main
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+      app:
+        condition: service_healthy
+    command: ["python", "baokemeng_worker.py"]
+    entrypoint: []
+    environment:
+      TZ: Asia/Shanghai
+      DATABASE_URL: postgresql://cs:cs@db:5432/cs
+      BAOKEMENG_PASSWORD: ${BAOKEMENG_PASSWORD:-}
+      BAOKEMENG_SERVER: ${BAOKEMENG_SERVER:-https://www.baokemeng.xyz}
+      BAOKEMENG_STABLE_SECONDS: ${BAOKEMENG_STABLE_SECONDS:-5}
+
 volumes:
   pgdata:
