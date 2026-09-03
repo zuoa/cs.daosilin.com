@@ -285,12 +285,11 @@ watch(cup, load)
 
 .community-shelf-players {
   display: flex;
-  min-width: min-content;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-content: flex-start;
   gap: 14px;
-  overflow-x: auto;
   padding: 2px 2px 7px;
-  scrollbar-color: var(--color-rule-2) transparent;
-  scrollbar-width: thin;
 }
 
 .community-shelf-player {
