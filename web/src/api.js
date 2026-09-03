@@ -16,6 +16,7 @@ async function request(path, options = {}) {
   if (!res.ok || json.success === false) {
     const err = new Error(json.message || '请求失败')
     err.status = res.status
+    err.data = json.data
     throw err
   }
   return json.data

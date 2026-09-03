@@ -108,7 +108,7 @@
 
     <footer class="public-footer">
       <router-link to="/">返回数据首页</router-link>
-      <span>{{ siteName }} · DRAFT ARCHIVE</span>
+      <span>{{ siteName }} · DRAFT ARCHIVE · Made with 🩷 By ZUOAJ</span>
     </footer>
   </div>
 </template>

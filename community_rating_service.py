@@ -8,9 +8,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from itsdangerous import BadSignature, URLSafeSerializer
-from peewee import fn
-
-from database import PlayerCommunityRating
+from database import Player, PlayerCommunityRating
 
 
 COOKIE_NAME = 'cs_community_voter'
@@ -69,7 +67,10 @@ def _summary_from_counts(counts, prior_mean):
 
 def community_rating_summaries(cup_name, player_ids):
     """Return stable, season-relative rating summaries for leaderboard rows."""
-    player_ids = tuple(dict.fromkeys(str(player_id) for player_id in player_ids))
+    account_map = Player.account_map()
+    player_ids = tuple(dict.fromkeys(
+        account_map.get(str(player_id), str(player_id)) for player_id in player_ids
+    ))
     if not player_ids:
         return {}
 
@@ -77,22 +78,22 @@ def community_rating_summaries(cup_name, player_ids):
         player_id: {score: 0 for score, _, _ in RATING_OPTIONS}
         for player_id in player_ids
     }
-    rows = (PlayerCommunityRating
-            .select(PlayerCommunityRating.player_id,
-                    PlayerCommunityRating.score,
-                    fn.COUNT(PlayerCommunityRating.id).alias('count'))
+    rows = (PlayerCommunityRating.select()
             .where(PlayerCommunityRating.cup_name == cup_name)
-            .group_by(PlayerCommunityRating.player_id, PlayerCommunityRating.score))
+            .order_by(PlayerCommunityRating.updated_at))
+    latest_votes = {}
+    for row in rows:
+        canonical_id = account_map.get(str(row.player_id), str(row.player_id))
+        latest_votes[(canonical_id, row.voter_hash, row.vote_date)] = row
 
     cup_score_sum = 0
     cup_vote_count = 0
-    for row in rows:
-        count = int(row.count or 0)
-        cup_score_sum += int(row.score) * count
-        cup_vote_count += count
-        player_counts = counts_by_player.get(str(row.player_id))
+    for (canonical_id, _voter_hash, _vote_date), row in latest_votes.items():
+        cup_score_sum += int(row.score)
+        cup_vote_count += 1
+        player_counts = counts_by_player.get(canonical_id)
         if player_counts is not None and row.score in player_counts:
-            player_counts[row.score] = count
+            player_counts[row.score] += 1
 
     prior_mean = cup_score_sum / cup_vote_count if cup_vote_count else NEUTRAL_PRIOR
     return {
@@ -132,6 +133,7 @@ def hash_voter(secret_key, voter_id):
 
 
 def save_daily_rating(player_id, cup_name, voter_hash, score):
+    player_id = Player.canonical_player_id(player_id)
     today = rating_today()
     with PlayerCommunityRating._meta.database.atomic():
         (PlayerCommunityRating
@@ -159,28 +161,32 @@ def save_daily_rating(player_id, cup_name, voter_hash, score):
 
 
 def rating_payload(player_id, cup_name, voter_hash=None, reveal=False):
+    player_id = Player.canonical_player_id(player_id)
+    account_ids = Player.account_ids(player_id)
     today_score = None
     if voter_hash:
-        vote = PlayerCommunityRating.get_or_none(
-            PlayerCommunityRating.player_id == player_id,
-            PlayerCommunityRating.cup_name == cup_name,
-            PlayerCommunityRating.voter_hash == voter_hash,
-            PlayerCommunityRating.vote_date == rating_today(),
-        )
+        vote = (PlayerCommunityRating.select()
+                .where(PlayerCommunityRating.player_id.in_(account_ids),
+                       PlayerCommunityRating.cup_name == cup_name,
+                       PlayerCommunityRating.voter_hash == voter_hash,
+                       PlayerCommunityRating.vote_date == rating_today())
+                .order_by(PlayerCommunityRating.updated_at.desc())
+                .first())
         today_score = vote.score if vote else None
 
     results_visible = bool(reveal or today_score is not None)
     counts = {score: 0 for score, _, _ in RATING_OPTIONS}
     if results_visible:
-        rows = (PlayerCommunityRating
-                .select(PlayerCommunityRating.score,
-                        fn.COUNT(PlayerCommunityRating.id).alias('count'))
-                .where(PlayerCommunityRating.player_id == player_id,
+        rows = (PlayerCommunityRating.select()
+                .where(PlayerCommunityRating.player_id.in_(account_ids),
                        PlayerCommunityRating.cup_name == cup_name)
-                .group_by(PlayerCommunityRating.score))
+                .order_by(PlayerCommunityRating.updated_at))
+        latest_votes = {}
         for row in rows:
+            latest_votes[(row.voter_hash, row.vote_date)] = row
+        for row in latest_votes.values():
             if row.score in counts:
-                counts[row.score] = int(row.count or 0)
+                counts[row.score] += 1
 
     total_votes = sum(counts.values()) if results_visible else None
     options = []

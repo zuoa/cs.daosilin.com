@@ -446,7 +446,12 @@ def crawl_season(season, ignore_deadline=False):
     except (TypeError, ValueError):
         hit_ratio = 0.6
 
-    seeds = SeasonRoster.get_player_ids(cup_name)
+    canonical_seeds = SeasonRoster.get_player_ids(cup_name)
+    seeds = list(dict.fromkeys(
+        account_id
+        for player_id in canonical_seeds
+        for account_id in Player.account_ids(player_id)
+    ))
     if not seeds:
         logger.info(f"赛季 {cup_name} 种子为空，跳过爬取")
         return {'cup_name': cup_name, 'visited': 0, 'included': 0, 'skipped': 0}
@@ -587,7 +592,11 @@ def crawl_all():
 
 def refresh_perfect_ranks():
     """Refresh and persist Perfect World ranks for every known player."""
-    players = list(Player.select().order_by(Player.in_library.desc(), Player.player_id.asc()))
+    players = [
+        player for player in
+        Player.select().order_by(Player.in_library.desc(), Player.player_id.asc())
+        if not getattr(player, 'parent_player_id', None)
+    ]
     clear_perfect_rank_cache()
     try:
         rank_credential = load_demo_credential()

@@ -40,6 +40,8 @@ from steam_service import SteamAvatarError, fetch_steam_avatar
 from title_service import title_service
 from player_summary_service import (admin_row as player_summary_admin_row,
                                     get_public_summary, llm_configured)
+from player_identity_service import (PlayerIdentityError, bind_child_accounts,
+                                     unbind_child_account)
 from portrait_service import (PortraitError, clamp_transform, configured as portrait_configured,
                               delete_portrait_files, portrait_file_path,
                               portrait_payload, save_portrait)
@@ -48,7 +50,7 @@ from community_rating_service import (COOKIE_MAX_AGE as RATING_COOKIE_MAX_AGE,
                                       community_rating_summaries, hash_voter,
                                       new_voter, rating_payload,
                                       read_voter_id, save_daily_rating)
-from utils import success, error
+from utils import success, error, resp_data
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -131,7 +133,7 @@ def _season_list_payload():
 
 
 def _build_cup_players(cup, day=None):
-    all_players = Player.get_all()
+    all_players = list(Player.select().where(Player.parent_player_id.is_null(True)).dicts())
     all_players_map = {player["player_id"]: player for player in all_players}
     day_champion = CupDayChampion.get_champion_by_cup_and_day(cup, day)
     all_champions = CupDayChampion.filter_records(**{'cup_name': cup})
@@ -141,24 +143,37 @@ def _build_cup_players(cup, day=None):
     if day is not None:
         filter_params['play_day'] = day
     players = MatchPlayer.filter_records(**filter_params)
-    players_map = {player["player_id"]: {
-        "nickname": player["nickname"],
-        "avatar": all_players_map.get(player["player_id"], {}).get("avatar") or player["avatar"],
-        "player_id": player["player_id"],
-        "alias_name": all_players_map.get(player["player_id"], {}).get("alias_name", ""),
-        "perfect_score": all_players_map.get(player["player_id"], {}).get("perfect_score"),
-        "perfect_level": all_players_map.get(player["player_id"], {}).get("perfect_level"),
-        "perfect_stars": all_players_map.get(player["player_id"], {}).get("perfect_stars"),
-        "perfect_rank_updated_at": _iso_dt(
-            all_players_map.get(player["player_id"], {}).get("perfect_rank_updated_at")
-        ),
-        "team_name": player.get("team_name", ""),
-        "is_champion": player["player_id"] in day_champion.get("champion_team_player_ids", '').split(
-            ',') if day_champion else False,
-        "is_runner_up": player["player_id"] in day_champion.get("runner_up_team_player_ids", '').split(
-            ',') if day_champion else False,
-    } for player in players}
-    exploits = MatchPlayer.get_match_exploits(cup, players_map.keys(), day)
+    account_map = Player.account_map()
+    players_map = {}
+    champion_ids = {
+        account_map.get(item, item)
+        for item in (day_champion.get("champion_team_player_ids", '').split(',') if day_champion else [])
+        if item
+    }
+    runner_up_ids = {
+        account_map.get(item, item)
+        for item in (day_champion.get("runner_up_team_player_ids", '').split(',') if day_champion else [])
+        if item
+    }
+    for raw_player in players:
+        player_id = account_map.get(str(raw_player["player_id"]), str(raw_player["player_id"]))
+        profile = all_players_map.get(player_id, {})
+        players_map[player_id] = {
+            "nickname": profile.get("nickname") or raw_player["nickname"],
+            "avatar": profile.get("avatar") or raw_player["avatar"],
+            "player_id": player_id,
+            "alias_name": profile.get("alias_name", ""),
+            "perfect_score": profile.get("perfect_score"),
+            "perfect_level": profile.get("perfect_level"),
+            "perfect_stars": profile.get("perfect_stars"),
+            "perfect_rank_updated_at": _iso_dt(profile.get("perfect_rank_updated_at")),
+            "team_name": raw_player.get("team_name", ""),
+            "is_champion": player_id in champion_ids,
+            "is_runner_up": player_id in runner_up_ids,
+        }
+    exploits = MatchPlayer.get_match_exploits(
+        cup, players_map.keys(), day, identity_map=account_map,
+    )
     stored_titles = (
         PlayerTitle.get_players_titles(players_map.keys(), cup, day)
         if not day else {}
@@ -173,13 +188,13 @@ def _build_cup_players(cup, day=None):
         if profile_avatar:
             player['avatar'] = profile_avatar
         for champion in all_champions:
-            if player_id in champion.get("champion_team_player_ids", '').split(','):
+            if player_id in {account_map.get(item, item) for item in champion.get("champion_team_player_ids", '').split(',')}:
                 player.setdefault('trophy_history', []).append({
                     'day': champion.get('day'),
                     'team_name': champion.get('champion_team_name'),
                     'trophy': 'champion',
                 })
-            if player_id in champion.get("runner_up_team_player_ids", '').split(','):
+            if player_id in {account_map.get(item, item) for item in champion.get("runner_up_team_player_ids", '').split(',')}:
                 player.setdefault('trophy_history', []).append({
                     'day': champion.get('day'),
                     'team_name': champion.get('runner_up_team_name'),
@@ -203,10 +218,13 @@ def _build_cup_players(cup, day=None):
 
 
 def _player_detail_payload(player_id, cup, day=None):
+    requested_player_id = player_id
+    player_id = Player.canonical_player_id(player_id)
     rec = Player.get_or_none(Player.player_id == player_id)
     if not rec:
         return None, "选手不存在"
     player = rec.to_dict()
+    player.pop('parent_player_id', None)
     player['portrait'] = portrait_payload(rec)
     for key in ('portrait_original', 'portrait_cutout', 'portrait_scale',
                 'portrait_offset_x', 'portrait_offset_y'):
@@ -222,15 +240,24 @@ def _player_detail_payload(player_id, cup, day=None):
         return None, "该选手在此杯赛/日期下无数据"
     all_champions = CupDayChampion.filter_records(**{'cup_name': cup})
     all_champions.sort(key=lambda champion: champion.get('day', ''))
+    account_map = Player.account_map()
     trophy_history = []
     for champion in all_champions:
-        if player_id in champion.get("champion_team_player_ids", '').split(','):
+        champion_ids = {
+            account_map.get(item, item)
+            for item in champion.get("champion_team_player_ids", '').split(',') if item
+        }
+        runner_up_ids = {
+            account_map.get(item, item)
+            for item in champion.get("runner_up_team_player_ids", '').split(',') if item
+        }
+        if player_id in champion_ids:
             trophy_history.append({
                 'day': champion.get('day'),
                 'team_name': champion.get('champion_team_name'),
                 'trophy': 'champion',
             })
-        if player_id in champion.get("runner_up_team_player_ids", '').split(','):
+        if player_id in runner_up_ids:
             trophy_history.append({
                 'day': champion.get('day'),
                 'team_name': champion.get('runner_up_team_name'),
@@ -245,7 +272,7 @@ def _player_detail_payload(player_id, cup, day=None):
         day_data = historical_map.get((str(player_id), historical_day))
         if day_data:
             historical_data.append({'day': historical_day, 'data': day_data})
-    all_player_profiles = Player.get_all()
+    all_player_profiles = list(Player.select().where(Player.parent_player_id.is_null(True)).dicts())
     comparison_stats = MatchPlayer.get_match_exploits(
         cup, [p['player_id'] for p in all_player_profiles], day,
     )
@@ -294,6 +321,8 @@ def _player_detail_payload(player_id, cup, day=None):
 
     return {
         'player': player,
+        'canonical_player_id': player_id,
+        'requested_player_id': requested_player_id,
         'perfect_rank_history': [
             {
                 'score': sample['score'],
@@ -391,11 +420,12 @@ def api_player_detail(player_id):
 
 
 def _community_rating_target_exists(player_id, cup):
+    player_id = Player.canonical_player_id(player_id)
     return bool(
         Player.get_or_none(Player.player_id == player_id)
         and Season.get_or_none(Season.cup_name == cup)
         and MatchPlayer.select().where(
-            MatchPlayer.player_id == player_id,
+            MatchPlayer.player_id.in_(Player.account_ids(player_id)),
             MatchPlayer.cup_name == cup,
         ).exists()
     )
@@ -403,6 +433,7 @@ def _community_rating_target_exists(player_id, cup):
 
 @app.route('/api/v1/player/<string:player_id>/community-rating', methods=['GET', 'POST'])
 def api_player_community_rating(player_id):
+    player_id = Player.canonical_player_id(player_id)
     cup = (request.args.get('cup') or '').strip()
     if not cup:
         return error(400, "参数 cup 不能为空"), 400
@@ -454,8 +485,10 @@ def api_players():
     all_champions = CupDayChampion.filter_records(**{'cup_name': cup})
     all_champions.sort(key=lambda champion: champion.get('day', ''))
 
-    all_players = Player.get_all()
+    all_players = list(Player.select().where(Player.parent_player_id.is_null(True)).dicts())
+    account_map = Player.account_map()
     for player in all_players:
+        player.pop('parent_player_id', None)
         player['portrait'] = portrait_payload(player)
         for key in ('portrait_original', 'portrait_cutout', 'portrait_scale',
                     'portrait_offset_x', 'portrait_offset_y'):
@@ -474,13 +507,21 @@ def api_players():
             player['avatar'] = profile_avatar
 
         for champion in all_champions:
-            if player_id in champion.get("champion_team_player_ids", '').split(','):
+            champion_ids = {
+                account_map.get(item, item)
+                for item in champion.get("champion_team_player_ids", '').split(',') if item
+            }
+            runner_up_ids = {
+                account_map.get(item, item)
+                for item in champion.get("runner_up_team_player_ids", '').split(',') if item
+            }
+            if player_id in champion_ids:
                 player.setdefault('trophy_history', []).append({
                     'day': champion.get('day'),
                     'team_name': champion.get('champion_team_name'),
                     'trophy': 'champion',
                 })
-            if player_id in champion.get("runner_up_team_player_ids", '').split(','):
+            if player_id in runner_up_ids:
                 player.setdefault('trophy_history', []).append({
                     'day': champion.get('day'),
                     'team_name': champion.get('runner_up_team_name'),
@@ -765,12 +806,13 @@ _MATCH_PLAYER_DETAIL_FIELDS = (
 
 def _matchup_matrix(player_rows):
     """Build a row-player perspective matrix from per-player kill maps."""
-    player_ids = [str(row.player_id) for row in player_rows]
+    account_map = Player.account_map()
+    player_ids = [account_map.get(str(row.player_id), str(row.player_id)) for row in player_rows]
     player_id_set = set(player_ids)
     directed_kills = {player_id: {} for player_id in player_ids}
 
     for row in player_rows:
-        attacker_id = str(row.player_id)
+        attacker_id = account_map.get(str(row.player_id), str(row.player_id))
         try:
             values = json.loads(row.kill_map or '{}')
         except (TypeError, ValueError):
@@ -778,7 +820,7 @@ def _matchup_matrix(player_rows):
         if not isinstance(values, dict):
             values = {}
         for victim_id, kills in values.items():
-            victim_id = str(victim_id)
+            victim_id = account_map.get(str(victim_id), str(victim_id))
             if victim_id not in player_id_set or victim_id == attacker_id:
                 continue
             try:
@@ -815,7 +857,8 @@ def _match_detail_payload(cup, match_id):
     match = Match.get_by_match_id(match_id) or {}
     library_set = set(Player.get_library_ids())
     player_rows = list(MatchPlayer.select().where(MatchPlayer.match_id == match_id))
-    player_ids = [row.player_id for row in player_rows]
+    account_map = Player.account_map()
+    player_ids = [account_map.get(str(row.player_id), str(row.player_id)) for row in player_rows]
     alias_map = {}
     avatar_map = {}
     if player_ids:
@@ -825,10 +868,11 @@ def _match_detail_payload(cup, match_id):
     players = []
     for row in player_rows:
         item = {field: getattr(row, field, None) for field in _MATCH_PLAYER_DETAIL_FIELDS}
+        item['player_id'] = account_map.get(str(row.player_id), str(row.player_id))
         item['kast_ratio'] = round(float(row.kast or 0) / row.game_count, 4) if row.game_count else 0.0
         item['in_library'] = row.player_id in library_set
-        item['alias_name'] = alias_map.get(row.player_id) or ''
-        profile_avatar = avatar_map.get(row.player_id)
+        item['alias_name'] = alias_map.get(item['player_id']) or ''
+        profile_avatar = avatar_map.get(item['player_id'])
         if profile_avatar:
             item['avatar'] = profile_avatar
         players.append(item)
@@ -1218,6 +1262,18 @@ def api_admin_players():
     elif in_lib in ('0', 'false', 'no'):
         flag = False
     players = Player.search_players(q=q, in_library=flag)
+    player_rows = {
+        row.player_id: row for row in
+        Player.select().where(Player.player_id.in_([item['player_id'] for item in players]))
+    } if players else {}
+    children_by_parent = {}
+    if player_rows:
+        for child in (Player.select(
+                Player.player_id, Player.parent_player_id, Player.nickname,
+                Player.alias_name, Player.steam_id,
+        ).where(Player.parent_player_id.in_(list(player_rows)))
+                .order_by(Player.nickname, Player.player_id).dicts()):
+            children_by_parent.setdefault(child['parent_player_id'], []).append(child)
     for player in players:
         player['portrait'] = portrait_payload(player)
         for key in ('portrait_original', 'portrait_cutout', 'portrait_scale',
@@ -1230,10 +1286,74 @@ def api_admin_players():
         player['avatar_source'] = player.get('avatar_source') or 'wanmei'
         if not player.get('wanmei_avatar') and player['avatar_source'] == 'wanmei':
             player['wanmei_avatar'] = player.get('avatar')
+        row = player_rows.get(player['player_id'])
+        if row:
+            player.update({
+                'canonical_player_id': row.parent_player_id or row.player_id,
+                'parent_player_id': row.parent_player_id,
+                'child_accounts': children_by_parent.get(row.player_id, []),
+            })
     return success({
         "players": players,
         "portrait_service_configured": portrait_configured(),
     })
+
+
+def _refresh_account_group_derivatives(result, *, removed_child_ids=None):
+    canonical_id = result['canonical_player_id']
+    removed_child_ids = list(removed_child_ids or [])
+    if removed_child_ids:
+        PlayerTitle.delete().where(PlayerTitle.player_id.in_(removed_child_ids)).execute()
+        PlayerSeasonSummary.delete().where(
+            PlayerSeasonSummary.player_id.in_(removed_child_ids)
+        ).execute()
+    for cup in result.get('affected_cups') or []:
+        title_service.calculate_and_save_titles(cup)
+        if llm_configured() and REDIS_URL:
+            try:
+                from player_summary_tasks import schedule_player_summary
+                schedule_player_summary(cup, canonical_id, force=True)
+                for player_id in result.get('newly_independent_player_ids') or []:
+                    schedule_player_summary(cup, player_id, force=True)
+            except Exception as exc:
+                logger.error(f'账号归集后赛季点评入队失败 cup={cup}: {exc}')
+        invalidate_season(cup)
+    invalidate_profiles()
+
+
+@app.route('/api/admin/player-accounts/bind', methods=['POST'])
+def api_admin_player_accounts_bind():
+    if not _admin_authed():
+        return error(403, "无权限访问")
+    data = request.get_json(silent=True) or {}
+    child_ids = data.get('child_player_ids') or []
+    if isinstance(child_ids, str):
+        child_ids = _parse_ids(child_ids)
+    try:
+        result = bind_child_accounts(data.get('parent_player_id'), child_ids)
+    except PlayerIdentityError as exc:
+        if exc.conflict_match_ids:
+            return resp_data(
+                {'conflict_match_ids': exc.conflict_match_ids},
+                code=409,
+                message=str(exc),
+            ), 409
+        return error(400, str(exc)), 400
+    _refresh_account_group_derivatives(result, removed_child_ids=child_ids)
+    return success({**result, 'message': '子账号已归集'})
+
+
+@app.route('/api/admin/player-accounts/<string:child_player_id>', methods=['DELETE'])
+def api_admin_player_accounts_unbind(child_player_id):
+    if not _admin_authed():
+        return error(403, "无权限访问")
+    try:
+        result = unbind_child_account(child_player_id)
+    except PlayerIdentityError as exc:
+        return error(400, str(exc)), 400
+    result['newly_independent_player_ids'] = [child_player_id]
+    _refresh_account_group_derivatives(result)
+    return success({**result, 'message': '子账号已解除归集'})
 
 
 @app.route('/media/player-portraits/<string:filename>')
@@ -1331,7 +1451,7 @@ def api_admin_steam_avatar_resolve():
 def _latest_wanmei_avatar(player_id):
     row = (MatchPlayer.select(MatchPlayer.avatar)
            .where(
-               (MatchPlayer.player_id == player_id) &
+               MatchPlayer.player_id.in_(Player.account_ids(player_id)) &
                MatchPlayer.avatar.is_null(False) &
                (MatchPlayer.avatar != '')
            )

@@ -97,7 +97,7 @@
       </section>
     </main>
 
-    <footer class="public-footer statement-footer"><strong>数据用于比赛复盘与社区统计。</strong><span>{{ siteName }} · CS DATA ARCHIVE</span></footer>
+    <footer class="public-footer statement-footer"><strong>数据用于比赛复盘与社区统计。</strong><span>{{ siteName }} · CS DATA ARCHIVE · Made with 🩷 By ZUOAJ</span></footer>
   </div>
 </template>
 

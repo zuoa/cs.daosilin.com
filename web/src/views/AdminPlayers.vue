@@ -24,8 +24,8 @@
       </article>
       <article class="metric-card">
         <span class="metric-icon amber"><AppIcon name="activity" /></span>
-        <div><strong>{{ outsiderCount }}</strong><span>非库内玩家</span></div>
-        <small>不参与名单命中</small>
+        <div><strong>{{ childAccountCount }}</strong><span>已归集子账号</span></div>
+        <small>公开数据计入主玩家</small>
       </article>
     </section>
 
@@ -101,7 +101,12 @@
                 <td>
                   <div class="identity-cell">
                     <PlayerAvatar :src="p.avatar" :name="displayName(p)" class="player-monogram" />
-                    <span><strong>{{ displayName(p) }}</strong><small>{{ p.alias_name ? p.nickname : '未设置别名' }}</small></span>
+                    <span>
+                      <strong>{{ displayName(p) }}</strong>
+                      <small v-if="p.parent_player_id">子账号 · 归属于 {{ p.parent_player_id }}</small>
+                      <small v-else-if="p.child_accounts?.length">主玩家 · {{ p.child_accounts.length }} 个子账号</small>
+                      <small v-else>{{ p.alias_name ? p.nickname : '未设置别名' }}</small>
+                    </span>
                   </div>
                 </td>
                 <td><code>{{ p.player_id }}</code></td>
@@ -113,8 +118,8 @@
                   <span v-else class="muted-cell">—</span>
                 </td>
                 <td>
-                  <span class="status-badge" :class="p.in_library ? 'success' : 'neutral'">
-                    <span class="status-dot"></span>{{ p.in_library ? '库内' : '非库内' }}
+                  <span class="status-badge" :class="p.parent_player_id ? 'account-child' : (p.in_library ? 'success' : 'neutral')">
+                    <span class="status-dot"></span>{{ p.parent_player_id ? '子账号' : (p.in_library ? '库内' : '非库内') }}
                   </span>
                 </td>
                 <td class="action-cell">
@@ -125,7 +130,7 @@
                     <button
                       class="button text-button small"
                       type="button"
-                      :disabled="busy"
+                      :disabled="busy || Boolean(p.parent_player_id)"
                       @click="setLib([p.player_id], !p.in_library)"
                     >{{ p.in_library ? '移出' : '加入' }}</button>
                   </div>
@@ -272,12 +277,52 @@
               </div>
             </div>
           </div>
+          <section v-if="isEditing" class="account-group-editor" aria-labelledby="account-group-title">
+            <div class="account-group-heading">
+              <div>
+                <span class="account-group-kicker">IDENTITY GROUP</span>
+                <h3 id="account-group-title">账号归集</h3>
+              </div>
+              <span class="status-badge" :class="form.parentId ? 'account-child' : 'success'">
+                {{ form.parentId ? '子账号' : '主玩家' }}
+              </span>
+            </div>
+
+            <div v-if="form.parentId" class="account-parent-card">
+              <span>公开数据统一归入</span>
+              <strong>{{ form.parentId }}</strong>
+              <button class="button danger-ghost small" type="button" :disabled="groupingBusy" @click="unbindAccount(form.id)">解除归集</button>
+            </div>
+            <template v-else>
+              <div v-if="form.childAccounts.length" class="account-child-list">
+                <div v-for="child in form.childAccounts" :key="child.player_id" class="account-child-row">
+                  <div>
+                    <strong>{{ child.alias_name || child.nickname || child.player_id }}</strong>
+                    <code>{{ child.player_id }}</code>
+                  </div>
+                  <button class="button text-button small" type="button" :disabled="groupingBusy" @click="unbindAccount(child.player_id)">解除</button>
+                </div>
+              </div>
+              <p v-else class="account-group-empty">尚未归集其他账号。绑定后，历史与后续统计都会合并到当前玩家。</p>
+              <div class="account-bind-row">
+                <input v-model.trim="childAccountInput" list="account-candidates" placeholder="输入子账号 Player ID" aria-label="子账号 Player ID">
+                <datalist id="account-candidates">
+                  <option v-for="candidate in accountCandidates" :key="candidate.player_id" :value="candidate.player_id">{{ displayName(candidate) }}</option>
+                </datalist>
+                <button class="button subtle small" type="button" :disabled="groupingBusy || !childAccountInput" @click="bindChildAccount">
+                  <span v-if="groupingBusy" class="button-spinner"></span>
+                  {{ groupingBusy ? '处理中…' : '归集账号' }}
+                </button>
+              </div>
+              <small>系统会先检查两个账号是否曾在同一场比赛出现；发生冲突时不会建立关系。</small>
+            </template>
+          </section>
           <label class="switch-row" for="player-library">
             <span>
               <strong>加入玩家库</strong>
               <small>计入自定义比赛的名单命中率</small>
             </span>
-            <input id="player-library" v-model="form.lib" type="checkbox" true-value="1" false-value="0">
+            <input id="player-library" v-model="form.lib" type="checkbox" true-value="1" false-value="0" :disabled="Boolean(form.parentId)">
             <span class="switch-control" aria-hidden="true"></span>
           </label>
           <div class="form-actions">
@@ -340,6 +385,8 @@ const portraitPreviewUrl = ref('')
 const portraitRemove = ref(false)
 const portraitBusy = ref(false)
 const busy = ref(false)
+const groupingBusy = ref(false)
+const childAccountInput = ref('')
 const editorOpen = ref(false)
 const idInput = ref(null)
 const emptyForm = () => ({
@@ -347,6 +394,7 @@ const emptyForm = () => ({
   wanmeiAvatar: '', steamAvatar: '', liveAvatar: '',
   livePlatform: 'DOUYU', liveRoom: '', lib: '1',
   portrait: null, portraitScale: 1, portraitX: 0, portraitY: 0,
+  parentId: '', childAccounts: [],
 })
 const form = ref(emptyForm())
 let searchTimer
@@ -354,8 +402,13 @@ let toastTimer
 
 const isEditing = computed(() => players.value.some((p) => p.player_id === form.value.id))
 const libraryCount = computed(() => players.value.filter((p) => p.in_library).length)
-const outsiderCount = computed(() => players.value.length - libraryCount.value)
+const childAccountCount = computed(() => players.value.filter((p) => p.parent_player_id).length)
 const allSelected = computed(() => players.value.length > 0 && checked.value.length === players.value.length)
+const accountCandidates = computed(() => players.value.filter((player) => (
+  player.player_id !== form.value.id
+  && !player.parent_player_id
+  && !(player.child_accounts || []).length
+)))
 const filterLabel = computed(() => ({ '': '全部状态', 1: '仅库内', 0: '仅非库内' }[filterLib.value]))
 const steamAvatarLabel = computed(() => {
   if (form.value.steamAvatar) return steamResolved.value ? '已获取 Steam 公开头像' : '已保存的 Steam 头像'
@@ -413,7 +466,10 @@ function fill(p) {
     portraitScale: p.portrait?.scale ?? 1,
     portraitX: p.portrait?.offset_x ?? 0,
     portraitY: p.portrait?.offset_y ?? 0,
+    parentId: p.parent_player_id || '',
+    childAccounts: p.child_accounts || [],
   }
+  childAccountInput.value = ''
   clearPendingPortrait()
   liveResolved.value = false
   steamResolved.value = false
@@ -426,9 +482,44 @@ function clearForm() {
   steamResolved.value = false
 }
 function closeEditor() {
-  if (saving.value) return
+  if (saving.value || groupingBusy.value) return
   editorOpen.value = false
   clearForm()
+}
+async function bindChildAccount() {
+  const childId = childAccountInput.value.trim()
+  if (!childId) return
+  groupingBusy.value = true
+  try {
+    await api.post('/api/admin/player-accounts/bind', {
+      parent_player_id: form.value.id,
+      child_player_ids: [childId],
+    })
+    show('子账号已归集')
+    editorOpen.value = false
+    clearForm()
+    await load()
+  } catch (e) {
+    const conflicts = e.data?.conflict_match_ids || []
+    show(conflicts.length ? `${e.message}：${conflicts.join('、')}` : e.message, 'error')
+  } finally {
+    groupingBusy.value = false
+  }
+}
+async function unbindAccount(childId) {
+  if (!window.confirm(`解除账号 ${childId} 的归集关系？解除后将恢复独立统计。`)) return
+  groupingBusy.value = true
+  try {
+    await api.delete(`/api/admin/player-accounts/${encodeURIComponent(childId)}`)
+    show('子账号已解除归集')
+    editorOpen.value = false
+    clearForm()
+    await load()
+  } catch (e) {
+    show(e.message, 'error')
+  } finally {
+    groupingBusy.value = false
+  }
 }
 async function startCreate() {
   clearForm()

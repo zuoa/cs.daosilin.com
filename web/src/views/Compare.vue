@@ -144,7 +144,7 @@
       <p class="sr-only" aria-live="polite">{{ announcement }}</p>
     </main>
 
-    <footer class="public-footer compare-footer"><router-link :to="seasonRoute">返回选手榜单</router-link><span>同口径数据 · 单项领先 · 熊掌CS Major</span></footer>
+    <footer class="public-footer compare-footer"><router-link :to="seasonRoute">返回选手榜单</router-link><span>同口径数据 · 单项领先 · 熊掌CS Major · Made with 🩷 By ZUOAJ</span></footer>
   </div>
 </template>
 

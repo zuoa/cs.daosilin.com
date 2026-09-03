@@ -199,6 +199,18 @@ def _m018_baokemeng_draft():
     logger.info('宝可梦选人终稿表已创建')
 
 
+def _m019_player_account_groups():
+    if not _table_exists('player'):
+        return
+    if not _column_exists('player', 'parent_player_id'):
+        _add_column('player', 'parent_player_id', 'VARCHAR(64)')
+    db.execute_sql(
+        'CREATE INDEX IF NOT EXISTS player_parent_player_id '
+        'ON player (parent_player_id)'
+    )
+    logger.info('player 主账号与子账号关系字段已补齐')
+
+
 MIGRATIONS = [
     ('001_player_in_library', _m001_player_in_library),
     ('002_season_hit_ratio', _m002_season_hit_ratio),
@@ -218,6 +230,7 @@ MIGRATIONS = [
     ('016_player_portrait', _m016_player_portrait),
     ('017_player_community_rating', _m017_player_community_rating),
     ('018_baokemeng_draft', _m018_baokemeng_draft),
+    ('019_player_account_groups', _m019_player_account_groups),
 ]
 
 

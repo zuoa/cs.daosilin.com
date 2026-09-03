@@ -322,7 +322,7 @@
         </div>
       </section>
     </main>
-    <footer class="public-footer"><router-link to="/">返回全部赛季</router-link><span>{{ cupAlias || cup }} · 熊掌CS Major</span></footer>
+    <footer class="public-footer"><router-link to="/">返回全部赛季</router-link><span>{{ cupAlias || cup }} · 熊掌CS Major · Made with 🩷 By ZUOAJ</span></footer>
     <CompareTray :cup="String(cup || '')" :day="String(day || '')" />
 
     <Teleport to="body">

@@ -599,7 +599,7 @@
       </div>
     </AppModal>
 
-    <footer class="public-footer"><router-link :to="cup ? `/${cup}/` : '/'">返回 {{ cupAlias || '赛季榜单' }}</router-link><span>PLAYER INTELLIGENCE · 熊掌CS Major</span></footer>
+    <footer class="public-footer"><router-link :to="cup ? `/${cup}/` : '/'">返回 {{ cupAlias || '赛季榜单' }}</router-link><span>PLAYER INTELLIGENCE · 熊掌CS Major · Made with 🩷 By ZUOAJ</span></footer>
     <CompareTray v-if="cup" :cup="String(cup)" :day="String(day || '')" />
     <p class="sr-only" aria-live="polite">{{ compareAnnouncement }}</p>
   </div>
@@ -607,7 +607,7 @@
 
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import * as echarts from 'echarts/core'
 import { LineChart, RadarChart } from 'echarts/charts'
 import { GridComponent, RadarComponent, TooltipComponent } from 'echarts/components'
@@ -626,6 +626,7 @@ import { buildPlayerDetailGroups } from '../playerMetrics'
 echarts.use([LineChart, RadarChart, GridComponent, RadarComponent, TooltipComponent, CanvasRenderer])
 
 const route = useRoute()
+const router = useRouter()
 const id = computed(() => route.params.id)
 const cup = computed(() => route.params.cup || '')
 const day = computed(() => route.params.day || '')
@@ -1090,6 +1091,12 @@ async function load() {
   loading.value = true
   try {
     const data = await api.player(id.value, cup.value, day.value || null)
+    if (data.canonical_player_id && String(data.canonical_player_id) !== String(id.value)) {
+      await router.replace({
+        path: `/player/${encodeURIComponent(data.canonical_player_id)}/${encodeURIComponent(cup.value)}${day.value ? `/${encodeURIComponent(day.value)}` : ''}`,
+      })
+      return
+    }
     player.value = data.player
     stats.value = data.player_data
     titles.value = uniqueTitles(data.titles)

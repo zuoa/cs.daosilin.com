@@ -454,6 +454,53 @@ class ExternalPlayersApiTest(unittest.TestCase):
         with self.client.session_transaction() as session:
             session['admin_user'] = 'admin'
 
+    def test_admin_can_bind_and_unbind_child_account(self):
+        self._login_admin()
+        Player.create(player_id='group-main', nickname='账号组主玩家', in_library=True)
+        Player.create(player_id='group-child', nickname='账号组子账号', steam_id='steam-child')
+        try:
+            bound = self.client.post('/api/admin/player-accounts/bind', json={
+                'parent_player_id': 'group-main',
+                'child_player_ids': ['group-child'],
+            })
+            self.assertEqual(bound.status_code, 200)
+            self.assertEqual(
+                Player.get(Player.player_id == 'group-child').parent_player_id,
+                'group-main',
+            )
+
+            listing = self.client.get('/api/admin/players?q=group-main').get_json()['data']
+            self.assertEqual(listing['players'][0]['child_accounts'][0]['player_id'], 'group-child')
+
+            unbound = self.client.delete('/api/admin/player-accounts/group-child')
+            self.assertEqual(unbound.status_code, 200)
+            self.assertIsNone(Player.get(Player.player_id == 'group-child').parent_player_id)
+
+            create_match_player('group-conflict', 'group-main', 'season-two')
+            create_match_player('group-conflict', 'group-child', 'season-two')
+            conflict = self.client.post('/api/admin/player-accounts/bind', json={
+                'parent_player_id': 'group-main',
+                'child_player_ids': ['group-child'],
+            })
+            self.assertEqual(conflict.status_code, 409)
+            self.assertEqual(
+                conflict.get_json()['data']['conflict_match_ids'],
+                ['group-conflict'],
+            )
+        finally:
+            MatchPlayer.delete().where(MatchPlayer.match_id == 'group-conflict').execute()
+            Player.delete().where(Player.player_id.in_(['group-main', 'group-child'])).execute()
+
+    def test_account_group_mutations_require_admin(self):
+        bind = self.client.post('/api/admin/player-accounts/bind', json={
+            'parent_player_id': 'p1',
+            'child_player_ids': ['p2'],
+        })
+        unbind = self.client.delete('/api/admin/player-accounts/p2')
+
+        self.assertEqual(bind.status_code, 401)
+        self.assertEqual(unbind.status_code, 401)
+
     def test_admin_can_keep_existing_wanmei_avatar(self):
         self._login_admin()
         Player.create(

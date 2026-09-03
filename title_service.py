@@ -4,7 +4,7 @@ from typing import Dict, List, Optional
 
 from ajlog import logger
 from cache_service import invalidate_season
-from database import MatchPlayer, PlayerTitle
+from database import MatchPlayer, Player, PlayerTitle
 from title_system import Title, title_system
 
 
@@ -24,7 +24,7 @@ class RefactoredTitleService:
         if play_day:
             query = query.where(MatchPlayer.play_day == play_day)
 
-        player_ids = [record.player_id for record in query]
+        player_ids = Player.canonical_ids(record.player_id for record in query)
         aggregate_map = MatchPlayer.get_match_exploits(cup_name, player_ids, play_day)
         players_data = []
         for player_id in player_ids:

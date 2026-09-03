@@ -81,7 +81,9 @@ def judge_champion(day=None, cup_name=None):
             champion_players_map = {
                 player['player_id']: player for player in champion_players
             }
-            champion_player_ids = ','.join([pk for pk in champion_players_map.keys()])
+            # Preserve the accounts that actually played. Read paths resolve
+            # them to the current account group dynamically.
+            champion_player_ids = ','.join(champion_players_map.keys())
             logger.info(f"冠军队伍 {champion_team} 的成员有： {champion_player_ids} ")
 
         if runner_up_team:
@@ -91,7 +93,7 @@ def judge_champion(day=None, cup_name=None):
                 runner_up_players_map = {
                     player['player_id']: player for player in runner_up_players
                 }
-                runner_up_player_ids = ','.join([pk for pk in runner_up_players_map.keys()])
+                runner_up_player_ids = ','.join(runner_up_players_map.keys())
                 logger.info(f"亚军队伍 {runner_up_team} 的成员有： {runner_up_player_ids} ")
 
         # 保存冠军和亚军信息到数据库

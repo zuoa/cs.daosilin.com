@@ -6,7 +6,7 @@ from datetime import datetime
 from ajlog import logger
 from config import (LLM_API_KEY, LLM_MODEL_NAME, PLAYER_SUMMARY_PROMPT_VERSION,
                     REDIS_URL)
-from database import MatchPlayer, PlayerSeasonSummary, Season
+from database import MatchPlayer, Player, PlayerSeasonSummary, Season
 from player_summary_service import (build_summary_input, generate_summary,
                                     llm_configured, snapshot_hash)
 from cache_service import invalidate_season
@@ -46,6 +46,7 @@ def _player_summary_job_id(summary_id, digest):
 
 def schedule_player_summary(cup_name, player_id, force=False, snapshot=None):
     """Persist intent first and idempotently enqueue a summary generation."""
+    player_id = Player.canonical_player_id(player_id)
     snapshot = snapshot or build_summary_input(cup_name, player_id)
     if not snapshot:
         return None, False
@@ -178,11 +179,11 @@ def reconcile_player_summaries(cup_name=None, force=False):
     for season in seasons:
         cup = season.cup_name
         peers = []
-        player_ids = [
+        player_ids = Player.canonical_ids([
             row.player_id for row in
             MatchPlayer.select(MatchPlayer.player_id)
             .where(MatchPlayer.cup_name == cup).distinct()
-        ]
+        ])
         for player_id in player_ids:
             stats = MatchPlayer.get_match_exploit(cup, player_id, None)
             if stats:

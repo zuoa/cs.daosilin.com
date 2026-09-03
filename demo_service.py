@@ -203,6 +203,8 @@ def persist_analysis(match_id: str, payload: dict) -> int:
 
 def get_demo_player_stats(cup_name, player_id: str, play_day: str = None):
     """Aggregate completed-demo metrics; missing demos are excluded, never zero-filled."""
+    player_id = Player.canonical_player_id(player_id)
+    account_ids = Player.account_ids(player_id)
     query = (DemoPlayerStats
              .select(DemoPlayerStats, MatchPlayer.cup_name, MatchPlayer.play_day)
              .join(MatchPlayer, on=(
@@ -210,11 +212,11 @@ def get_demo_player_stats(cup_name, player_id: str, play_day: str = None):
                  (DemoPlayerStats.player_id == MatchPlayer.player_id)
              ))
              .join(DemoAnalysis, on=(DemoAnalysis.match_id == DemoPlayerStats.match_id))
-             .where(DemoPlayerStats.player_id == player_id,
+             .where(DemoPlayerStats.player_id.in_(account_ids),
                     DemoAnalysis.status == 'completed',
                     DemoAnalysis.metric_version == DEMO_METRIC_VERSION))
     platform = MatchPlayer.select(fn.COUNT(fn.DISTINCT(MatchPlayer.match_id))).where(
-        MatchPlayer.player_id == player_id)
+        MatchPlayer.player_id.in_(account_ids))
     cup_names = cup_name if isinstance(cup_name, (list, tuple, set)) else None
     if cup_names:
         query = query.where(MatchPlayer.cup_name.in_(list(cup_names)))
@@ -227,7 +229,7 @@ def get_demo_player_stats(cup_name, player_id: str, play_day: str = None):
         platform = platform.where(MatchPlayer.play_day == play_day)
     rows = list(query)
     total_matches = int(platform.scalar() or 0)
-    scope = MatchPlayer.select(MatchPlayer.match_id).where(MatchPlayer.player_id == player_id)
+    scope = MatchPlayer.select(MatchPlayer.match_id).where(MatchPlayer.player_id.in_(account_ids))
     if cup_names:
         scope = scope.where(MatchPlayer.cup_name.in_(list(cup_names)))
     elif cup_name:
@@ -322,7 +324,7 @@ def get_demo_player_stats(cup_name, player_id: str, play_day: str = None):
     # uncovered matches retain their platform row. Demo-only measurements
     # above intentionally keep the completed-demo denominator.
     completed_ids = {row.match_id for row in rows}
-    fallback = MatchPlayer.select().where(MatchPlayer.player_id == player_id)
+    fallback = MatchPlayer.select().where(MatchPlayer.player_id.in_(account_ids))
     if cup_names:
         fallback = fallback.where(MatchPlayer.cup_name.in_(list(cup_names)))
     elif cup_name:
@@ -441,12 +443,20 @@ def attach_demo_stats(platform_data, cup_name, player_id, play_day=None):
     return effective
 
 
-def load_demo_context(cup_name, player_ids):
+def load_demo_context(cup_name, player_ids, *, identity_map=None):
     """Load match membership and analysis state once for related aggregates."""
-    player_ids = list(dict.fromkeys(str(item) for item in (player_ids or []) if item))
+    account_map = identity_map or Player.account_map()
+    player_ids = list(dict.fromkeys(
+        account_map.get(str(item), str(item)) for item in (player_ids or []) if item
+    ))
     if not player_ids:
         return {'scope_rows': [], 'analyses': {}}
-    conditions = [MatchPlayer.player_id.in_(player_ids)]
+    account_ids = [
+        account_id for account_id, canonical_id in account_map.items()
+        if canonical_id in player_ids
+    ]
+    account_ids.extend(player_id for player_id in player_ids if player_id not in account_map)
+    conditions = [MatchPlayer.player_id.in_(list(dict.fromkeys(account_ids)))]
     if isinstance(cup_name, (list, tuple, set)):
         conditions.append(MatchPlayer.cup_name.in_(list(cup_name)))
     elif cup_name:
@@ -456,6 +466,8 @@ def load_demo_context(cup_name, player_ids):
             MatchPlayer.player_id, MatchPlayer.match_id, MatchPlayer.play_day,
         ).where(*conditions).dicts()
     )
+    for row in scope_rows:
+        row['player_id'] = account_map.get(str(row['player_id']), str(row['player_id']))
     match_ids = list(dict.fromkeys(row['match_id'] for row in scope_rows))
     analyses = {
         row.match_id: row for row in DemoAnalysis.select().where(
@@ -466,14 +478,16 @@ def load_demo_context(cup_name, player_ids):
 
 
 def attach_demo_stats_many(platform_by_player, cup_name, play_day=None,
-                           *, demo_context=None):
+                           *, demo_context=None, identity_map=None):
     """Attach demo state in bulk, avoiding per-player queries when no demo exists."""
     platform_by_player = {
         str(player_id): data for player_id, data in (platform_by_player or {}).items()
     }
     if not platform_by_player:
         return {}
-    context = demo_context or load_demo_context(cup_name, platform_by_player)
+    context = demo_context or load_demo_context(
+        cup_name, platform_by_player, identity_map=identity_map,
+    )
     scope_rows = context['scope_rows']
     if play_day:
         scope_rows = [row for row in scope_rows if row.get('play_day') == play_day]
@@ -538,10 +552,13 @@ def attach_demo_stats_many(platform_by_player, cup_name, play_day=None,
     return result
 
 
-def attach_demo_stats_by_day(platform_by_key, cup_name, *, demo_context=None):
+def attach_demo_stats_by_day(platform_by_key, cup_name, *, demo_context=None,
+                             identity_map=None):
     """Attach demo state to `(player_id, play_day)` aggregates in one preload."""
     player_ids = list(dict.fromkeys(key[0] for key in (platform_by_key or {})))
-    context = demo_context or load_demo_context(cup_name, player_ids)
+    context = demo_context or load_demo_context(
+        cup_name, player_ids, identity_map=identity_map,
+    )
     by_day = {}
     for (player_id, play_day), data in (platform_by_key or {}).items():
         by_day.setdefault(play_day, {})[player_id] = data

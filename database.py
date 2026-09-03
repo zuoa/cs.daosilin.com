@@ -194,6 +194,7 @@ class Player(BaseModel, CRUDMixin):
     live_avatar = CharField(max_length=500, null=True)
     alias_name = CharField(max_length=255, null=True)  # 别名，多个别名用逗号分隔
     steam_id = CharField(max_length=64, null=True)  # Steam ID
+    parent_player_id = CharField(max_length=64, null=True)  # 子账号归属的主玩家 ID
     live_url = CharField(max_length=500, null=True)  # 直播间 URL
     in_library = BooleanField(default=False)  # 是否计入玩家库（占比门槛只认库内）
     perfect_score = IntegerField(null=True)  # 完美平台当前天梯分
@@ -252,16 +253,58 @@ class Player(BaseModel, CRUDMixin):
         room_id = (room_id or '').strip()
         if steam_id:
             # Historical data commonly stores the Steam64 ID as player_id.
-            return (cls.select()
-                    .where((cls.steam_id == steam_id) | (cls.player_id == steam_id))
-                    .order_by(cls.updated_at.desc())
-                    .first())
+            player = (cls.select()
+                      .where((cls.steam_id == steam_id) | (cls.player_id == steam_id))
+                      .order_by(cls.updated_at.desc())
+                      .first())
+            return cls.canonical_player(player) if player else None
         if room_id:
             expected = room_id.casefold()
             for player in cls.select().where(cls.live_url.is_null(False)):
                 if cls.live_room_id(player.live_url).casefold() == expected:
-                    return player
+                    return cls.canonical_player(player)
         return None
+
+    @classmethod
+    def canonical_player_id(cls, player_id: str) -> str:
+        """Resolve an account ID to its one-level canonical player ID."""
+        player_id = str(player_id or '').strip()
+        if not player_id:
+            return ''
+        row = cls.get_or_none(cls.player_id == player_id)
+        return str(row.parent_player_id or row.player_id) if row else player_id
+
+    @classmethod
+    def canonical_player(cls, player: Optional['Player']) -> Optional['Player']:
+        if player is None or not player.parent_player_id:
+            return player
+        return cls.get_or_none(cls.player_id == player.parent_player_id) or player
+
+    @classmethod
+    def account_map(cls) -> Dict[str, str]:
+        """Return raw account ID -> canonical player ID for known players."""
+        return {
+            str(row.player_id): str(row.parent_player_id or row.player_id)
+            for row in cls.select(cls.player_id, cls.parent_player_id)
+        }
+
+    @classmethod
+    def account_ids(cls, player_id: str) -> List[str]:
+        canonical_id = cls.canonical_player_id(player_id)
+        if not canonical_id:
+            return []
+        children = (cls.select(cls.player_id)
+                    .where(cls.parent_player_id == canonical_id)
+                    .order_by(cls.player_id))
+        return [canonical_id, *(str(row.player_id) for row in children)]
+
+    @classmethod
+    def canonical_ids(cls, player_ids) -> List[str]:
+        account_map = cls.account_map()
+        return list(dict.fromkeys(
+            account_map.get(str(player_id), str(player_id))
+            for player_id in (player_ids or []) if player_id
+        ))
 
     @classmethod
     def is_exist(cls, player_id: str) -> Optional[bool]:
@@ -285,8 +328,19 @@ class Player(BaseModel, CRUDMixin):
     def get_library_ids(cls) -> List[str]:
         """库内玩家 player_id 列表"""
         try:
-            query = cls.select(cls.player_id).where(cls.in_library == True)
-            return [r.player_id for r in query]
+            roots = [
+                str(row.player_id) for row in
+                cls.select(cls.player_id).where(
+                    cls.in_library == True, cls.parent_player_id.is_null(True),
+                )
+            ]
+            if not roots:
+                return []
+            children = [
+                str(row.player_id) for row in
+                cls.select(cls.player_id).where(cls.parent_player_id.in_(roots))
+            ]
+            return [*roots, *children]
         except Exception as e:
             logger.error(f"获取玩家库失败: {str(e)}")
             return []
@@ -303,7 +357,9 @@ class Player(BaseModel, CRUDMixin):
                     query = query.where(
                         (cls.player_id.contains(q)) |
                         (cls.nickname.contains(q)) |
-                        (cls.alias_name.contains(q))
+                        (cls.alias_name.contains(q)) |
+                        (cls.steam_id.contains(q)) |
+                        (cls.parent_player_id.contains(q))
                     )
             if in_library is not None:
                 query = query.where(cls.in_library == bool(in_library))
@@ -316,7 +372,7 @@ class Player(BaseModel, CRUDMixin):
     @classmethod
     def ensure_library_player(cls, player_id: str, nickname: str = None) -> None:
         """确保玩家在库内（种子写入时调用）"""
-        player_id = (player_id or '').strip()
+        player_id = cls.canonical_player_id((player_id or '').strip())
         if not player_id:
             return
         existing = cls.get_or_none(cls.player_id == player_id)
@@ -452,6 +508,7 @@ class PlayerTitle(BaseModel, CRUDMixin):
     def get_player_titles(cls, player_id: str, cup_name: str = None, play_day: str = None) -> List[Dict[str, Any]]:
         """获取玩家称号"""
         try:
+            player_id = Player.canonical_player_id(player_id)
             query = cls.select().where(cls.player_id == player_id, cls.is_active == True)
             if cup_name:
                 query = query.where(cls.cup_name == cup_name)
@@ -467,7 +524,7 @@ class PlayerTitle(BaseModel, CRUDMixin):
     @classmethod
     def get_players_titles(cls, player_ids, cup_name: str = None,
                            play_day: str = None) -> Dict[str, List[Dict[str, Any]]]:
-        player_ids = list(dict.fromkeys(str(item) for item in (player_ids or []) if item))
+        player_ids = Player.canonical_ids(player_ids)
         if not player_ids:
             return {}
         query = cls.select().where(
@@ -713,17 +770,30 @@ class MatchPlayer(BaseModel, CRUDMixin):
     @classmethod
     def get_match_exploits(cls, cup_name: str, player_ids=None,
                            play_day: str = None, *, group_by_day=False,
-                           demo_context=None) -> Dict[str, Dict[str, Any]]:
+                           demo_context=None, identity_map=None) -> Dict[str, Dict[str, Any]]:
         """Aggregate all requested players in one query.
 
         The old call pattern issued one full aggregate query per player.  This
         grouped form is the hot-path primitive used by list and detail APIs.
         """
-        player_ids = None if player_ids is None else list(dict.fromkeys(
+        requested_ids = None if player_ids is None else list(dict.fromkeys(
             str(player_id) for player_id in player_ids if player_id
+        ))
+        account_map = identity_map or Player.account_map()
+        player_ids = None if requested_ids is None else list(dict.fromkeys(
+            account_map.get(player_id, player_id) for player_id in requested_ids
         ))
         if player_ids == []:
             return {}
+        child_pairs = [
+            (account_id, canonical_id)
+            for account_id, canonical_id in account_map.items()
+            if account_id != canonical_id
+        ]
+        canonical_player = (
+            Case(cls.player_id, child_pairs, cls.player_id)
+            if child_pairs else cls.player_id
+        )
         totals = {
             'win_count': cls.win, 'total_kills': cls.kill,
             'total_assists': cls.assist, 'total_deaths': cls.death,
@@ -754,7 +824,7 @@ class MatchPlayer(BaseModel, CRUDMixin):
             'avg_pw_rating': cls.pw_rating, 'avg_rws': cls.rws,
             'avg_we': cls.we, 'avg_throws_count': cls.throws_count,
         }
-        group_fields = [cls.player_id]
+        group_fields = [canonical_player]
         if group_by_day:
             group_fields.append(cls.play_day)
         query = cls.select(
@@ -771,7 +841,12 @@ class MatchPlayer(BaseModel, CRUDMixin):
         if cup_name:
             query = query.where(cls.cup_name == cup_name)
         if player_ids is not None:
-            query = query.where(cls.player_id.in_(player_ids))
+            account_ids = [
+                account_id for account_id, canonical_id in account_map.items()
+                if canonical_id in player_ids
+            ]
+            account_ids.extend(player_id for player_id in player_ids if player_id not in account_map)
+            query = query.where(cls.player_id.in_(list(dict.fromkeys(account_ids))))
         if play_day:
             query = query.where(cls.play_day == play_day)
         query = query.group_by(*group_fields)
@@ -821,16 +896,21 @@ class MatchPlayer(BaseModel, CRUDMixin):
                 'flash_success_ratio': 0.0,
                 'flash_teammate_ratio': 0.0,
             })
-            key = ((str(result.player_id), result.play_day)
-                   if group_by_day else str(result.player_id))
+            canonical_id = str(getattr(result, 'player_id'))
+            key = ((canonical_id, result.play_day)
+                   if group_by_day else canonical_id)
             result_map[key] = data
 
         if group_by_day:
             from demo_service import attach_demo_stats_by_day
-            return attach_demo_stats_by_day(result_map, cup_name, demo_context=demo_context)
+            return attach_demo_stats_by_day(
+                result_map, cup_name, demo_context=demo_context,
+                identity_map=account_map,
+            )
         from demo_service import attach_demo_stats_many
         return attach_demo_stats_many(
             result_map, cup_name, play_day, demo_context=demo_context,
+            identity_map=account_map,
         )
 
     @classmethod
@@ -846,7 +926,8 @@ class MatchPlayer(BaseModel, CRUDMixin):
                           play_day: str) -> Optional[Dict[str, Any]]:
         if not player_id:
             return None
-        return cls.get_match_exploits(cup_name, [player_id], play_day).get(str(player_id))
+        canonical_id = Player.canonical_player_id(player_id)
+        return cls.get_match_exploits(cup_name, [canonical_id], play_day).get(canonical_id)
 
     @classmethod
     def get_external_player_stats(cls, cup_names: List[str],
@@ -874,8 +955,18 @@ class MatchPlayer(BaseModel, CRUDMixin):
             'avg_rating': cls.pw_rating,
             'avg_pw_rating': cls.pw_rating,
         }
+        account_map = Player.account_map()
+        child_pairs = [
+            (account_id, canonical_id)
+            for account_id, canonical_id in account_map.items()
+            if account_id != canonical_id
+        ]
+        canonical_player = (
+            Case(cls.player_id, child_pairs, cls.player_id)
+            if child_pairs else cls.player_id
+        )
         select_fields = [
-            cls.player_id,
+            canonical_player.alias('player_id'),
             fn.MAX(cls.nickname).alias('nickname'),
             fn.MAX(cls.avatar).alias('avatar'),
             fn.COUNT(fn.DISTINCT(cls.match_id)).alias('match_count'),
@@ -891,11 +982,16 @@ class MatchPlayer(BaseModel, CRUDMixin):
 
         conditions = [cls.cup_name.in_(cup_names)]
         if player_id:
-            conditions.append(cls.player_id == player_id)
+            canonical_id = account_map.get(str(player_id), str(player_id))
+            account_ids = [
+                account_id for account_id, target_id in account_map.items()
+                if target_id == canonical_id
+            ]
+            conditions.append(cls.player_id.in_(account_ids or [canonical_id]))
         rows = list(
             cls.select(*select_fields)
             .where(*conditions)
-            .group_by(cls.player_id)
+            .group_by(canonical_player)
             .dicts()
         )
         player_ids = [row['player_id'] for row in rows]
@@ -997,6 +1093,10 @@ class MatchPlayer(BaseModel, CRUDMixin):
         """Aggregate reciprocal WMPVP killMap data for meaningful matchups."""
         if not cup_names or not player_ids:
             return {}
+        account_map = Player.account_map()
+        player_ids = list(dict.fromkeys(
+            account_map.get(str(player_id), str(player_id)) for player_id in player_ids
+        ))
         target_ids = set(player_ids)
         kill_counters = {player_id: Counter() for player_id in player_ids}
         death_counters = {player_id: Counter() for player_id in player_ids}
@@ -1017,8 +1117,8 @@ class MatchPlayer(BaseModel, CRUDMixin):
                 except (TypeError, ValueError):
                     continue
                 if count > 0:
-                    attacker_id = str(row.player_id)
-                    victim_id = str(victim_id)
+                    attacker_id = account_map.get(str(row.player_id), str(row.player_id))
+                    victim_id = account_map.get(str(victim_id), str(victim_id))
                     if attacker_id in target_ids and victim_id != attacker_id:
                         kill_counters[attacker_id][victim_id] += count
                     if victim_id in target_ids and attacker_id != victim_id:
@@ -1077,6 +1177,7 @@ class MatchPlayer(BaseModel, CRUDMixin):
                                  play_day: str = None) -> List[Dict[str, Any]]:
         if not cup_name or not player_id:
             return []
+        player_id = Player.canonical_player_id(player_id)
         return cls._aggregate_kill_matchups(
             [cup_name], [player_id], play_day,
         ).get(player_id, [])
@@ -1087,7 +1188,7 @@ class MatchPlayer(BaseModel, CRUDMixin):
         try:
             # 构建查询条件
             conditions = [
-                cls.player_id == player_id,
+                cls.player_id.in_(Player.account_ids(player_id)),
                 Match.cup_name == cup_name
             ]
             
@@ -1184,7 +1285,7 @@ class MatchPlayer(BaseModel, CRUDMixin):
         """获取选手在指定赛季（或比赛日）的逐场比赛记录。"""
         try:
             conditions = [
-                cls.player_id == player_id,
+                cls.player_id.in_(Player.account_ids(player_id)),
                 cls.cup_name == cup_name,
                 Match.cup_name == cup_name,
             ]
@@ -1476,7 +1577,7 @@ class SeasonRoster(BaseModel, CRUDMixin):
         """获取某赛季名单 player_id 列表"""
         try:
             query = cls.select(cls.player_id).where(cls.season_cup_name == season_cup_name)
-            return [r.player_id for r in query]
+            return Player.canonical_ids(r.player_id for r in query)
         except Exception as e:
             logger.error(f"获取名单失败: {str(e)}")
             return []
@@ -1489,7 +1590,7 @@ class SeasonRoster(BaseModel, CRUDMixin):
                 cls.delete().where(cls.season_cup_name == season_cup_name).execute()
                 seen = set()
                 for pid in player_ids or []:
-                    pid = (pid or '').strip()
+                    pid = Player.canonical_player_id((pid or '').strip())
                     if pid and pid not in seen:
                         seen.add(pid)
                         cls.create(season_cup_name=season_cup_name, player_id=pid)

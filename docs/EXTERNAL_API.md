@@ -43,6 +43,8 @@ GET /api/v1/external/players/<URL 编码后的赛季名>
 
 `data.seasons` 说明本次统计实际命中的赛季，`data.player_count` 是选手数，`data.players` 是每个选手的合并统计。
 
+如果管理员已把同一人的多个平台账号归集到一个主玩家，列表只返回主玩家；比赛数据、场次和平均指标会包含其全部子账号。`player_id` 及昵称、头像、直播间、完美段位等身份字段均取自主玩家档案。
+
 External API 只提供选手身份、基础比赛数据、当前完美平台段位和 AI 球探报告。站内 Demo 分析、高级指标、对位榜等数据不会通过此接口返回。
 
 选手身份字段包括 `player_id`、`nickname`、`avatar`、`alias_name`、`steam_id`、`live_url` 和 `live_room_id`。
@@ -85,3 +87,5 @@ curl -H 'Authorization: Bearer YOUR_TOKEN' \
 ```
 
 成功时 `data.player` 返回该选手在所选赛季的合并统计，字段与选手列表中的单项一致；`data.lookup` 说明实际使用的查询类型和值。如果选手不存在，或该选手在所选赛季没有比赛数据，接口返回 HTTP 404。
+
+已归集的任意子账号 Steam ID 或直播间标识都会命中主玩家，并返回整个账号组的合并统计。

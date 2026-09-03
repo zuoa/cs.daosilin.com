@@ -1061,6 +1061,32 @@ img.player-monogram { object-fit: cover; }
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
 
+/* Player identity groups: the rail makes account ownership readable at a glance. */
+.status-badge.account-child { border-color: var(--color-info-soft); background: var(--blue-soft); color: var(--color-info); }
+.account-group-editor { display: grid; gap: 13px; border: 1px solid var(--line-strong); border-left: 3px solid var(--blue); border-radius: 12px; padding: 15px; background: var(--surface-soft); }
+.account-group-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.account-group-heading h3 { margin-top: 2px; font-family: var(--font-display); font-size: .95rem; }
+.account-group-kicker { color: var(--color-info); font-family: var(--font-body); font-size: .58rem; font-weight: 800; letter-spacing: .13em; }
+.account-parent-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 12px; border-radius: 9px; padding: 12px; background: var(--surface); }
+.account-parent-card span { grid-column: 1; color: var(--ink-500); font-size: .69rem; }
+.account-parent-card strong { grid-column: 1; overflow-wrap: anywhere; font-family: var(--font-mono); font-size: .77rem; }
+.account-parent-card .button { grid-column: 2; grid-row: 1 / span 2; }
+.account-child-list { display: grid; gap: 7px; }
+.account-child-row { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 12px; border-radius: 9px; padding: 9px 11px; background: var(--surface); }
+.account-child-row > div { display: grid; min-width: 0; gap: 2px; }
+.account-child-row strong { overflow: hidden; font-size: .76rem; text-overflow: ellipsis; white-space: nowrap; }
+.account-child-row code { color: var(--ink-500); font-size: .65rem; overflow-wrap: anywhere; }
+.account-group-empty { color: var(--ink-500); font-size: .73rem; line-height: 1.55; }
+.account-bind-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.account-bind-row input { min-width: 0; min-height: 41px; border: 1px solid var(--line-strong); border-radius: 9px; padding: 8px 11px; background: var(--surface); }
+.account-bind-row input:focus { border-color: var(--blue); outline: 0; box-shadow: var(--focus); }
+.account-group-editor > small { color: var(--ink-500); font-size: .68rem; line-height: 1.5; }
+
+@media (max-width: 36rem) {
+  .account-bind-row { grid-template-columns: 1fr; }
+  .account-bind-row .button { justify-content: center; }
+}
+
 /* Hallmark redesign layer — shared system, page-specific structural fingerprints */
 h1, h2, h3 {
   min-width: 0;

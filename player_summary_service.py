@@ -89,6 +89,7 @@ def _ratio(numerator, denominator):
 
 
 def _player_name(player_id):
+    player_id = Player.canonical_player_id(player_id)
     player = Player.get_or_none(Player.player_id == player_id)
     if not player:
         return player_id
@@ -98,7 +99,7 @@ def _player_name(player_id):
 def _peer_rows(cup_name):
     query = (MatchPlayer.select(MatchPlayer.player_id)
              .where(MatchPlayer.cup_name == cup_name).distinct())
-    player_ids = [record.player_id for record in query]
+    player_ids = Player.canonical_ids(record.player_id for record in query)
     aggregates = MatchPlayer.get_match_exploits(cup_name, player_ids, None)
     return [
         (player_id, aggregates[str(player_id)])
@@ -292,6 +293,7 @@ def generate_summary(snapshot, client=None):
 
 
 def get_public_summary(cup_name, player_id):
+    player_id = Player.canonical_player_id(player_id)
     row = PlayerSeasonSummary.get_or_none(
         PlayerSeasonSummary.cup_name == cup_name,
         PlayerSeasonSummary.player_id == player_id,
