@@ -74,7 +74,19 @@
               <thead>
                 <tr>
                   <th class="rank-cell">排名</th><th>选手</th><th>完美段位</th><th v-if="day">称号</th><th>荣誉</th>
-                  <th>场次</th><th>胜率</th><th>K/D</th><th>Rating</th><th v-if="!day" title="满 5 票后，使用向本赛季社区均值收缩的加权均分">社区票选</th><th>ADPR</th><th>WE</th><th>爆头率</th><th>MVP</th><th class="action-cell"><span class="sr-only">查看详情</span></th>
+                  <th>场次</th><th>胜率</th><th>K/D</th><th>Rating</th>
+                  <th v-if="!day" title="满 5 票后，使用向本赛季社区均值收缩的加权均分">
+                    <span class="community-column-heading">
+                      <span>社区票选</span>
+                      <router-link
+                        class="community-shelf-link"
+                        :to="`/${cup}/community`"
+                        aria-label="查看社区票选货架"
+                        title="查看票选货架"
+                      ><AppIcon name="layers" :size="15" /></router-link>
+                    </span>
+                  </th>
+                  <th>ADPR</th><th>WE</th><th>爆头率</th><th>MVP</th><th class="action-cell"><span class="sr-only">查看详情</span></th>
                 </tr>
               </thead>
               <tbody>

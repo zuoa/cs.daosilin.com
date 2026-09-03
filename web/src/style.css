@@ -604,6 +604,10 @@ img.player-monogram { object-fit: cover; }
 .community-verdict span,
 .community-verdict small { color: var(--color-muted); font-size: .6rem; white-space: nowrap; }
 .community-verdict.formed span { font-family: var(--font-outlier); font-variant-numeric: tabular-nums; }
+.community-column-heading { display: inline-flex; align-items: center; gap: 6px; }
+.community-shelf-link { display: inline-flex; width: 28px; height: 28px; align-items: center; justify-content: center; border-radius: var(--radius-input); color: var(--color-accent-strong); }
+.community-shelf-link:hover { background: var(--color-accent-soft); color: var(--color-accent-strong); }
+.community-shelf-link:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 1px; box-shadow: none; }
 .quick-vote-cell { min-width: 154px; }
 .quick-vote-trigger { display: flex; width: 100%; min-width: 130px; align-items: center; justify-content: space-between; gap: 8px; border: 0; border-radius: var(--radius-input); padding: 5px 6px; background: transparent; color: inherit; text-align: left; }
 .quick-vote-trigger:hover { background: var(--color-accent-faint); }
