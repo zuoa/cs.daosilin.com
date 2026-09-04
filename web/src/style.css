@@ -578,7 +578,7 @@ img.player-monogram { object-fit: cover; }
 .leaderboard-section { padding-top: 60px; background: var(--surface); }
 .leaderboard-panel { overflow: hidden; border: 1px solid var(--line); border-radius: 17px; box-shadow: var(--shadow-sm); }
 .public-toolbar { min-height: 69px; padding: 12px 15px; }
-.leaderboard-table { min-width: 1320px; }
+.leaderboard-table { min-width: 1420px; }
 .leaderboard-table th { background: var(--color-accent-faint); }
 .leaderboard-table td { height: 64px; }
 .rank-cell { width: 65px; text-align: center !important; }
@@ -605,6 +605,13 @@ img.player-monogram { object-fit: cover; }
 .trophy-container span.runner_up { background: var(--silver-soft); color: var(--silver); }
 .stat-positive, .rating-value.hot { color: var(--signal-dark); }
 .rating-value { font-family: var(--font-body); }
+.draft-pick-heading { width: 82px; text-align: center !important; }
+.draft-pick-heading svg { color: var(--color-muted); vertical-align: middle; }
+.draft-pick-cell { min-width: 82px; }
+.draft-pick-value { display: inline-flex; align-items: center; gap: 9px; white-space: nowrap; }
+.draft-pick-value > span { display: inline-flex; align-items: center; gap: 3px; color: var(--color-muted); }
+.draft-pick-value strong { color: var(--color-ink); font-family: var(--font-outlier); font-size: .72rem; font-variant-numeric: tabular-nums; }
+.draft-pick-value:focus-visible { border-radius: 4px; outline: 2px solid var(--color-focus); outline-offset: 3px; }
 .community-verdict { display: grid; min-width: 112px; align-content: center; gap: 2px; color: var(--color-muted); line-height: 1.2; }
 .community-verdict.formed { border-left: 2px solid var(--color-accent); padding-left: 9px; }
 .community-verdict strong { color: var(--color-ink); font-family: var(--font-display); font-size: var(--text-sm); letter-spacing: -.02em; }
@@ -2395,6 +2402,17 @@ h1, h2, h3 {
     border-top: var(--rule-hair) solid var(--color-rule);
     border-bottom: var(--rule-hair) solid var(--color-rule);
   }
+
+  .mobile-draft-summary {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-lg);
+    margin-inline: var(--space-xs);
+    border-top: var(--rule-hair) solid var(--color-rule);
+    padding: 9px 3px 8px;
+  }
+  .mobile-draft-summary strong { font-size: .72rem; }
 
   .mobile-key-stats > div,
   .mobile-extra-stats dl > div {

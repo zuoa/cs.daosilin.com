@@ -18,9 +18,10 @@ os.environ['ADMIN_PASSWORD'] = 'test-admin-password'
 from app import app  # noqa: E402
 from cache_service import cache, invalidate_season  # noqa: E402
 from auth import EXTERNAL_TOKEN_HASH_KEY, EXTERNAL_TOKEN_HINT_KEY  # noqa: E402
-from database import (Config, CupDayChampion, Match, MatchPlayer, MatchSelection,
-                      Player, PlayerCommunityRating, PlayerSeasonSummary, PlayerTitle, Season,
-                      SeasonRoster, db)  # noqa: E402
+from database import (Config, CupDayChampion, DraftPlayer, DraftSession,
+                      Match, MatchPlayer, MatchSelection, Player,
+                      PlayerCommunityRating, PlayerSeasonSummary, PlayerTitle,
+                      Season, SeasonRoster, db)  # noqa: E402
 from peewee import BooleanField, FloatField, IntegerField  # noqa: E402
 from scheduler import set_crawl_status  # noqa: E402
 
@@ -233,6 +234,34 @@ class ExternalPlayersApiTest(unittest.TestCase):
         payload = self.client.get('/api/v1/cup/season-one').get_json()['data']
         player = next(item for item in payload['players'] if item['player_id'] == 'p1')
         self.assertEqual(player['live_url'], 'https://www.douyu.com/731778')
+
+    def test_cup_leaderboard_exposes_readable_draft_pick_round(self):
+        session = DraftSession.create(
+            play_day='20250101', completed_at=datetime(2025, 1, 1, 20),
+            roster_fingerprint='external-api-draft-roster',
+            roll_fingerprint='external-api-draft-roll',
+            team_count=10, status='complete',
+        )
+        try:
+            DraftPlayer.create(
+                session=session, team_num=0, slot=3, is_captain=False,
+                nickname='选手一', steam_id='steam-p1', needs_steam=False,
+            )
+            cache.clear()
+
+            payload = self.client.get(
+                '/api/v1/cup/season-one?day=20250101'
+            ).get_json()['data']
+            player = next(item for item in payload['players'] if item['player_id'] == 'p1')
+
+            self.assertEqual(player['draft_pick']['average_round'], 2.0)
+            self.assertEqual(player['draft_pick']['average_overall_pick'], 1.0)
+            self.assertEqual(player['draft_pick']['pick_count'], 1)
+            self.assertEqual(player['draft_pick']['team_counts'], [10])
+        finally:
+            DraftPlayer.delete().where(DraftPlayer.session == session).execute()
+            session.delete_instance()
+            cache.clear()
 
     @patch('app.get_live_statuses')
     def test_public_live_status_endpoint_batches_configured_rooms(self, statuses):

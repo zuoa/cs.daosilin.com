@@ -17,6 +17,7 @@ import websocket
 
 from ajlog import logger
 from baokemeng_service import DraftTracker, DraftValidationError, persist_final_draft
+from cache_service import invalidate_cache
 from config import BAOKEMENG_PASSWORD, BAOKEMENG_SERVER, BAOKEMENG_STABLE_SECONDS
 
 
@@ -62,6 +63,7 @@ def _commit_ready(tracker: DraftTracker) -> None:
         logger.exception('宝可梦终稿写入失败，将继续重试')
         return
     tracker.commit_succeeded()
+    invalidate_cache('draft')
     logger.info(
         f'宝可梦终稿 {"已保存" if created else "已存在"}: '
         f'session={session.id} play_day={session.play_day} teams={session.team_count} '

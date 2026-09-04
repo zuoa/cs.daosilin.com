@@ -8,10 +8,12 @@ from peewee import SqliteDatabase
 from baokemeng_service import (
     DraftTracker,
     build_final_snapshot,
+    draft_pick_summaries,
     persist_final_draft,
     public_draft_payload,
+    summarize_draft_pick_records,
 )
-from database import DraftPlayer, DraftSession, DraftTeam
+from database import DraftPlayer, DraftSession, DraftTeam, Player
 
 
 def player(name, steam=True):
@@ -178,6 +180,86 @@ class DraftTrackerTest(unittest.TestCase):
         snapshot = tracker.poll(second_started + timedelta(seconds=1))
         self.assertIsNotNone(snapshot)
         self.assertEqual(snapshot['started_at'], second_started)
+
+
+class DraftPickSummaryTest(unittest.TestCase):
+    def test_round_average_is_readable_across_eight_and_ten_team_drafts(self):
+        records = []
+        for session_id, team_count, picked_round in ((1, 10, 1), (2, 8, 2)):
+            for round_number in (1, 2):
+                for team_index in range(team_count):
+                    records.append({
+                        'session_id': session_id,
+                        'player_id': (
+                            'picked-player'
+                            if round_number == picked_round and team_index == 0
+                            else f'other-{session_id}-{round_number}-{team_index}'
+                        ),
+                        'slot': round_number + 1,
+                        'is_captain': False,
+                        'team_count': team_count,
+                    })
+            records.append({
+                'session_id': session_id,
+                'player_id': 'captain-only',
+                'slot': 1,
+                'is_captain': True,
+                'team_count': team_count,
+            })
+
+        summaries = summarize_draft_pick_records(records)
+
+        self.assertEqual(summaries['picked-player']['average_round'], 1.5)
+        self.assertEqual(summaries['picked-player']['average_overall_pick'], 9.0)
+        self.assertEqual(summaries['picked-player']['pick_count'], 2)
+        self.assertEqual(summaries['picked-player']['team_counts'], [8, 10])
+        self.assertEqual(summaries['captain-only']['captain_count'], 2)
+        self.assertEqual(summaries['captain-only']['pick_count'], 0)
+        self.assertIsNone(summaries['captain-only']['average_round'])
+        self.assertIsNone(summaries['captain-only']['average_overall_pick'])
+        # Hidden comparison metadata uses tied-round midpoint ranks, so the
+        # differing number of teams does not distort cross-session position.
+        self.assertEqual(summaries['picked-player']['average_pool_position'], 0.5281)
+
+
+class DraftPickQueryTest(unittest.TestCase):
+    def setUp(self):
+        self.database = SqliteDatabase(':memory:', pragmas={'foreign_keys': 1})
+        self.models = [Player, DraftSession, DraftPlayer]
+        self.bind = self.database.bind_ctx(self.models)
+        self.bind.__enter__()
+        self.database.create_tables(self.models)
+
+    def tearDown(self):
+        self.database.drop_tables(self.models)
+        self.database.close()
+        self.bind.__exit__(None, None, None)
+
+    def test_matches_draft_steam_id_to_canonical_player(self):
+        Player.create(
+            player_id='canonical-player', nickname='目标选手',
+            steam_id='76561198000000999',
+        )
+        session = DraftSession.create(
+            play_day='20260903', completed_at=datetime(2026, 9, 3, 19),
+            roster_fingerprint='roster-query', roll_fingerprint='roll-query',
+            team_count=8, status='complete',
+        )
+        DraftPlayer.create(
+            session=session, team_num=0, slot=2, is_captain=False,
+            nickname='目标选手', steam_id='76561198000000999', needs_steam=False,
+        )
+        DraftPlayer.create(
+            session=session, team_num=1, slot=2, is_captain=False,
+            nickname='无匹配选手', needs_steam=True,
+        )
+
+        summaries = draft_pick_summaries(['20260903'], ['canonical-player'])
+
+        self.assertEqual(summaries['canonical-player']['average_round'], 1.0)
+        self.assertEqual(summaries['canonical-player']['average_overall_pick'], 1.5)
+        self.assertEqual(summaries['canonical-player']['pick_count'], 1)
+        self.assertEqual(summaries['canonical-player']['team_counts'], [8])
 
 
 class DraftPersistenceTest(unittest.TestCase):

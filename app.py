@@ -202,6 +202,14 @@ def _build_cup_players(cup, day=None):
                     'trophy': 'runner_up',
                 })
         player_data.append(player)
+    cup_days = MatchPlayer.get_cup_day_set(cup)
+    from baokemeng_service import draft_pick_summaries
+    draft_stats = draft_pick_summaries(
+        [day] if day else cup_days,
+        list(players_map),
+    )
+    for player in player_data:
+        player['draft_pick'] = draft_stats.get(str(player['player_id']))
     player_data.sort(key=lambda x: x.get('avg_pw_rating', 0), reverse=True)
     if day:
         comparable_players = [player for player in player_data if player.get('match_count')]
@@ -215,7 +223,7 @@ def _build_cup_players(cup, day=None):
         )
         for player in player_data:
             player['community_rating'] = community_ratings.get(str(player['player_id']))
-    return player_data, MatchPlayer.get_cup_day_set(cup)
+    return player_data, cup_days
 
 
 def _player_detail_payload(player_id, cup, day=None):
@@ -392,7 +400,7 @@ def api_draft():
 
 @app.route('/api/v1/cup/<string:cup>')
 @cached_response(timeout=900, scopes=lambda: (
-    season_scope(request.view_args['cup']), 'profiles', 'community-verdict-v2'))
+    season_scope(request.view_args['cup']), 'profiles', 'community-verdict-v2', 'draft'))
 def api_cup(cup):
     day = request.args.get('day') or None
     players, cup_days = _build_cup_players(cup, day)

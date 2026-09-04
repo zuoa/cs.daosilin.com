@@ -13,7 +13,7 @@ from typing import Any
 
 from peewee import IntegrityError
 
-from database import DraftPlayer, DraftSession, DraftTeam, db
+from database import DraftPlayer, DraftSession, DraftTeam, Player, db
 
 
 STEAM64_RE = re.compile(r'^\d{17}$')
@@ -24,6 +24,140 @@ GROUP_TEXT_RE = re.compile(r'分组\s*([^\s<]+)', re.IGNORECASE)
 
 class DraftValidationError(ValueError):
     pass
+
+
+def summarize_draft_pick_records(records: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Aggregate readable pick rounds plus a cross-size comparison value.
+
+    Captains are counted separately and never enter the pick-round average.  The
+    pool position uses the midpoint of a round because the stored board knows
+    each team's round order, but not the exact order within that round.
+    """
+    sessions: dict[int, list[dict[str, Any]]] = {}
+    for record in records:
+        try:
+            session_id = int(record['session_id'])
+        except (KeyError, TypeError, ValueError):
+            continue
+        sessions.setdefault(session_id, []).append(record)
+
+    totals: dict[str, dict[str, Any]] = {}
+    for session_records in sessions.values():
+        selected = [
+            record for record in session_records
+            if not record.get('is_captain') and int(record.get('slot') or 0) > 1
+        ]
+        round_counts = Counter(int(record['slot']) - 1 for record in selected)
+        picks_before: dict[int, int] = {}
+        running = 0
+        for round_number in sorted(round_counts):
+            picks_before[round_number] = running
+            running += round_counts[round_number]
+
+        for record in session_records:
+            player_id = str(record.get('player_id') or '').strip()
+            if not player_id:
+                continue
+            item = totals.setdefault(player_id, {
+                'round_sum': 0.0,
+                'overall_pick_sum': 0.0,
+                'pool_position_sum': 0.0,
+                'pick_count': 0,
+                'captain_count': 0,
+                'team_counts': set(),
+            })
+            team_count = int(record.get('team_count') or 0)
+            if team_count > 0:
+                item['team_counts'].add(team_count)
+            if record.get('is_captain'):
+                item['captain_count'] += 1
+                continue
+
+            slot = int(record.get('slot') or 0)
+            if slot <= 1:
+                continue
+            round_number = slot - 1
+            item['round_sum'] += round_number
+            item['pick_count'] += 1
+            if selected:
+                # Every player in one round is tied.  Assign the round's
+                # midpoint rank before converting it to its position in the
+                # complete non-captain draft pool.
+                midpoint_rank = (
+                    picks_before[round_number]
+                    + (round_counts[round_number] + 1) / 2
+                )
+                item['overall_pick_sum'] += midpoint_rank
+                item['pool_position_sum'] += midpoint_rank / len(selected)
+
+    result = {}
+    for player_id, item in totals.items():
+        pick_count = item['pick_count']
+        result[player_id] = {
+            'average_round': round(item['round_sum'] / pick_count, 2) if pick_count else None,
+            'average_overall_pick': (
+                round(item['overall_pick_sum'] / pick_count, 2) if pick_count else None
+            ),
+            'average_pool_position': (
+                round(item['pool_position_sum'] / pick_count, 4) if pick_count else None
+            ),
+            'pick_count': pick_count,
+            'captain_count': item['captain_count'],
+            'team_counts': sorted(item['team_counts']),
+        }
+    return result
+
+
+def draft_pick_summaries(
+    play_days: list[str], player_ids: list[str] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Return draft history keyed by canonical leaderboard player ID."""
+    play_days = list(dict.fromkeys(str(day) for day in play_days if day))
+    if not play_days:
+        return {}
+
+    identity_by_player_id: dict[str, str] = {}
+    identity_by_steam_id: dict[str, str] = {}
+    for profile in Player.select(Player.player_id, Player.steam_id, Player.parent_player_id):
+        canonical_id = str(profile.parent_player_id or profile.player_id)
+        identity_by_player_id[str(profile.player_id)] = canonical_id
+        if profile.steam_id:
+            identity_by_steam_id[str(profile.steam_id)] = canonical_id
+
+    requested = {str(player_id) for player_id in (player_ids or []) if player_id}
+    rows = (
+        DraftPlayer
+        .select(
+            DraftPlayer.session.alias('session_id'),
+            DraftPlayer.slot,
+            DraftPlayer.is_captain,
+            DraftPlayer.steam_id,
+            DraftPlayer.site_id,
+            DraftSession.team_count,
+        )
+        .join(DraftSession)
+        .where(
+            DraftSession.status == 'complete',
+            DraftSession.play_day.in_(play_days),
+        )
+        .dicts()
+    )
+    records = []
+    for row in rows:
+        steam_id = str(row.get('steam_id') or '')
+        site_id = str(row.get('site_id') or '')
+        canonical_id = (
+            identity_by_steam_id.get(steam_id)
+            or identity_by_player_id.get(steam_id)
+            or identity_by_player_id.get(site_id)
+        )
+        records.append({**row, 'player_id': canonical_id})
+
+    summaries = summarize_draft_pick_records(records)
+    if requested:
+        return {player_id: value for player_id, value in summaries.items()
+                if player_id in requested}
+    return summaries
 
 
 def _clean_text(value: Any) -> str:

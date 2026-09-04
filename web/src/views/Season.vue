@@ -75,6 +75,9 @@
                 <tr>
                   <th class="rank-cell">排名</th><th>选手</th><th>完美段位</th><th v-if="day">称号</th><th>荣誉</th>
                   <th>场次</th><th>胜率</th><th>K/D</th><th>Rating</th>
+                  <th class="draft-pick-heading" title="选人轮次与全场顺位；队长身份不计入平均">
+                    <AppIcon name="layers" :size="15" /><span class="sr-only">平均被选轮次与全场顺位</span>
+                  </th>
                   <th v-if="!day" title="满 5 票后，使用向本赛季社区均值收缩的加权均分">
                     <span class="community-column-heading">
                       <span>社区票选</span>
@@ -145,6 +148,19 @@
                     <td><span :class="{ 'stat-positive': p.win_rate >= 0.6 }">{{ pct(p.win_rate) }}</span></td>
                     <td class="mono-data">{{ n2(p.kd_ratio) }}</td>
                     <td><strong class="rating-value" :class="{ hot: p.avg_pw_rating >= 1.57 }">{{ n2(p.avg_pw_rating) }}</strong></td>
+                    <td class="draft-pick-cell">
+                      <span
+                        v-if="hasDraftPick(p)"
+                        class="draft-pick-value"
+                        :title="draftPickTitle(p)"
+                        :aria-label="draftPickTitle(p)"
+                        tabindex="0"
+                      >
+                        <span><AppIcon name="layers" :size="14" /><strong>{{ draftRoundCompact(p) }}</strong></span>
+                        <span><AppIcon name="users" :size="14" /><strong>≈{{ draftOverallPickNumber(p) }}</strong></span>
+                      </span>
+                      <span v-else class="muted-cell" aria-label="暂无被选记录">-</span>
+                    </td>
                     <td
                       v-if="!day"
                       class="quick-vote-cell"
@@ -202,7 +218,7 @@
                     </td>
                   </tr>
                   <tr v-if="open === p.player_id" class="detail-drawer">
-                    <td :colspan="14">
+                    <td :colspan="15">
                       <div class="drawer-content">
                         <div v-if="uniqueTitles(p.titles).length" class="drawer-section titles-drawer">
                           <h3>称号信息</h3>
@@ -286,6 +302,17 @@
                   </template>
                   <AppIcon name="chevronDown" :size="14" aria-hidden="true" />
                 </button>
+
+                <div
+                  v-if="hasDraftPick(p)"
+                  class="mobile-draft-summary draft-pick-value"
+                  :title="draftPickTitle(p)"
+                  :aria-label="draftPickTitle(p)"
+                  tabindex="0"
+                >
+                  <span><AppIcon name="layers" :size="14" /><strong>{{ draftRoundCompact(p) }}</strong></span>
+                  <span><AppIcon name="users" :size="14" /><strong>≈{{ draftOverallPickNumber(p) }}</strong></span>
+                </div>
 
                 <dl class="mobile-key-stats">
                   <div><dt>K/D</dt><dd>{{ n2(p.kd_ratio) }}</dd></div>
@@ -471,6 +498,29 @@ function liveRoomTitle(p) {
 function liveRoomLabel(p) { return `${displayName(p)}：${liveRoomTitle(p)}` }
 function communityRatingReady(p) { return p.community_rating?.status === 'formed' }
 function communityRatingCount(p) { return Number(p.community_rating?.total_votes || 0) }
+function hasDraftPick(p) { return Number(p.draft_pick?.pick_count || 0) > 0 }
+function draftRoundLabel(p) {
+  const average = Number(p.draft_pick?.average_round || 0)
+  const earlier = Math.floor(average)
+  const later = Math.ceil(average)
+  return earlier === later ? `第 ${earlier} 轮` : `第 ${earlier} 至 ${later} 轮间`
+}
+function draftRoundCompact(p) {
+  const average = Number(p.draft_pick?.average_round || 0)
+  const earlier = Math.floor(average)
+  const later = Math.ceil(average)
+  return earlier === later ? String(earlier) : `${earlier}-${later}`
+}
+function draftOverallPickNumber(p) {
+  const average = Number(p.draft_pick?.average_overall_pick || 0)
+  return Math.max(1, Math.round(average))
+}
+function draftPickTitle(p) {
+  if (!hasDraftPick(p)) return '暂无被选记录'
+  const teamCounts = (p.draft_pick.team_counts || []).map(Number).filter(Boolean)
+  const scale = teamCounts.length ? `${teamCounts.join('、')} 队选人` : '选人记录'
+  return `涵盖${scale}；平均位置在${draftRoundLabel(p)}，全场顺位按同轮中点估算。队长身份不计入平均。`
+}
 function playerSortValue(p) {
   if (sortKey.value === 'community_rating') {
     return communityRatingReady(p) ? Number(p.community_rating.score) : -1
