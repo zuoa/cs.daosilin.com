@@ -2,6 +2,7 @@
 import datetime
 import json
 import time
+import unicodedata
 
 from apscheduler.executors.pool import ThreadPoolExecutor
 from apscheduler.schedulers.blocking import BlockingScheduler
@@ -46,10 +47,29 @@ def canonical_match_id(match_id):
     return value
 
 
+def _normalize_cup_label(value):
+    """Normalize a displayed/API cup name for stable matching."""
+    return ''.join(unicodedata.normalize('NFKC', str(value or '')).split()).casefold()
+
+
+def _official_cup_matches(season, api_cup):
+    """Match an official WMPVP cup against the season's display name."""
+    display_name = (
+        season.get('cup_alias')
+        or season.get('name')
+        or season.get('cup_name')
+        or ''
+    )
+    return bool(
+        _normalize_cup_label(api_cup)
+        and _normalize_cup_label(api_cup) == _normalize_cup_label(display_name)
+    )
+
+
 def _store_match(match_data, assigned_cup_name=None, play_day=None, match_id=None):
     """把一场比赛详情入库（Match + MatchPlayer + Player）。
 
-    assigned_cup_name：官方比赛传 API cupName；自定义候选传 None（待管理员确认后回填赛季 cup_name）。
+    assigned_cup_name：传赛季的内部 cup_name（URL 标识）。
     play_day：已算好的比赛日（自定义候选路径传入）；未传则按 -3h 比赛日计算。
     """
     match_base_info = match_data.get('base', {})
@@ -249,19 +269,27 @@ def crawl_data(default_player_id='76561198068647788'):
     """兼容：爬单个玩家近期官方比赛，仅入库 active official 赛季。"""
     wm = _new_wm()
     match_list = wm.get_match_list(default_player_id, 10)
-    official_cups = {s['cup_name'] for s in Season.get_active_by_type('official')}
-    if not official_cups:
+    official_seasons = Season.get_active_by_type('official')
+    if not official_seasons:
         return
 
     for match in match_list:
         source_match_id = match.get('matchId')
         match_id = canonical_match_id(source_match_id)
-        cup_name = match.get('cupName')
-        if not match_id or not cup_name or cup_name not in official_cups:
+        api_cup = match.get('cupName')
+        season = next(
+            (item for item in official_seasons if _official_cup_matches(item, api_cup)),
+            None,
+        )
+        if not match_id or not season:
             continue
         match_data = wm.get_match(source_match_id)
         if match_data:
-            _store_match(match_data, assigned_cup_name=cup_name, match_id=match_id)
+            _store_match(
+                match_data,
+                assigned_cup_name=season['cup_name'],
+                match_id=match_id,
+            )
 
 
 def get_crawl_status(cup_name):
@@ -506,7 +534,7 @@ def crawl_season(season, ignore_deadline=False):
 
             api_cup = match.get('cupName') or ''
             if match_type == 'official':
-                if api_cup != cup_name:
+                if not _official_cup_matches(season, api_cup):
                     continue
             else:
                 if api_cup:

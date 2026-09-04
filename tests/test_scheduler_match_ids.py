@@ -3,7 +3,8 @@ from types import SimpleNamespace
 from unittest.mock import ANY, patch
 
 from database import MatchPlayer as DatabaseMatchPlayer
-from scheduler import _store_match, canonical_match_id, refresh_perfect_ranks
+from scheduler import (_official_cup_matches, _store_match, canonical_match_id,
+                       refresh_perfect_ranks)
 
 
 class MatchIdNormalizationTest(unittest.TestCase):
@@ -16,6 +17,25 @@ class MatchIdNormalizationTest(unittest.TestCase):
     def test_non_pvp_match_ids_are_preserved(self):
         self.assertEqual(canonical_match_id('official-match-1'), 'official-match-1')
         self.assertEqual(canonical_match_id(None), '')
+
+    def test_official_cup_matches_display_name_instead_of_url_slug(self):
+        season = {
+            'cup_name': 's2',
+            'cup_alias': '鲨鱼 MAJOR S2',
+            'name': '鲨鱼 MAJOR S2',
+        }
+
+        self.assertTrue(_official_cup_matches(season, '鲨鱼MAJOR S2'))
+        self.assertFalse(_official_cup_matches(season, 's2'))
+
+    def test_official_cup_display_name_falls_back_to_legacy_name(self):
+        season = {
+            'cup_name': 'legacy-s2',
+            'cup_alias': None,
+            'name': '鲨鱼 Major S2',
+        }
+
+        self.assertTrue(_official_cup_matches(season, '鲨鱼MAJOR S2'))
 
     @patch('scheduler.MatchPlayer')
     @patch('scheduler.Match')

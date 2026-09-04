@@ -479,6 +479,7 @@
           <div class="field-group">
             <label for="season-alias">展示名称</label>
             <input id="season-alias" v-model.trim="form.alias" placeholder="如 鲨鱼杯 S2">
+            <small>官方比赛使用此名称匹配完美赛事名，匹配时忽略空格和大小写。</small>
           </div>
         </div>
         <div class="field-grid two">
