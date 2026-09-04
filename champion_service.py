@@ -1,118 +1,237 @@
 import datetime
+import unicodedata
+from collections import defaultdict
 
 from ajlog import logger
 from cache_service import invalidate_season
 from database import Match, CupDayChampion, MatchPlayer
 
 
-def judge_champion(day=None, cup_name=None):
-    if day is None:
-        day = (datetime.datetime.now() - datetime.timedelta(days=1)).strftime("%Y%m%d")
+def _team_key(name):
+    """Return a stable comparison key while retaining the recorded team name."""
+    return ' '.join(unicodedata.normalize('NFKC', str(name or '')).split()).casefold()
 
-    if not cup_name:
-        logger.warning("judge_champion 未指定 cup_name，跳过")
-        return
-    match_list = Match.filter_records(**{'cup_name': cup_name, 'play_day': day})
-    if not match_list:
-        logger.info(f"{cup_name} {day} 没有比赛记录，跳过冠军判断")
-        return
-    team_wins = {}
 
-    # 比赛分几轮，每一轮对阵会有2-3场比赛，取得2场胜利的队伍为该轮胜者，然后进入下一轮，最终轮的胜者为冠军,冠军的对手就是亚军。不是简单统计胜场多的
-    # 还需要算出亚军，冠军的最后一轮的对手就是亚军
-    rounds = {}
-    for match in match_list:
-        team1 = match.get('team1_name')
-        team2 = match.get('team2_name')
-        win_team = team1 if match.get('team1_score') > match.get('team2_score') else team2
-        if not team1 or not team2 or not win_team:
+def _canonical_match_id(match_id):
+    """Normalize the two WMPVP ID forms found in historical match records."""
+    value = str(match_id or '').strip()
+    prefix, separator, suffix = value.partition('@')
+    if separator and prefix.upper() == 'PVP' and suffix.isdigit():
+        return suffix
+    return value
+
+
+def _score(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _map_winner(match, team1, team2):
+    score1 = _score(match.get('team1_score'))
+    score2 = _score(match.get('team2_score'))
+    if score1 is not None and score2 is not None and score1 != score2:
+        return team1 if score1 > score2 else team2
+
+    # Scores are normally sufficient, but win_team lets imported records with
+    # missing scores remain usable. A tied score is never treated as finished.
+    if score1 is not None and score2 is not None:
+        return None
+    win_team = _score(match.get('win_team'))
+    if win_team == 1:
+        return team1
+    if win_team == 2:
+        return team2
+    return None
+
+
+def _match_sort_key(indexed_match):
+    index, match = indexed_match
+    return (
+        str(match.get('end_time') or match.get('start_time') or ''),
+        str(match.get('start_time') or ''),
+        index,
+    )
+
+
+def _completed_bo3_series(match_list):
+    """Collapse map records into chronological, completed best-of-three series."""
+    unique_matches = []
+    seen_match_ids = set()
+    for index, match in enumerate(match_list):
+        match_id = _canonical_match_id(match.get('match_id'))
+        if match_id and match_id in seen_match_ids:
+            continue
+        if match_id:
+            seen_match_ids.add(match_id)
+        unique_matches.append((index, match))
+
+    active = {}
+    completed = []
+    display_names = {}
+    for _, match in sorted(unique_matches, key=_match_sort_key):
+        team1_name = ' '.join(str(match.get('team1_name') or '').split())
+        team2_name = ' '.join(str(match.get('team2_name') or '').split())
+        team1 = _team_key(team1_name)
+        team2 = _team_key(team2_name)
+        if not team1 or not team2 or team1 == team2:
             continue
 
-        round_key = frozenset([team1, team2])
-        if round_key not in rounds:
-            rounds[round_key] = {team1: 0, team2: 0}
-        rounds[round_key][win_team] += 1
+        winner = _map_winner(match, team1, team2)
+        if winner is None:
+            continue
 
-    # 计算每个队伍的胜场数
-    for teams, results in rounds.items():
-        for team, wins in results.items():
-            if wins >= 2:
-                team_wins[team] = team_wins.get(team, 0) + 1
-
-    if team_wins:
-        # 计算冠军,需要比赛了三轮了才算， 计算team_wins中value最大有没有超过等于3的
-        if max(team_wins.values()) < 3:
-            logger.info("昨日比赛未完成三轮，无法判断冠军队伍")
-            return
-
-        champion_player_ids = ''
-        runner_up_player_ids = ''
-        champion_team = max(team_wins, key=team_wins.get)
-        logger.info(f"昨日冠军队伍是 {champion_team}，共赢得 {team_wins[champion_team]} 轮比赛")
-
-        # 计算亚军
-        runner_up_team = None
-        champion_rounds = [teams for teams in rounds.keys() if champion_team in teams]
-        if champion_rounds:
-            # 找到冠军队伍参与的最后一轮（决赛轮）
-            # 通过查找包含冠军队伍且比赛时间最晚的轮次来确定决赛轮
-            final_round = None
-            latest_match_time = None
-
-            for round_teams in champion_rounds:
-                # 找到这一轮中冠军队伍参与的比赛的最晚时间
-                round_matches = [match for match in match_list
-                                 if match.get('team1_name') in round_teams and match.get('team2_name') in round_teams]
-                if round_matches:
-                    # 获取这一轮比赛的最晚结束时间
-                    round_latest_time = max(match.get('end_time', 0) for match in round_matches)
-                    if latest_match_time is None or round_latest_time > latest_match_time:
-                        latest_match_time = round_latest_time
-                        final_round = round_teams
-
-            if final_round:
-                # 在决赛轮中找到冠军队伍的对手作为亚军
-                runner_up_team = list(final_round - {champion_team})[0]
-                logger.info(f"昨日亚军队伍是 {runner_up_team}")
-
-        champion_players = MatchPlayer.filter_records \
-            (**{'cup_name': cup_name, 'play_day': day, 'team_name': champion_team})
-        if champion_players:
-            champion_players_map = {
-                player['player_id']: player for player in champion_players
-            }
-            # Preserve the accounts that actually played. Read paths resolve
-            # them to the current account group dynamically.
-            champion_player_ids = ','.join(champion_players_map.keys())
-            logger.info(f"冠军队伍 {champion_team} 的成员有： {champion_player_ids} ")
-
-        if runner_up_team:
-            runner_up_players = MatchPlayer.filter_records \
-                (**{'cup_name': cup_name, 'play_day': day, 'team_name': runner_up_team})
-            if runner_up_players:
-                runner_up_players_map = {
-                    player['player_id']: player for player in runner_up_players
-                }
-                runner_up_player_ids = ','.join(runner_up_players_map.keys())
-                logger.info(f"亚军队伍 {runner_up_team} 的成员有： {runner_up_player_ids} ")
-
-        # 保存冠军和亚军信息到数据库
-        if CupDayChampion.is_exist(cup_name, day):
-            logger.info(f"{day} 的冠军信息已存在，跳过保存")
-            return
-
-        CupDayChampion.create(**{
-            'cup_name': cup_name,
-            'day': day,
-            'champion_team_name': champion_team,
-            'runner_up_team_name': runner_up_team,
-            'champion_team_player_ids': champion_player_ids,
-            'runner_up_team_player_ids': runner_up_player_ids
+        display_names[team1] = team1_name
+        display_names[team2] = team2_name
+        pairing = frozenset((team1, team2))
+        series = active.setdefault(pairing, {
+            'teams': (team1, team2),
+            'wins': defaultdict(int),
+            'map_count': 0,
         })
-        invalidate_season(cup_name, external=False)
+        series['wins'][winner] += 1
+        series['map_count'] += 1
 
-    else:
+        if series['wins'][winner] == 2:
+            loser = team2 if winner == team1 else team1
+            completed.append({
+                'winner': winner,
+                'loser': loser,
+                'teams': pairing,
+                'score': (2, series['wins'][loser]),
+                'map_count': series['map_count'],
+                'completed_at': match.get('end_time'),
+            })
+            # The same teams could meet again later. Once a BO3 is won, future
+            # maps form a new series instead of being merged into this one.
+            del active[pairing]
+
+    return completed, display_names
+
+
+def calculate_daily_podium(match_list):
+    """Resolve a day's champion and runner-up from the eight-team BO3 format.
+
+    The first series for each team is round one. In round two, teams may only
+    meet an opponent with the same round-one record. The two 2-0 teams then
+    play the final. A result is returned only when all four round-one series,
+    all four round-two series, and the final are complete.
+    """
+    series_list, display_names = _completed_bo3_series(match_list)
+    histories = defaultdict(list)
+    round_one = []
+    round_two = []
+    finals = []
+
+    for series in series_list:
+        winner = series['winner']
+        loser = series['loser']
+        winner_history = histories[winner]
+        loser_history = histories[loser]
+
+        if not winner_history and not loser_history:
+            round_one.append(series)
+        elif (
+            len(winner_history) == len(loser_history) == 1
+            and winner_history[0] == loser_history[0]
+        ):
+            round_two.append(series)
+        elif winner_history == ['W', 'W'] and loser_history == ['W', 'W']:
+            finals.append(series)
+        else:
+            # This pairing does not belong to the advertised daily format.
+            # Do not let it manufacture a 2-0 path for a later match.
+            continue
+
+        histories[winner].append('W')
+        histories[loser].append('L')
+
+    round_one_teams = set().union(*(s['teams'] for s in round_one)) if round_one else set()
+    round_two_teams = set().union(*(s['teams'] for s in round_two)) if round_two else set()
+    if (
+        len(round_one) != 4
+        or len(round_one_teams) != 8
+        or len(round_two) != 4
+        or round_two_teams != round_one_teams
+        or len(finals) != 1
+    ):
+        return None
+
+    final = finals[0]
+    return {
+        'champion_team': display_names[final['winner']],
+        'runner_up_team': display_names[final['loser']],
+        'series_count': len(series_list),
+        'final_score': final['score'],
+    }
+
+
+def _player_ids_by_team(cup_name, day):
+    players = MatchPlayer.filter_records(**{
+        'cup_name': cup_name,
+        'play_day': day,
+    })
+    grouped = defaultdict(dict)
+    for player in players:
+        team = _team_key(player.get('team_name'))
+        player_id = player.get('player_id')
+        if team and player_id is not None:
+            grouped[team][str(player_id)] = None
+    return {team: ','.join(player_ids) for team, player_ids in grouped.items()}
+
+
+def judge_champion(day=None, cup_name=None):
+    if day is None:
+        day = (datetime.datetime.now() - datetime.timedelta(days=1)).strftime('%Y%m%d')
+
+    if not cup_name:
+        logger.warning('judge_champion 未指定 cup_name，跳过')
+        return None
+
+    match_list = Match.filter_records(**{'cup_name': cup_name, 'play_day': day})
+    if not match_list:
+        logger.info(f'{cup_name} {day} 没有比赛记录，跳过冠军判断')
+        return None
+
+    podium = calculate_daily_podium(match_list)
+    if not podium:
+        completed_series, _ = _completed_bo3_series(match_list)
         logger.info(
-            f"{cup_name} {day} 有 {len(match_list)} 场比赛，但缺少有效队伍信息或尚未产生两胜对局，"
-            "无法判断冠军队伍"
+            f'{cup_name} {day} 已记录 {len(match_list)} 张地图、'
+            f'{len(completed_series)} 个完整 BO3，赛制尚未完整，暂不生成冠亚军'
         )
+        return None
+
+    champion_team = podium['champion_team']
+    runner_up_team = podium['runner_up_team']
+    logger.info(
+        f'{cup_name} {day} 冠军 {champion_team}，亚军 {runner_up_team}，'
+        f'决赛 {podium["final_score"][0]}-{podium["final_score"][1]}'
+    )
+
+    player_ids_by_team = _player_ids_by_team(cup_name, day)
+    champion_player_ids = player_ids_by_team.get(_team_key(champion_team), '')
+    runner_up_player_ids = player_ids_by_team.get(_team_key(runner_up_team), '')
+    values = {
+        'cup_name': cup_name,
+        'day': day,
+        'champion_team_name': champion_team,
+        'runner_up_team_name': runner_up_team,
+        'champion_team_player_ids': champion_player_ids,
+        'runner_up_team_player_ids': runner_up_player_ids,
+    }
+    if CupDayChampion.is_exist(cup_name, day):
+        existing = CupDayChampion.get_champion_by_cup_and_day(cup_name, day) or {}
+        changed = any(existing.get(field) != value for field, value in values.items())
+        if not changed:
+            logger.info(f'{cup_name} {day} 的冠亚军信息未变化')
+            return podium
+        (CupDayChampion.update(**values)
+         .where(CupDayChampion.cup_name == cup_name, CupDayChampion.day == day)
+         .execute())
+        logger.info(f'{cup_name} {day} 的冠亚军信息已按比赛记录修正')
+    else:
+        CupDayChampion.create(**values)
+    invalidate_season(cup_name, external=False)
+    return podium

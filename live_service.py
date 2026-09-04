@@ -1,12 +1,16 @@
 """Live-room URL normalization, profile lookup, and live-status helpers."""
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+from html import unescape as html_unescape
+import json
+import re
 import threading
 import time
 from typing import Optional
 from urllib.parse import parse_qs, unquote, urlsplit
 
 import requests
+from urllib3.util import Timeout as Urllib3Timeout
 
 from ajlog import logger
 
@@ -39,6 +43,10 @@ LIVE_PLATFORMS = {
 LIVE_STATUS_CACHE_SECONDS = 60
 LIVE_STATUS_FAILURE_CACHE_SECONDS = 20
 LIVE_STATUS_TIMEOUT_SECONDS = 3
+LIVE_STATUS_BATCH_BUDGET_SECONDS = 20
+HUYA_STATUS_CONNECT_TIMEOUT_SECONDS = 3
+HUYA_STATUS_READ_TIMEOUT_SECONDS = 8
+HUYA_STATUS_TIMEOUT_RETRIES = 1
 
 _live_status_cache: dict[str, tuple[float, dict]] = {}
 _live_status_cache_lock = threading.RLock()
@@ -47,7 +55,10 @@ _STATUS_ENDPOINTS = {
     # The legacy RoomApi marks video loops as live. betard exposes videoLoop,
     # allowing a real broadcast to be distinguished from round-robin video.
     'DOUYU': 'https://www.douyu.com/betard/{room_id}',
-    'HUYA': 'https://mp.huya.com/cache.php?m=Live&do=profileRoom&roomid={room_id}',
+    'HUYA': (
+        'https://mp.huya.com/cache.php?m=Live&do=profileRoom'
+        '&roomid={room_id}&showSecret=1'
+    ),
     'BILIBILI': 'https://api.live.bilibili.com/room/v1/Room/get_info?room_id={room_id}',
 }
 
@@ -55,6 +66,17 @@ _STATUS_HEADERS = {
     'Accept': 'application/json, text/plain, */*',
     'User-Agent': 'Mozilla/5.0 (compatible; cs.daosilin.com/1.0)',
 }
+
+_HUYA_PROFILE_ENDPOINT = 'https://mp.huya.com/cache.php'
+_HUYA_ROOM_ENDPOINT = 'https://www.huya.com/{room_id}'
+_HUYA_USER_AGENT = (
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+    'AppleWebKit/537.36 (KHTML, like Gecko) '
+    'Chrome/125.0.0.0 Safari/537.36'
+)
+_HUYA_ROOM_DATA_PATTERN = re.compile(
+    r'\bvar\s+TT_ROOM_DATA\s*=\s*(\{.*?\})\s*;', re.DOTALL,
+)
 
 
 def _platform_for_hostname(hostname: str):
@@ -218,8 +240,126 @@ def _parse_live_status(platform_code: str, payload: object) -> str:
     return 'unknown'
 
 
+def _parse_huya_page_status(page: str) -> str:
+    """Extract Huya's room state from the data embedded in its web page."""
+    match = _HUYA_ROOM_DATA_PATTERN.search(html_unescape(page or ''))
+    if not match:
+        return 'unknown'
+    try:
+        room = json.loads(match.group(1))
+    except (TypeError, ValueError):
+        return 'unknown'
+    if not isinstance(room, dict):
+        return 'unknown'
+
+    is_replay = str(room.get('isReplay') or '').strip().lower()
+    if is_replay in ('1', 'true'):
+        return 'offline'
+    state = str(room.get('state') or '').strip().upper()
+    if state == 'ON':
+        return 'live'
+    if state in ('OFF', 'REPLAY'):
+        return 'offline'
+    return 'unknown'
+
+
+def _request_deadline(timeout: Optional[float] = None,
+                      deadline: Optional[float] = None) -> float:
+    """Return the earlier of the per-room and enclosing request deadlines."""
+    budget = LIVE_STATUS_TIMEOUT_SECONDS if timeout is None else max(0.0, float(timeout))
+    room_deadline = time.monotonic() + budget
+    return min(room_deadline, deadline) if deadline is not None else room_deadline
+
+
+def _remaining_timeout(deadline: float, connect: Optional[float] = None,
+                       read: Optional[float] = None):
+    """Build one request timeout from the remaining shared wall-clock budget."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise requests.Timeout('直播状态查询已超过总时限')
+    return Urllib3Timeout(
+        total=remaining,
+        connect=min(connect, remaining) if connect is not None else remaining,
+        read=min(read, remaining) if read is not None else remaining,
+    )
+
+
+def _get_huya_live_status(room_id: str, timeout: Optional[float] = None,
+                          deadline: Optional[float] = None) -> str:
+    """Query Huya's mobile endpoint, falling back to its public room page."""
+    referer = _HUYA_ROOM_ENDPOINT.format(room_id=room_id)
+    headers = {
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+        'Referer': referer,
+        'User-Agent': _HUYA_USER_AGENT,
+        'xweb_xhr': '1',
+    }
+    deadline = _request_deadline(timeout, deadline)
+    profile_error = None
+    for attempt in range(HUYA_STATUS_TIMEOUT_RETRIES + 1):
+        try:
+            request_timeout = _remaining_timeout(
+                deadline,
+                connect=HUYA_STATUS_CONNECT_TIMEOUT_SECONDS,
+                read=HUYA_STATUS_READ_TIMEOUT_SECONDS,
+            )
+            response = requests.get(
+                _HUYA_PROFILE_ENDPOINT,
+                params={
+                    'm': 'Live',
+                    'do': 'profileRoom',
+                    'roomid': room_id,
+                    'showSecret': '1',
+                },
+                headers=headers,
+                timeout=request_timeout,
+            )
+            response.raise_for_status()
+            status = _parse_live_status('HUYA', response.json())
+            if status != 'unknown':
+                return status
+            profile_error = LiveRoomError('虎牙小程序接口返回了未知状态')
+            break
+        except requests.Timeout as exc:
+            profile_error = exc
+            if attempt < HUYA_STATUS_TIMEOUT_RETRIES:
+                continue
+            break
+        except (requests.RequestException, ValueError, TypeError) as exc:
+            profile_error = exc
+            break
+
+    try:
+        request_timeout = _remaining_timeout(
+            deadline,
+            connect=HUYA_STATUS_CONNECT_TIMEOUT_SECONDS,
+            read=HUYA_STATUS_READ_TIMEOUT_SECONDS,
+        )
+        response = requests.get(
+            referer,
+            headers={
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'zh-CN,zh;q=0.9',
+                'Referer': 'https://www.huya.com/',
+                'User-Agent': _HUYA_USER_AGENT,
+            },
+            timeout=request_timeout,
+        )
+        response.raise_for_status()
+        status = _parse_huya_page_status(response.text)
+        if status != 'unknown':
+            return status
+        raise LiveRoomError('虎牙直播间页面未包含可识别的状态')
+    except (requests.RequestException, ValueError, TypeError) as page_error:
+        raise LiveRoomError(
+            f'虎牙小程序接口失败 ({profile_error}); 网页回退失败 ({page_error})'
+        ) from page_error
+
+
 def get_live_status(platform_code: str, room_id: str,
-                    timeout: float = LIVE_STATUS_TIMEOUT_SECONDS) -> dict:
+                    timeout: Optional[float] = None,
+                    deadline: Optional[float] = None) -> dict:
     """Return a best-effort live state without allowing upstream errors to escape."""
     platform_code = (platform_code or '').strip().upper()
     room_id = (room_id or '').strip()
@@ -238,13 +378,21 @@ def get_live_status(platform_code: str, room_id: str,
         return cached
 
     try:
-        response = requests.get(
-            _STATUS_ENDPOINTS[platform_code].format(room_id=room_id),
-            headers=_STATUS_HEADERS,
-            timeout=timeout,
-        )
-        response.raise_for_status()
-        result['status'] = _parse_live_status(platform_code, response.json())
+        if platform_code == 'HUYA':
+            result['status'] = _get_huya_live_status(
+                room_id,
+                timeout=timeout,
+                deadline=deadline,
+            )
+        else:
+            request_deadline = _request_deadline(timeout, deadline)
+            response = requests.get(
+                _STATUS_ENDPOINTS[platform_code].format(room_id=room_id),
+                headers=_STATUS_HEADERS,
+                timeout=_remaining_timeout(request_deadline),
+            )
+            response.raise_for_status()
+            result['status'] = _parse_live_status(platform_code, response.json())
     except (requests.RequestException, ValueError, TypeError) as exc:
         logger.warning(f'查询直播状态失败 platform={platform_code} room_id={room_id}: {exc}')
 
@@ -269,9 +417,15 @@ def get_live_statuses(live_rooms: dict[str, str]) -> dict[str, dict]:
         return {}
 
     statuses = {}
+    deadline = time.monotonic() + LIVE_STATUS_BATCH_BUDGET_SECONDS
     with ThreadPoolExecutor(max_workers=min(6, len(resolved))) as executor:
         futures = {
-            executor.submit(get_live_status, room['platform'], room['room_id']): player_id
+            executor.submit(
+                get_live_status,
+                room['platform'],
+                room['room_id'],
+                deadline=deadline,
+            ): player_id
             for player_id, room in resolved.items() if room
         }
         for future in as_completed(futures):
