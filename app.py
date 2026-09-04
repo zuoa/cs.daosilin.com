@@ -31,8 +31,8 @@ from demo_service import (demo_analysis_enabled, demo_credential_status,
                           load_demo_context,
                           revoke_demo_credential, save_demo_credential,
                           set_demo_analysis_enabled)
-from live_service import (LiveRoomError, fetch_live_avatar, normalize_live_room,
-                          resolve_live_room)
+from live_service import (LiveRoomError, fetch_live_avatar, get_live_statuses,
+                          normalize_live_room, resolve_live_room)
 from scheduler import (crawl_season_with_status, get_crawl_status,
                        crawl_is_running, is_auto_crawl_enabled, season_crawl_phase,
                        set_auto_crawl_enabled, set_crawl_status)
@@ -163,6 +163,7 @@ def _build_cup_players(cup, day=None):
             "avatar": profile.get("avatar") or raw_player["avatar"],
             "player_id": player_id,
             "alias_name": profile.get("alias_name", ""),
+            "live_url": profile.get("live_url") or "",
             "perfect_score": profile.get("perfect_score"),
             "perfect_level": profile.get("perfect_level"),
             "perfect_stars": profile.get("perfect_stars"),
@@ -403,6 +404,28 @@ def api_cup(cup):
         'players': players,
         'last_crawl_time': Config.get_value("last_crawl_time"),
     })
+
+
+@app.route('/api/v1/live-status')
+def api_live_status():
+    player_ids = list(dict.fromkeys(_parse_ids(request.args.get('player_ids'))))
+    if not player_ids:
+        return error(400, '参数 player_ids 不能为空'), 400
+    if len(player_ids) > 100:
+        return error(400, '一次最多查询 100 名选手'), 400
+
+    canonical_ids = Player.canonical_ids(player_ids)
+    live_rooms = {
+        str(player.player_id): player.live_url
+        for player in Player.select(Player.player_id, Player.live_url).where(
+            Player.player_id.in_(canonical_ids),
+            Player.live_url.is_null(False),
+            Player.live_url != '',
+        )
+    }
+    response = success({'statuses': get_live_statuses(live_rooms)})
+    response.headers['Cache-Control'] = 'no-store'
+    return response
 
 
 @app.route('/api/v1/player/<string:player_id>')

@@ -228,6 +228,35 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(rating['total_votes'], 5)
         self.assertEqual(rating['minimum_votes'], 5)
 
+    def test_cup_leaderboard_exposes_configured_live_room(self):
+        cache.clear()
+        payload = self.client.get('/api/v1/cup/season-one').get_json()['data']
+        player = next(item for item in payload['players'] if item['player_id'] == 'p1')
+        self.assertEqual(player['live_url'], 'https://www.douyu.com/731778')
+
+    @patch('app.get_live_statuses')
+    def test_public_live_status_endpoint_batches_configured_rooms(self, statuses):
+        statuses.return_value = {
+            'p1': {'platform': 'DOUYU', 'status': 'live', 'supported': True},
+            'p2': {'platform': 'HUYA', 'status': 'offline', 'supported': True},
+        }
+
+        response = self.client.get('/api/v1/live-status?player_ids=p1,p2,missing')
+        payload = response.get_json()['data']['statuses']
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers.get('Cache-Control'), 'no-store')
+        self.assertEqual(payload['p1']['status'], 'live')
+        self.assertEqual(payload['p2']['status'], 'offline')
+        live_rooms = statuses.call_args.args[0]
+        self.assertEqual(live_rooms['p1'], 'https://www.douyu.com/731778')
+        self.assertEqual(live_rooms['p2'], 'https://www.huya.com/731778')
+        self.assertNotIn('missing', live_rooms)
+
+    def test_public_live_status_endpoint_requires_player_ids(self):
+        response = self.client.get('/api/v1/live-status')
+        self.assertEqual(response.status_code, 400)
+
     def test_community_label_follows_real_votes_not_weighted_prior(self):
         today = date(2026, 9, 2)
         for index in range(5):

@@ -33,6 +33,9 @@ export const api = {
     return request(`/api/v1/draft${query ? `?${query}` : ''}`)
   },
   cup: (cup, day) => request(`/api/v1/cup/${encodeURIComponent(cup)}${day ? `?day=${encodeURIComponent(day)}` : ''}`),
+  liveStatuses: (playerIds) => request(
+    `/api/v1/live-status?${new URLSearchParams({ player_ids: playerIds.join(',') })}`,
+  ),
   player: (id, cup, day) => {
     const q = new URLSearchParams()
     if (cup) q.set('cup', cup)

@@ -1,8 +1,14 @@
-"""Live-room URL normalization and public profile lookup helpers."""
+"""Live-room URL normalization, profile lookup, and live-status helpers."""
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
+import threading
+import time
+from typing import Optional
 from urllib.parse import parse_qs, unquote, urlsplit
 
 import requests
+
+from ajlog import logger
 
 
 class LiveRoomError(ValueError):
@@ -28,6 +34,24 @@ LIVE_PLATFORMS = {
         LivePlatform('YY', 'YY', 'yy.com', 'https://www.yy.com/{room_id}'),
         LivePlatform('TWITCH', 'Twitch', 'twitch.tv', 'https://www.twitch.tv/{room_id}'),
     )
+}
+
+LIVE_STATUS_CACHE_SECONDS = 60
+LIVE_STATUS_FAILURE_CACHE_SECONDS = 20
+LIVE_STATUS_TIMEOUT_SECONDS = 3
+
+_live_status_cache: dict[str, tuple[float, dict]] = {}
+_live_status_cache_lock = threading.RLock()
+
+_STATUS_ENDPOINTS = {
+    'DOUYU': 'https://open.douyucdn.cn/api/RoomApi/room/{room_id}',
+    'HUYA': 'https://mp.huya.com/cache.php?m=Live&do=profileRoom&roomid={room_id}',
+    'BILIBILI': 'https://api.live.bilibili.com/room/v1/Room/get_info?room_id={room_id}',
+}
+
+_STATUS_HEADERS = {
+    'Accept': 'application/json, text/plain, */*',
+    'User-Agent': 'Mozilla/5.0 (compatible; cs.daosilin.com/1.0)',
 }
 
 
@@ -117,3 +141,128 @@ def resolve_live_room(platform_code: str, room_or_url: str, include_avatar: bool
     if include_avatar:
         result['avatar'] = fetch_live_avatar(result.get('platform'), result.get('room_id'))
     return result
+
+
+def _cached_live_status(cache_key: str) -> Optional[dict]:
+    now = time.monotonic()
+    with _live_status_cache_lock:
+        item = _live_status_cache.get(cache_key)
+        if not item:
+            return None
+        expires_at, result = item
+        if expires_at <= now:
+            _live_status_cache.pop(cache_key, None)
+            return None
+        return result.copy()
+
+
+def _store_live_status(cache_key: str, result: dict, ttl: int) -> None:
+    with _live_status_cache_lock:
+        _live_status_cache[cache_key] = (time.monotonic() + ttl, result.copy())
+
+
+def clear_live_status_cache() -> None:
+    """Clear the process-local status cache, primarily for tests."""
+    with _live_status_cache_lock:
+        _live_status_cache.clear()
+
+
+def _parse_live_status(platform_code: str, payload: object) -> str:
+    if not isinstance(payload, dict):
+        return 'unknown'
+
+    if platform_code == 'DOUYU':
+        data = payload.get('data')
+        if payload.get('error') != 0 or not isinstance(data, dict):
+            return 'unknown'
+        status = str(data.get('room_status') or '').strip()
+        return 'live' if status == '1' else 'offline' if status == '0' else 'unknown'
+
+    if platform_code == 'HUYA':
+        data = payload.get('data')
+        if payload.get('status') != 200 or not isinstance(data, dict):
+            return 'unknown'
+        status = str(data.get('liveStatus') or '').strip().upper()
+        return 'live' if status == 'ON' else 'offline' if status in ('OFF', 'REPLAY') else 'unknown'
+
+    if platform_code == 'BILIBILI':
+        data = payload.get('data')
+        if payload.get('code') != 0 or not isinstance(data, dict):
+            return 'unknown'
+        try:
+            status = int(data.get('live_status'))
+        except (TypeError, ValueError):
+            return 'unknown'
+        return 'live' if status == 1 else 'offline' if status in (0, 2) else 'unknown'
+
+    return 'unknown'
+
+
+def get_live_status(platform_code: str, room_id: str,
+                    timeout: float = LIVE_STATUS_TIMEOUT_SECONDS) -> dict:
+    """Return a best-effort live state without allowing upstream errors to escape."""
+    platform_code = (platform_code or '').strip().upper()
+    room_id = (room_id or '').strip()
+    supported = platform_code in _STATUS_ENDPOINTS
+    result = {
+        'platform': platform_code,
+        'status': 'unknown',
+        'supported': supported,
+    }
+    if not supported or not room_id:
+        return result
+
+    cache_key = f'{platform_code}:{room_id}'
+    cached = _cached_live_status(cache_key)
+    if cached is not None:
+        return cached
+
+    try:
+        response = requests.get(
+            _STATUS_ENDPOINTS[platform_code].format(room_id=room_id),
+            headers=_STATUS_HEADERS,
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        result['status'] = _parse_live_status(platform_code, response.json())
+    except (requests.RequestException, ValueError, TypeError) as exc:
+        logger.warning(f'查询直播状态失败 platform={platform_code} room_id={room_id}: {exc}')
+
+    ttl = LIVE_STATUS_CACHE_SECONDS if result['status'] != 'unknown' else LIVE_STATUS_FAILURE_CACHE_SECONDS
+    _store_live_status(cache_key, result, ttl)
+    return result.copy()
+
+
+def get_live_statuses(live_rooms: dict[str, str]) -> dict[str, dict]:
+    """Resolve and check several configured rooms concurrently."""
+    resolved = {}
+    for player_id, live_url in (live_rooms or {}).items():
+        try:
+            room = normalize_live_room('', live_url)
+        except LiveRoomError:
+            resolved[str(player_id)] = None
+            continue
+        if room.get('room_id'):
+            resolved[str(player_id)] = room
+
+    if not resolved:
+        return {}
+
+    statuses = {}
+    with ThreadPoolExecutor(max_workers=min(6, len(resolved))) as executor:
+        futures = {
+            executor.submit(get_live_status, room['platform'], room['room_id']): player_id
+            for player_id, room in resolved.items() if room
+        }
+        for future in as_completed(futures):
+            player_id = futures[future]
+            try:
+                statuses[player_id] = future.result()
+            except Exception as exc:  # Guard the batch if a future provider is added incorrectly.
+                logger.warning(f'批量查询直播状态失败 player_id={player_id}: {exc}')
+                statuses[player_id] = {
+                    'platform': resolved[player_id]['platform'],
+                    'status': 'unknown',
+                    'supported': False,
+                }
+    return statuses

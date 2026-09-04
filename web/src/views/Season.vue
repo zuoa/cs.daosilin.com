@@ -95,6 +95,18 @@
                     <td class="rank-cell"><span class="rank-number" :class="{ top: index < 3 }">{{ pad(index + 1) }}</span></td>
                     <td>
                       <div class="identity-cell public-player">
+                        <span class="live-room-slot">
+                          <a
+                            v-if="p.live_url"
+                            class="live-room-link"
+                            :class="`is-${p.live_status || 'checking'}`"
+                            :href="p.live_url"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            :aria-label="liveRoomLabel(p)"
+                            :title="liveRoomTitle(p)"
+                          ><AppIcon name="television" :size="14" /></a>
+                        </span>
                         <PlayerAvatar :src="p.avatar" :name="displayName(p)" class="player-avatar" />
                         <span>
                           <router-link class="player-name-link" :to="playerLink(p)" :aria-label="`查看 ${displayName(p)} 的完整详情`">
@@ -226,6 +238,18 @@
               >
                 <div class="mobile-player-main">
                   <span class="rank-number" :class="{ top: index < 3 }" :aria-label="`第 ${index + 1} 名`">{{ pad(index + 1) }}</span>
+                  <span class="live-room-slot">
+                    <a
+                      v-if="p.live_url"
+                      class="live-room-link"
+                      :class="`is-${p.live_status || 'checking'}`"
+                      :href="p.live_url"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      :aria-label="liveRoomLabel(p)"
+                      :title="liveRoomTitle(p)"
+                    ><AppIcon name="television" :size="14" /></a>
+                  </span>
                   <PlayerAvatar :src="p.avatar" :name="displayName(p)" class="player-avatar" />
                   <div class="mobile-player-identity">
                     <router-link class="player-name-link" :to="playerLink(p)" :aria-label="`查看 ${displayName(p)} 的完整详情`">
@@ -414,6 +438,7 @@ let quickVoteAnchor = null
 let quickVoteCloseTimer = 0
 let quickVoteSwitchTimer = 0
 let quickVoteRequest = 0
+let liveStatusTimer = 0
 
 const filteredPlayers = computed(() => {
   const search = query.value.trim().toLowerCase()
@@ -435,6 +460,15 @@ function pct(value) { return `${(Number(value || 0) * 100).toFixed(1)}%` }
 function pad(value) { return String(value || 0).padStart(2, '0') }
 function formatTime(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '' }
 function playerLink(p) { return `/player/${p.player_id}/${cup.value}${day.value ? `/${day.value}` : ''}/` }
+function liveRoomState(p) { return p.live_status || 'checking' }
+function liveRoomTitle(p) {
+  const state = liveRoomState(p)
+  if (state === 'live') return '正在直播，点击进入直播间'
+  if (state === 'offline') return '当前未开播，点击进入直播间'
+  if (state === 'unknown') return '暂时无法检测开播状态，点击进入直播间'
+  return '正在检测开播状态'
+}
+function liveRoomLabel(p) { return `${displayName(p)}：${liveRoomTitle(p)}` }
 function communityRatingReady(p) { return p.community_rating?.status === 'formed' }
 function communityRatingCount(p) { return Number(p.community_rating?.total_votes || 0) }
 function playerSortValue(p) {
@@ -635,6 +669,7 @@ async function load() {
     cupAlias.value = data.cup_alias || data.cup
     players.value = data.players || []
     hydrateComparedPlayers(cup.value, day.value, players.value)
+    loadLiveStatuses(players.value)
     // “赛季总览”在模板中单独置顶；比赛日统一按日期倒序展示。
     cupDays.value = [...new Set((data.cup_days || []).filter(Boolean))].sort().reverse()
     lastCrawl.value = data.last_crawl_time || ''
@@ -646,14 +681,33 @@ async function load() {
   }
 }
 
+async function loadLiveStatuses(list) {
+  const playerIds = list.filter((player) => player.live_url).map((player) => player.player_id)
+  if (!playerIds.length) return
+  try {
+    const data = await api.liveStatuses(playerIds)
+    const statuses = data.statuses || {}
+    for (const player of list) {
+      if (!player.live_url) continue
+      player.live_status = statuses[String(player.player_id)]?.status || 'unknown'
+    }
+  } catch {
+    for (const player of list) {
+      if (player.live_url) player.live_status = 'unknown'
+    }
+  }
+}
+
 onMounted(() => {
   load()
+  liveStatusTimer = window.setInterval(() => loadLiveStatuses(players.value), 60_000)
   window.addEventListener('resize', handleQuickVoteViewportChange)
   window.addEventListener('scroll', handleQuickVoteViewportChange, true)
   document.addEventListener('pointerdown', handleQuickVoteOutside)
 })
 onBeforeUnmount(() => {
   cancelQuickVoteClose()
+  window.clearInterval(liveStatusTimer)
   window.removeEventListener('resize', handleQuickVoteViewportChange)
   window.removeEventListener('scroll', handleQuickVoteViewportChange, true)
   document.removeEventListener('pointerdown', handleQuickVoteOutside)

@@ -27,6 +27,7 @@ const icons = {
   search: [['circle', { cx: '11', cy: '11', r: '7' }], ['path', { d: 'm20 20-4-4' }]],
   shield: [['path', { d: 'M12 3 4 6v5c0 5 3.4 8.6 8 10 4.6-1.4 8-5 8-10V6Z' }], ['path', { d: 'm9 12 2 2 4-4' }]],
   target: [['circle', { cx: '12', cy: '12', r: '9' }], ['circle', { cx: '12', cy: '12', r: '4' }], ['path', { d: 'M12 1v4M12 19v4M1 12h4M19 12h4' }]],
+  television: [['rect', { x: '3', y: '6', width: '18', height: '13', rx: '3' }], ['path', { d: 'm8 2 4 4 4-4M9 22h6' }], ['circle', { cx: '17', cy: '12.5', r: '.8', fill: 'currentColor', stroke: 'none' }]],
   tierHam: [['path', { d: 'm12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9Z' }], ['path', { d: 'M19 3v3M20.5 4.5h-3M5 17v4M7 19H3' }]],
   tierElite: [['path', { d: 'm4 8 4 4 4-7 4 7 4-4-2 11H6Z' }], ['path', { d: 'M6 19h12' }]],
   tierUpper: [['circle', { cx: '8', cy: '8', r: '3' }], ['path', { d: 'M3 20v-1a5 5 0 0 1 10 0v1M16 11l3-3 3 3M19 8v11' }]],
