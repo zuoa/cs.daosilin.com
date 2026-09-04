@@ -45,6 +45,17 @@ class LiveStatusServiceTest(unittest.TestCase):
         self.assertEqual(result['status'], 'offline')
 
     @patch('live_service.requests.get')
+    def test_huya_real_status_overrides_playable_room_status(self, get):
+        get.return_value = self.response({
+            'status': 200,
+            'data': {'liveStatus': 'ON', 'realLiveStatus': 'OFF'},
+        })
+
+        result = get_live_status('HUYA', 'replay-room')
+
+        self.assertEqual(result['status'], 'offline')
+
+    @patch('live_service.requests.get')
     def test_bilibili_live_state_is_detected(self, get):
         get.return_value = self.response({
             'code': 0,
@@ -54,6 +65,28 @@ class LiveStatusServiceTest(unittest.TestCase):
         result = get_live_status('BILIBILI', '789')
 
         self.assertEqual(result['status'], 'live')
+
+    @patch('live_service.requests.get')
+    def test_bilibili_round_robin_is_treated_as_offline(self, get):
+        get.return_value = self.response({
+            'code': 0,
+            'data': {'live_status': 2},
+        })
+
+        result = get_live_status('BILIBILI', 'carousel-room')
+
+        self.assertEqual(result['status'], 'offline')
+
+    @patch('live_service.requests.get')
+    def test_bilibili_legacy_round_status_overrides_live_status(self, get):
+        get.return_value = self.response({
+            'code': 0,
+            'data': {'live_status': 1, 'roundStatus': 1},
+        })
+
+        result = get_live_status('BILIBILI', 'legacy-carousel-room')
+
+        self.assertEqual(result['status'], 'offline')
 
     @patch('live_service.requests.get')
     def test_upstream_failure_becomes_unknown(self, get):

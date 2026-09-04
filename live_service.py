@@ -182,17 +182,23 @@ def _parse_live_status(platform_code: str, payload: object) -> str:
         data = payload.get('data')
         if payload.get('status') != 200 or not isinstance(data, dict):
             return 'unknown'
-        status = str(data.get('liveStatus') or '').strip().upper()
+        # realLiveStatus excludes replay/round-robin video when Huya still
+        # exposes the room as playable through liveStatus.
+        status = str(data.get('realLiveStatus') or data.get('liveStatus') or '').strip().upper()
         return 'live' if status == 'ON' else 'offline' if status in ('OFF', 'REPLAY') else 'unknown'
 
     if platform_code == 'BILIBILI':
         data = payload.get('data')
         if payload.get('code') != 0 or not isinstance(data, dict):
             return 'unknown'
+        round_status = data.get('round_status', data.get('roundStatus'))
+        if str(round_status or '').strip() == '1':
+            return 'offline'
         try:
             status = int(data.get('live_status'))
         except (TypeError, ValueError):
             return 'unknown'
+        # Bilibili uses 2 for round-robin playback, which is not a live show.
         return 'live' if status == 1 else 'offline' if status in (0, 2) else 'unknown'
 
     return 'unknown'

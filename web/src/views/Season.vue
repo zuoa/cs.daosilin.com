@@ -106,7 +106,7 @@
                             rel="noopener noreferrer"
                             :aria-label="liveRoomLabel(p)"
                             :title="liveRoomTitle(p)"
-                          ><AppIcon name="television" :size="14" /></a>
+                          ><AppIcon name="television" :size="16" /></a>
                         </span>
                         <PlayerAvatar :src="p.avatar" :name="displayName(p)" class="player-avatar" />
                         <span>
@@ -262,7 +262,7 @@
                       rel="noopener noreferrer"
                       :aria-label="liveRoomLabel(p)"
                       :title="liveRoomTitle(p)"
-                    ><AppIcon name="television" :size="14" /></a>
+                    ><AppIcon name="television" :size="16" /></a>
                   </span>
                   <PlayerAvatar :src="p.avatar" :name="displayName(p)" class="player-avatar" />
                   <div class="mobile-player-identity">
