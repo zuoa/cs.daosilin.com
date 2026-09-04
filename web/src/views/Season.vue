@@ -75,9 +75,7 @@
                 <tr>
                   <th class="rank-cell">排名</th><th>选手</th><th>完美段位</th><th v-if="day">称号</th><th>荣誉</th>
                   <th>场次</th><th>胜率</th><th>K/D</th><th>Rating</th>
-                  <th class="draft-pick-heading" title="选人轮次与全场顺位；队长身份不计入平均">
-                    <AppIcon name="layers" :size="15" /><span class="sr-only">平均被选轮次与全场顺位</span>
-                  </th>
+                  <th class="draft-pick-heading" title="选人轮次与全场顺位；队长身份不计入平均">选马顺位</th>
                   <th v-if="!day" title="满 5 票后，使用向本赛季社区均值收缩的加权均分">
                     <span class="community-column-heading">
                       <span>社区票选</span>
