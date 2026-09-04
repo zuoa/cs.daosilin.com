@@ -1,5 +1,15 @@
 [
   {
+    "date": "2026-09-04",
+    "scope": "page",
+    "macrostructure": "Stat-Led / broadcast rundown",
+    "theme": "Tactical Signal",
+    "theme_axes": "transparent canvas / charcoal surface / chromatic-green signal",
+    "vibe": "technical esports broadcast overlay",
+    "enrichment": "real match data and player imagery",
+    "brief": "OBS season overlay with latest result, Top 5, and recent match progress"
+  },
+  {
     "date": "2026-09-02",
     "scope": "page",
     "macrostructure": "Workbench / vertical spec matrix",

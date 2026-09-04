@@ -11,6 +11,7 @@ const router = createRouter({
     { path: '/admin/tasks', component: () => import('./views/AdminTasks.vue'), meta: { admin: true, title: '任务中心' } },
     { path: '/admin/settings', component: () => import('./views/AdminSettings.vue'), meta: { admin: true, title: 'API 与安全' } },
     { path: '/draft', component: () => import('./views/Draft.vue'), meta: { title: '选人结果' } },
+    { path: '/broadcast/:cup', component: () => import('./views/Broadcast.vue'), meta: { title: '赛事直播数据' } },
     { path: '/compare/:cup/:day?', component: () => import('./views/Compare.vue') },
     { path: '/player/:id/:cup?/:day?', component: () => import('./views/Player.vue') },
     { path: '/:cup/community', component: () => import('./views/CommunityShelves.vue'), meta: { title: '从夯到拉排名' } },

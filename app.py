@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import secrets
@@ -810,9 +811,16 @@ def _selection_payload(cup, status=None, day=None):
             'start_time': _iso_dt(m.get('start_time')),
             'end_time': _iso_dt(m.get('end_time')),
             'map_name': m.get('map_name'),
+            'map_name_en': m.get('map_name_en'),
+            'map_url': m.get('map_url'),
+            'map_logo': m.get('map_logo'),
             'game_mode': m.get('game_mode'),
+            'duration': m.get('duration'),
+            'win_team': m.get('win_team'),
             'team1_name': m.get('team1_name'),
+            'team1_logo': m.get('team1_logo'),
             'team2_name': m.get('team2_name'),
+            'team2_logo': m.get('team2_logo'),
             'team1_score': m.get('team1_score'),
             'team2_score': m.get('team2_score'),
             'players': players_by_match.get(s['match_id'], []),
@@ -941,6 +949,115 @@ def _match_detail_payload(cup, match_id):
     }
 
 
+def _broadcast_number(value):
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _broadcast_top_player(players):
+    if not players:
+        return None
+    player = sorted(players, key=lambda item: (
+        -_broadcast_number(item.get('pw_rating') or item.get('rating')),
+        -_broadcast_number(item.get('kill')),
+        _broadcast_number(item.get('death')),
+        str(item.get('player_id') or ''),
+    ))[0]
+    return {
+        key: player.get(key)
+        for key in (
+            'player_id', 'nickname', 'alias_name', 'avatar', 'team', 'team_name',
+            'kill', 'death', 'assist', 'pw_rating', 'rating', 'adpr', 'mvp',
+        )
+    }
+
+
+def _broadcast_match_summary(match):
+    return {
+        key: match.get(key)
+        for key in (
+            'match_id', 'play_day', 'start_time', 'end_time', 'duration',
+            'map_name', 'map_name_en', 'map_url', 'map_logo', 'game_mode',
+            'win_team', 'team1_name', 'team1_logo', 'team1_score',
+            'team2_name', 'team2_logo', 'team2_score',
+        )
+    }
+
+
+def _broadcast_payload(cup):
+    season = Season.get_by_cup(cup)
+    if not season:
+        return None
+
+    player_rows, _ = _build_cup_players(cup)
+    selection_rows = _selection_payload(cup, status='approved')
+    latest_row = selection_rows[0] if selection_rows else None
+    latest_detail = (
+        _match_detail_payload(cup, latest_row['match_id'])
+        if latest_row else None
+    )
+    latest_match = None
+    if latest_detail:
+        latest_match = _broadcast_match_summary(latest_detail)
+        latest_match['top_player'] = _broadcast_top_player(latest_detail.get('players') or [])
+
+    leaderboard = []
+    for rank, player in enumerate(player_rows[:5], start=1):
+        leaderboard.append({
+            'rank': rank,
+            **{
+                key: player.get(key)
+                for key in (
+                    'player_id', 'nickname', 'alias_name', 'avatar', 'team_name',
+                    'match_count', 'win_rate', 'kd_ratio', 'avg_pw_rating',
+                )
+            },
+        })
+
+    current_day = latest_row.get('play_day') if latest_row else None
+    recent_matches = [_broadcast_match_summary(item) for item in selection_rows[:5]]
+    last_crawl_time = Config.get_value('last_crawl_time')
+    signature = {
+        'last_crawl_time': last_crawl_time,
+        'latest_match': latest_match,
+        'leaderboard': leaderboard,
+        'completed_maps': len(selection_rows),
+    }
+    version = hashlib.sha256(json.dumps(
+        signature, ensure_ascii=False, sort_keys=True, default=str,
+    ).encode('utf-8')).hexdigest()[:16]
+
+    return {
+        'season': {
+            'cup': cup,
+            'cup_alias': season.get('cup_alias') or season.get('name') or cup,
+            'status': season.get('status'),
+            'match_type': season.get('match_type'),
+            'start_date': _iso_dt(season.get('start_date')),
+            'end_date': _iso_dt(season.get('end_date')),
+        },
+        'progress': {
+            'current_day': current_day,
+            'today_completed_maps': sum(
+                1 for item in selection_rows
+                if current_day and item.get('play_day') == current_day
+            ),
+            'season_completed_maps': len(selection_rows),
+            'completed_days': len({
+                item.get('play_day') for item in selection_rows if item.get('play_day')
+            }),
+            'last_crawl_time': last_crawl_time,
+        },
+        'latest_match': latest_match,
+        'recent_matches': recent_matches,
+        'leaderboard': leaderboard,
+        'version': version,
+        'generated_at': datetime.now().isoformat(timespec='seconds'),
+    }
+
+
 @app.route('/api/v1/match')
 @cached_response(timeout=900, scopes=lambda: (
     season_scope(request.args.get('cup') or ''), 'profiles'))
@@ -956,6 +1073,18 @@ def api_match_detail():
     if not payload or payload.get('status') != 'approved':
         return error(404, "未找到该比赛"), 404
     return success(payload)
+
+
+@app.route('/api/v1/broadcast/<string:cup>')
+@cached_response(timeout=900, scopes=lambda: (
+    season_scope(request.view_args['cup']), 'profiles'))
+def api_broadcast(cup):
+    payload = _broadcast_payload(cup)
+    if payload is None:
+        return error(404, '赛季不存在'), 404
+    response = success(payload)
+    response.headers['Cache-Control'] = 'no-store'
+    return response
 
 
 @app.route('/api/admin/season/list')

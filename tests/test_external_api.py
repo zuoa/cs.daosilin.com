@@ -946,6 +946,66 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(self.client.get('/api/v1/match?match_id=m2').status_code, 400)
         self.assertEqual(self.client.get('/api/v1/match?cup=season-two').status_code, 400)
 
+    def test_public_broadcast_payload_tracks_latest_result_and_leaderboard(self):
+        cache.clear()
+        response = self.client.get('/api/v1/broadcast/season-two')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers.get('Cache-Control'), 'no-store')
+        payload = response.get_json()['data']
+        self.assertEqual(payload['season']['cup_alias'], '赛季二')
+        self.assertEqual(payload['progress']['current_day'], '20250101')
+        self.assertEqual(payload['progress']['today_completed_maps'], 1)
+        self.assertEqual(payload['progress']['season_completed_maps'], 1)
+        self.assertEqual(payload['progress']['completed_days'], 1)
+        self.assertEqual(payload['latest_match']['match_id'], 'm2')
+        self.assertEqual(payload['latest_match']['team1_score'], 9)
+        self.assertEqual(payload['latest_match']['team2_score'], 13)
+        self.assertEqual(payload['latest_match']['top_player']['player_id'], 'p1')
+        self.assertEqual(payload['leaderboard'][0]['player_id'], 'p1')
+        self.assertEqual(payload['leaderboard'][0]['rank'], 1)
+        self.assertEqual(len(payload['version']), 16)
+
+    def test_public_broadcast_allows_empty_season_and_rejects_missing_season(self):
+        cup = 'broadcast-empty-season'
+        Season.create(
+            cup_name=cup, cup_alias='空赛季', name='空赛季',
+            start_date=datetime(2026, 9, 1), end_date=datetime(2026, 9, 8),
+            status='active', match_type='official',
+        )
+        try:
+            cache.clear()
+            response = self.client.get(f'/api/v1/broadcast/{cup}')
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json()['data']
+            self.assertIsNone(payload['latest_match'])
+            self.assertEqual(payload['recent_matches'], [])
+            self.assertEqual(payload['leaderboard'], [])
+            self.assertEqual(payload['progress']['season_completed_maps'], 0)
+        finally:
+            Season.delete_with_related_data(cup)
+
+        missing = self.client.get('/api/v1/broadcast/not-a-season')
+        self.assertEqual(missing.status_code, 404)
+
+    def test_public_broadcast_ignores_rejected_matches(self):
+        selection = MatchSelection.get(
+            (MatchSelection.match_id == 'm2') &
+            (MatchSelection.season_cup_name == 'season-two')
+        )
+        selection.status = 'rejected'
+        selection.save()
+        try:
+            invalidate_season('season-two', external=False)
+            response = self.client.get('/api/v1/broadcast/season-two')
+            payload = response.get_json()['data']
+            self.assertIsNone(payload['latest_match'])
+            self.assertEqual(payload['progress']['season_completed_maps'], 0)
+        finally:
+            selection.status = 'approved'
+            selection.save()
+            invalidate_season('season-two', external=False)
+
     def test_admin_match_list_exposes_exact_start_time(self):
         with self.client.session_transaction() as session:
             session['admin_user'] = 'admin'

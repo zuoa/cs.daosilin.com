@@ -70,6 +70,7 @@ Four-point named scale in `tokens.css`. Production CSS uses semantic tokens rath
 - Home may use the existing CSS-built radar as Tier-A enrichment below the marquee fold.
 - Season and player pages may use real data visualisation only.
 - Player comparison uses an esports-broadcast Workbench: a charcoal vertical specification matrix, P1–P4 rails, a sticky metric column, and one finite signal sweep. It may mark per-metric leaders but must not invent a composite winner.
+- Broadcast overlays use a **Stat-Led broadcast rundown**: transparent canvas, one charcoal information surface anchored inside the OBS safe area, and the latest real score as the lead figure. They have no site navigation or conventional footer; a restrained status rail communicates rotation, stale data, and update time. Signal green marks live/leader state only, and motion is limited to panel replacement plus functional loading.
 - Admin pages use no enrichment; function carries the page.
 - Login may use the crosshair grid as a restrained background signature.
 
@@ -85,6 +86,7 @@ Four-point named scale in `tokens.css`. Production CSS uses semantic tokens rath
 - Macrostructure inside the declared family.
 - Data density and table/card collapse strategy.
 - Radar enrichment on public pages only.
+- Broadcast anchor, scale, and automatic rotation may vary through URL parameters without changing the shared visual system.
 
 ## Exports
 
