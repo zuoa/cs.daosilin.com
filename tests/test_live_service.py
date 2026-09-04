@@ -21,8 +21,7 @@ class LiveStatusServiceTest(unittest.TestCase):
     @patch('live_service.requests.get')
     def test_douyu_live_state_is_cached(self, get):
         get.return_value = self.response({
-            'error': 0,
-            'data': {'room_status': '1'},
+            'room': {'show_status': 1, 'videoLoop': 0},
         })
 
         first = get_live_status('DOUYU', '123')
@@ -32,6 +31,16 @@ class LiveStatusServiceTest(unittest.TestCase):
         self.assertTrue(first['supported'])
         self.assertEqual(second, first)
         get.assert_called_once()
+
+    @patch('live_service.requests.get')
+    def test_douyu_video_loop_is_treated_as_offline(self, get):
+        get.return_value = self.response({
+            'room': {'show_status': 1, 'videoLoop': 1},
+        })
+
+        result = get_live_status('DOUYU', 'carousel-room')
+
+        self.assertEqual(result['status'], 'offline')
 
     @patch('live_service.requests.get')
     def test_huya_replay_is_treated_as_offline(self, get):

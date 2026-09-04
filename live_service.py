@@ -44,7 +44,9 @@ _live_status_cache: dict[str, tuple[float, dict]] = {}
 _live_status_cache_lock = threading.RLock()
 
 _STATUS_ENDPOINTS = {
-    'DOUYU': 'https://open.douyucdn.cn/api/RoomApi/room/{room_id}',
+    # The legacy RoomApi marks video loops as live. betard exposes videoLoop,
+    # allowing a real broadcast to be distinguished from round-robin video.
+    'DOUYU': 'https://www.douyu.com/betard/{room_id}',
     'HUYA': 'https://mp.huya.com/cache.php?m=Live&do=profileRoom&roomid={room_id}',
     'BILIBILI': 'https://api.live.bilibili.com/room/v1/Room/get_info?room_id={room_id}',
 }
@@ -172,6 +174,18 @@ def _parse_live_status(platform_code: str, payload: object) -> str:
         return 'unknown'
 
     if platform_code == 'DOUYU':
+        room = payload.get('room')
+        if isinstance(room, dict):
+            video_loop = room.get('videoLoop')
+            room_biz = room.get('room_biz_all')
+            if video_loop is None and isinstance(room_biz, dict):
+                video_loop = room_biz.get('videoLoop')
+            if str(video_loop or '').strip().lower() in ('1', 'true'):
+                return 'offline'
+            status = str(room.get('show_status') or '').strip()
+            return 'live' if status == '1' else 'offline' if status in ('0', '2') else 'unknown'
+
+        # Retain compatibility with the older RoomApi response shape.
         data = payload.get('data')
         if payload.get('error') != 0 or not isinstance(data, dict):
             return 'unknown'
