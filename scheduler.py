@@ -717,7 +717,7 @@ def create_scheduler():
         f'完美段位任务已添加：每天 {PERFECT_RANK_REFRESH_HOURS} 点的 15 分执行，启动后立即执行一次'
     )
 
-    from demo_tasks import reconcile_demo_jobs
+    from demo_tasks import cleanup_demo_archives, reconcile_demo_jobs
     scheduler.add_job(
         func=reconcile_demo_jobs,
         trigger=CronTrigger(minute='*/5'),
@@ -729,6 +729,18 @@ def create_scheduler():
         next_run_time=datetime.datetime.now() + datetime.timedelta(seconds=30),
     )
     logger.info('Demo 分析对账任务已添加：后台开启后每 5 分钟执行并回填近 30 天')
+
+    scheduler.add_job(
+        func=cleanup_demo_archives,
+        trigger=CronTrigger(minute='17'),
+        id='demo_archive_cleanup',
+        name='Demo 归档保留期清理',
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        next_run_time=datetime.datetime.now() + datetime.timedelta(seconds=60),
+    )
+    logger.info('Demo 归档清理任务已添加：每小时删除超过保留期的文件')
 
     from player_summary_tasks import reconcile_player_summaries
     scheduler.add_job(

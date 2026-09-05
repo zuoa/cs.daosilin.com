@@ -72,6 +72,7 @@ DEMO_ANALYZER_PATH = os.getenv('DEMO_ANALYZER_PATH', '/usr/local/bin/cs-demo-ana
 DEMO_ANALYZER_TIMEOUT = int(os.getenv('DEMO_ANALYZER_TIMEOUT', '840'))
 DEMO_METRIC_VERSION = os.getenv('DEMO_METRIC_VERSION', 'v1').strip() or 'v1'
 DEMO_BACKFILL_DAYS = int(os.getenv('DEMO_BACKFILL_DAYS', '30'))
+DEMO_RETENTION_DAYS = max(1, int(os.getenv('DEMO_RETENTION_DAYS', '3')))
 
 # 完美段位每天定时刷新。Cron 小时列表使用逗号分隔，例如 2,8,14,20。
 PERFECT_RANK_REFRESH_HOURS = (

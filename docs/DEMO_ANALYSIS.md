@@ -40,7 +40,7 @@
 - 下载适配器固定使用 `cs-demo-downloader==1.3.0`，Docker 的 CPython 3.12 Linux 环境可加载其配套 PWA signer。
 - 单个下载与解压后文件均限制为 1 GiB。
 - 解析前校验 `PBDEMS2` header；解析后校验地图、有效回合以及至少 80% 的阵容 SteamID。
-- 原始 Demo 计算 SHA-256 后以 `match.dem.zst` 内容寻址长期保存；解析器原始 JSON 以 `analysis-v1.json.zst` 同目录保存。
+- 原始 Demo 计算 SHA-256 后以 `match.dem.zst` 内容寻址保存；解析器原始 JSON 以 `analysis-v1.json.zst` 同目录保存。两类归档默认在分析完成 3 天后自动删除，数据库中的任务状态和分析指标继续保留；可通过 `DEMO_RETENTION_DAYS` 调整保留天数。
 - 解析器固定为 `cs2-analyser-tool` commit `88cb54ea0267fc8f4a8ae8d03987b50aec2a0653`，由 Docker 多阶段构建的非交互 JSON adapter 调用。
 
 ## 统计口径

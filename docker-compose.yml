@@ -58,6 +58,7 @@ services:
       PERFECT_RANK_REQUEST_INTERVAL: ${PERFECT_RANK_REQUEST_INTERVAL:-0.2}
       DEMO_CREDENTIAL_ENCRYPTION_KEY: ${DEMO_CREDENTIAL_ENCRYPTION_KEY:-}
       DEMO_STORAGE_PATH: /data/demos
+      DEMO_RETENTION_DAYS: ${DEMO_RETENTION_DAYS:-3}
 
   demo-worker:
     image: ghcr.io/zuoa/cs.daosilin.com:main
@@ -81,6 +82,7 @@ services:
       WMPVP_STEAM_ID: ${WMPVP_STEAM_ID:-}
       DEMO_CREDENTIAL_ENCRYPTION_KEY: ${DEMO_CREDENTIAL_ENCRYPTION_KEY:-}
       DEMO_STORAGE_PATH: /data/demos
+      DEMO_RETENTION_DAYS: ${DEMO_RETENTION_DAYS:-3}
 
   player-summary-worker:
     image: ghcr.io/zuoa/cs.daosilin.com:main

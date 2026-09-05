@@ -18,7 +18,7 @@ from ajlog import logger
 from cache_service import invalidate_season
 from config import (DEMO_ANALYZER_PATH, DEMO_ANALYZER_TIMEOUT, DEMO_BACKFILL_DAYS,
                     DEMO_MAX_BYTES, DEMO_METRIC_VERSION, DEMO_STORAGE_PATH,
-                    REDIS_URL)
+                    DEMO_RETENTION_DAYS, REDIS_URL)
 from database import DemoAnalysis, DemoCredential, Match, db
 from demo_service import (PARSER_NAME, PARSER_VERSION, demo_analysis_enabled,
                           has_demo_credential, load_demo_credential,
@@ -148,6 +148,138 @@ def reconcile_demo_jobs(days=None):
         schedule_demo_analysis(match.match_id, force=stale)
         scheduled += 1
     return {'eligible': matches.count(), 'scheduled': scheduled, 'disabled': False}
+
+
+def _stored_archive_path(raw_path, storage_root):
+    """Return a storage-contained archive path, rejecting unsafe references."""
+    if not raw_path:
+        return None
+    candidate = Path(raw_path)
+    if not candidate.is_absolute():
+        candidate = Path.cwd() / candidate
+    if candidate.is_symlink():
+        raise ValueError('归档路径不能是符号链接')
+    resolved = candidate.resolve(strict=False)
+    try:
+        relative = resolved.relative_to(storage_root)
+    except ValueError as exc:
+        raise ValueError('归档路径不在 Demo 存储目录内') from exc
+    if not relative.parts:
+        raise ValueError('归档路径不能是 Demo 存储根目录')
+    return resolved
+
+
+def cleanup_demo_archives(retention_days=None, now=None):
+    """Delete completed Demo file artifacts after the configured retention.
+
+    Parsed database metrics and the completed analysis row remain available.
+    Paths still referenced by a non-expired or active row are not removed.
+    """
+    retention_days = retention_days or DEMO_RETENTION_DAYS
+    now = now or datetime.now()
+    cutoff = now - timedelta(days=retention_days)
+    storage_root = Path(DEMO_STORAGE_PATH).resolve(strict=False)
+    rows = list(DemoAnalysis.select().where(
+        ((DemoAnalysis.archive_path.is_null(False)) & (DemoAnalysis.archive_path != ''))
+        | ((DemoAnalysis.raw_result_path.is_null(False)) &
+           (DemoAnalysis.raw_result_path != ''))
+    ))
+
+    def expired(row):
+        return bool(
+            row.status == 'completed'
+            and row.finished_at
+            and row.finished_at <= cutoff
+        )
+
+    stats = {
+        'eligible': 0,
+        'rows_cleaned': 0,
+        'files_deleted': 0,
+        'bytes_deleted': 0,
+        'missing': 0,
+        'shared': 0,
+        'failed': 0,
+    }
+    protected_paths = set()
+    for row in rows:
+        if expired(row):
+            stats['eligible'] += 1
+            continue
+        for field in ('archive_path', 'raw_result_path'):
+            try:
+                path = _stored_archive_path(getattr(row, field), storage_root)
+            except ValueError:
+                continue
+            if path:
+                protected_paths.add(path)
+
+    handled_paths = set()
+    directories = set()
+    for row in rows:
+        if not expired(row):
+            continue
+        changed = False
+        for field in ('archive_path', 'raw_result_path'):
+            raw_path = getattr(row, field)
+            if not raw_path:
+                continue
+            try:
+                path = _stored_archive_path(raw_path, storage_root)
+            except ValueError as exc:
+                logger.warning(
+                    f'Demo 归档清理跳过不安全路径 '
+                    f'match={row.match_id} field={field}: {exc}'
+                )
+                stats['failed'] += 1
+                continue
+
+            if path in protected_paths:
+                stats['shared'] += 1
+                setattr(row, field, None)
+                changed = True
+                continue
+            if path in handled_paths:
+                setattr(row, field, None)
+                changed = True
+                continue
+            try:
+                if path.exists():
+                    if not path.is_file():
+                        raise ValueError('归档路径不是普通文件')
+                    size = path.stat().st_size
+                    path.unlink()
+                    stats['files_deleted'] += 1
+                    stats['bytes_deleted'] += size
+                    directories.add(path.parent)
+                else:
+                    stats['missing'] += 1
+                handled_paths.add(path)
+                setattr(row, field, None)
+                changed = True
+            except (OSError, ValueError) as exc:
+                logger.warning(
+                    f'Demo 归档清理失败 match={row.match_id} '
+                    f'field={field} path={path}: {exc}'
+                )
+                stats['failed'] += 1
+        if changed:
+            row.save()
+            stats['rows_cleaned'] += 1
+
+    # Content-addressed leaf directories become empty after both artifacts go.
+    for directory in sorted(directories, key=lambda item: len(item.parts), reverse=True):
+        for candidate in (directory, directory.parent):
+            if candidate == storage_root:
+                continue
+            try:
+                candidate.rmdir()
+            except OSError:
+                pass
+
+    if stats['eligible'] or stats['failed']:
+        logger.info(f'Demo 归档保留期清理完成: {stats}')
+    return stats
 
 
 def _write_bounded(response, destination: Path):

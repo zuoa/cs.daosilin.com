@@ -4,6 +4,7 @@ import shutil
 import tempfile
 import unittest
 import bz2
+from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -18,6 +19,7 @@ from demo_service import (attach_demo_stats, demo_analysis_enabled,
                           load_demo_credential, persist_analysis,
                           save_demo_credential, set_demo_analysis_enabled)
 from demo_tasks import (_demo_job_id, _extract_demo, _safe_error,
+                        cleanup_demo_archives,
                         schedule_demo_analysis)
 from rq.job import validate_job_id
 
@@ -262,6 +264,79 @@ class DemoAnalysisTest(unittest.TestCase):
         source.write_bytes(b'not-a-demo')
         with self.assertRaisesRegex(ValueError, 'PBDEMS2'):
             _extract_demo(source, target)
+
+    def test_completed_demo_archives_are_deleted_after_three_days(self):
+        now = datetime(2026, 9, 5, 12, 0, 0)
+        storage = Path(self.temp_dir) / 'retention-storage'
+        old_dir = storage / 'aa' / ('a' * 64)
+        recent_dir = storage / 'bb' / ('b' * 64)
+        old_dir.mkdir(parents=True)
+        recent_dir.mkdir(parents=True)
+        old_demo = old_dir / 'match.dem.zst'
+        old_result = old_dir / 'analysis-v1.json.zst'
+        recent_demo = recent_dir / 'match.dem.zst'
+        old_demo.write_bytes(b'old-demo')
+        old_result.write_bytes(b'old-result')
+        recent_demo.write_bytes(b'recent-demo')
+        old = DemoAnalysis.create(
+            match_id='retention-old', status='completed',
+            finished_at=now - timedelta(days=3, seconds=1),
+            archive_path=str(old_demo), raw_result_path=str(old_result),
+        )
+        recent = DemoAnalysis.create(
+            match_id='retention-recent', status='completed',
+            finished_at=now - timedelta(days=2), archive_path=str(recent_demo),
+        )
+
+        with patch('demo_tasks.DEMO_STORAGE_PATH', str(storage)):
+            stats = cleanup_demo_archives(retention_days=3, now=now)
+
+        old = DemoAnalysis.get_by_id(old.id)
+        recent = DemoAnalysis.get_by_id(recent.id)
+        self.assertFalse(old_demo.exists())
+        self.assertFalse(old_result.exists())
+        self.assertIsNone(old.archive_path)
+        self.assertIsNone(old.raw_result_path)
+        self.assertEqual(old.status, 'completed')
+        self.assertTrue(recent_demo.exists())
+        self.assertEqual(recent.archive_path, str(recent_demo))
+        self.assertEqual(stats['files_deleted'], 2)
+        self.assertEqual(stats['rows_cleaned'], 1)
+
+    def test_demo_cleanup_never_deletes_outside_storage_or_active_shared_file(self):
+        now = datetime(2026, 9, 5, 12, 0, 0)
+        storage = Path(self.temp_dir) / 'safe-retention-storage'
+        storage.mkdir()
+        shared = storage / 'shared.dem.zst'
+        outside = Path(self.temp_dir) / 'outside.dem.zst'
+        shared.write_bytes(b'shared')
+        outside.write_bytes(b'outside')
+        old_shared = DemoAnalysis.create(
+            match_id='retention-old-shared', status='completed',
+            finished_at=now - timedelta(days=4), archive_path=str(shared),
+        )
+        recent_shared = DemoAnalysis.create(
+            match_id='retention-active-shared', status='parsing',
+            finished_at=None, archive_path=str(shared),
+        )
+        unsafe = DemoAnalysis.create(
+            match_id='retention-unsafe', status='completed',
+            finished_at=now - timedelta(days=4), archive_path=str(outside),
+        )
+
+        with patch('demo_tasks.DEMO_STORAGE_PATH', str(storage)):
+            stats = cleanup_demo_archives(retention_days=3, now=now)
+
+        old_shared = DemoAnalysis.get_by_id(old_shared.id)
+        recent_shared = DemoAnalysis.get_by_id(recent_shared.id)
+        unsafe = DemoAnalysis.get_by_id(unsafe.id)
+        self.assertTrue(shared.exists())
+        self.assertIsNone(old_shared.archive_path)
+        self.assertEqual(recent_shared.archive_path, str(shared))
+        self.assertTrue(outside.exists())
+        self.assertEqual(unsafe.archive_path, str(outside))
+        self.assertEqual(stats['shared'], 1)
+        self.assertEqual(stats['failed'], 1)
 
     def test_demo_is_canonical_per_completed_match_and_fallback_stays(self):
         steam_id = '76561198000000001'
