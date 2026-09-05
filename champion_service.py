@@ -1,6 +1,7 @@
 import datetime
 import unicodedata
 from collections import defaultdict
+from itertools import combinations
 
 from ajlog import logger
 from cache_service import invalidate_season
@@ -10,6 +11,67 @@ from database import Match, CupDayChampion, MatchPlayer
 def _team_key(name):
     """Return a stable comparison key while retaining the recorded team name."""
     return ' '.join(unicodedata.normalize('NFKC', str(name or '')).split()).casefold()
+
+
+def _team_aliases_from_players(players):
+    """Resolve renamed teams from their player overlap.
+
+    WMPVP team names are display values and may change between rounds (for
+    example ``LZK队`` -> ``LZK``).  Only merge names when at least three player
+    IDs overlap and those players make up most of the smaller observed roster.
+    This keeps a single substitute or a player changing teams from collapsing
+    two otherwise unrelated teams.
+    """
+    rosters = defaultdict(set)
+    display_names = {}
+    for player in players:
+        name = ' '.join(str(player.get('team_name') or '').split())
+        team = _team_key(name)
+        player_id = player.get('player_id')
+        if not team or player_id is None:
+            continue
+        rosters[team].add(str(player_id))
+        display_names[team] = name
+
+    parents = {team: team for team in rosters}
+
+    def find(team):
+        root = team
+        while parents[root] != root:
+            root = parents[root]
+        while parents[team] != team:
+            parent = parents[team]
+            parents[team] = root
+            team = parent
+        return root
+
+    def union(left, right):
+        left_root = find(left)
+        right_root = find(right)
+        if left_root == right_root:
+            return
+        root, child = sorted((left_root, right_root))
+        parents[child] = root
+
+    for left, right in combinations(rosters, 2):
+        shared = len(rosters[left] & rosters[right])
+        smaller_roster = min(len(rosters[left]), len(rosters[right]))
+        if shared >= 3 and shared / smaller_roster >= 0.6:
+            union(left, right)
+
+    aliases = {team: find(team) for team in rosters}
+    groups = defaultdict(list)
+    for team, canonical in aliases.items():
+        groups[canonical].append(display_names[team])
+    renamed_groups = [
+        names for names in groups.values() if len(names) > 1
+    ]
+    return aliases, renamed_groups
+
+
+def _resolved_team_key(name, team_aliases=None):
+    team = _team_key(name)
+    return (team_aliases or {}).get(team, team)
 
 
 def _canonical_match_id(match_id):
@@ -55,7 +117,7 @@ def _match_sort_key(indexed_match):
     )
 
 
-def _completed_bo3_series(match_list):
+def _completed_bo3_series(match_list, team_aliases=None):
     """Collapse map records into chronological, completed best-of-three series."""
     unique_matches = []
     seen_match_ids = set()
@@ -73,8 +135,8 @@ def _completed_bo3_series(match_list):
     for _, match in sorted(unique_matches, key=_match_sort_key):
         team1_name = ' '.join(str(match.get('team1_name') or '').split())
         team2_name = ' '.join(str(match.get('team2_name') or '').split())
-        team1 = _team_key(team1_name)
-        team2 = _team_key(team2_name)
+        team1 = _resolved_team_key(team1_name, team_aliases)
+        team2 = _resolved_team_key(team2_name, team_aliases)
         if not team1 or not team2 or team1 == team2:
             continue
 
@@ -110,7 +172,7 @@ def _completed_bo3_series(match_list):
     return completed, display_names
 
 
-def calculate_daily_podium(match_list):
+def calculate_daily_podium(match_list, team_aliases=None):
     """Resolve a day's champion and runner-up from the eight-team BO3 format.
 
     The first series for each team is round one. In round two, teams may only
@@ -118,7 +180,7 @@ def calculate_daily_podium(match_list):
     play the final. A result is returned only when all four round-one series,
     all four round-two series, and the final are complete.
     """
-    series_list, display_names = _completed_bo3_series(match_list)
+    series_list, display_names = _completed_bo3_series(match_list, team_aliases)
     histories = defaultdict(list)
     round_one = []
     round_two = []
@@ -167,14 +229,10 @@ def calculate_daily_podium(match_list):
     }
 
 
-def _player_ids_by_team(cup_name, day):
-    players = MatchPlayer.filter_records(**{
-        'cup_name': cup_name,
-        'play_day': day,
-    })
+def _player_ids_by_team(players, team_aliases=None):
     grouped = defaultdict(dict)
     for player in players:
-        team = _team_key(player.get('team_name'))
+        team = _resolved_team_key(player.get('team_name'), team_aliases)
         player_id = player.get('player_id')
         if team and player_id is not None:
             grouped[team][str(player_id)] = None
@@ -194,9 +252,20 @@ def judge_champion(day=None, cup_name=None):
         logger.info(f'{cup_name} {day} 没有比赛记录，跳过冠军判断')
         return None
 
-    podium = calculate_daily_podium(match_list)
+    players = MatchPlayer.filter_records(**{
+        'cup_name': cup_name,
+        'play_day': day,
+    })
+    team_aliases, renamed_groups = _team_aliases_from_players(players)
+    if renamed_groups:
+        logger.info(
+            f'{cup_name} {day} 按参赛阵容合并队名: '
+            + '; '.join(' / '.join(names) for names in renamed_groups)
+        )
+
+    podium = calculate_daily_podium(match_list, team_aliases)
     if not podium:
-        completed_series, _ = _completed_bo3_series(match_list)
+        completed_series, _ = _completed_bo3_series(match_list, team_aliases)
         logger.info(
             f'{cup_name} {day} 已记录 {len(match_list)} 张地图、'
             f'{len(completed_series)} 个完整 BO3，赛制尚未完整，暂不生成冠亚军'
@@ -210,9 +279,11 @@ def judge_champion(day=None, cup_name=None):
         f'决赛 {podium["final_score"][0]}-{podium["final_score"][1]}'
     )
 
-    player_ids_by_team = _player_ids_by_team(cup_name, day)
-    champion_player_ids = player_ids_by_team.get(_team_key(champion_team), '')
-    runner_up_player_ids = player_ids_by_team.get(_team_key(runner_up_team), '')
+    player_ids_by_team = _player_ids_by_team(players, team_aliases)
+    champion_key = _resolved_team_key(champion_team, team_aliases)
+    runner_up_key = _resolved_team_key(runner_up_team, team_aliases)
+    champion_player_ids = player_ids_by_team.get(champion_key, '')
+    runner_up_player_ids = player_ids_by_team.get(runner_up_key, '')
     values = {
         'cup_name': cup_name,
         'day': day,

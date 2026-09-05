@@ -1,7 +1,9 @@
 import unittest
 from unittest.mock import patch
 
-from champion_service import calculate_daily_podium, judge_champion
+from champion_service import (_player_ids_by_team, _resolved_team_key,
+                              _team_aliases_from_players,
+                              calculate_daily_podium, judge_champion)
 
 
 def add_bo3(matches, team1, team2, winners, start_index=None):
@@ -36,6 +38,38 @@ def full_day_matches():
     return matches
 
 
+def renamed_team_day():
+    """Return a full day where two teams change display names between rounds."""
+    matches = full_day_matches()
+    for match in matches:
+        for field in ('team1_name', 'team2_name'):
+            if match[field] == 'C':
+                match[field] = 'LZK队'
+            elif match[field] == 'E':
+                match[field] = '小秋队'
+
+    # These are the two name changes observed in the 2026-09-04 matches.
+    for match in matches[10:13]:
+        for field in ('team1_name', 'team2_name'):
+            if match[field] == 'LZK队':
+                match[field] = 'LZK'
+    for match in matches[20:]:
+        for field in ('team1_name', 'team2_name'):
+            if match[field] == '小秋队':
+                match[field] = '活力小秋队'
+
+    canonical_names = {'LZK': 'LZK队', '活力小秋队': '小秋队'}
+    players = []
+    for match in matches:
+        for team_name in (match['team1_name'], match['team2_name']):
+            canonical = canonical_names.get(team_name, team_name)
+            players.extend({
+                'team_name': team_name,
+                'player_id': f'{canonical}-player-{index}',
+            } for index in range(5))
+    return matches, players
+
+
 class DailyPodiumCalculationTest(unittest.TestCase):
     def test_resolves_two_zero_teams_and_final_bo3(self):
         podium = calculate_daily_podium(full_day_matches())
@@ -68,6 +102,38 @@ class DailyPodiumCalculationTest(unittest.TestCase):
             if match['team2_name'] == 'C':
                 match['team2_name'] = 'B'
         self.assertIsNone(calculate_daily_podium(matches))
+
+    def test_resolves_team_renames_from_stable_rosters(self):
+        matches, players = renamed_team_day()
+        self.assertIsNone(calculate_daily_podium(matches))
+
+        aliases, renamed_groups = _team_aliases_from_players(players)
+        podium = calculate_daily_podium(matches, aliases)
+
+        self.assertCountEqual(
+            renamed_groups,
+            [['LZK队', 'LZK'], ['小秋队', '活力小秋队']],
+        )
+        self.assertEqual(podium['champion_team'], '活力小秋队')
+        self.assertEqual(podium['runner_up_team'], 'A')
+        player_ids = _player_ids_by_team(players, aliases)
+        champion_key = _resolved_team_key(podium['champion_team'], aliases)
+        self.assertEqual(
+            set(player_ids[champion_key].split(',')),
+            {f'小秋队-player-{index}' for index in range(5)},
+        )
+
+    def test_does_not_merge_teams_with_only_one_shared_player(self):
+        players = [
+            *({'team_name': 'A', 'player_id': f'a-{index}'} for index in range(5)),
+            {'team_name': 'B', 'player_id': 'a-0'},
+            *({'team_name': 'B', 'player_id': f'b-{index}'} for index in range(4)),
+        ]
+
+        aliases, renamed_groups = _team_aliases_from_players(players)
+
+        self.assertNotEqual(aliases['a'], aliases['b'])
+        self.assertEqual(renamed_groups, [])
 
 
 class ChampionPersistenceTest(unittest.TestCase):
@@ -146,8 +212,34 @@ class ChampionPersistenceTest(unittest.TestCase):
 
         self.assertIsNone(result)
         champion_model.create.assert_not_called()
-        match_player_model.filter_records.assert_not_called()
+        match_player_model.filter_records.assert_called_once_with(
+            cup_name='identity-cup', play_day='20260903',
+        )
         invalidate.assert_not_called()
+
+    @patch('champion_service.invalidate_season')
+    @patch('champion_service.CupDayChampion')
+    @patch('champion_service.MatchPlayer')
+    @patch('champion_service.Match')
+    def test_persists_podium_when_teams_are_renamed_between_rounds(
+        self, match_model, match_player_model, champion_model, invalidate,
+    ):
+        matches, players = renamed_team_day()
+        match_model.filter_records.return_value = matches
+        match_player_model.filter_records.return_value = players
+        champion_model.is_exist.return_value = False
+
+        result = judge_champion(day='20260903', cup_name='rename-cup')
+
+        self.assertEqual(result['champion_team'], '活力小秋队')
+        self.assertEqual(result['runner_up_team'], 'A')
+        saved = champion_model.create.call_args.kwargs
+        self.assertEqual(saved['champion_team_name'], '活力小秋队')
+        self.assertEqual(
+            set(saved['champion_team_player_ids'].split(',')),
+            {f'小秋队-player-{index}' for index in range(5)},
+        )
+        invalidate.assert_called_once_with('rename-cup', external=False)
 
 
 if __name__ == '__main__':
