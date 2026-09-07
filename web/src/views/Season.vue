@@ -115,7 +115,16 @@
                             :title="liveRoomTitle(p)"
                           ><AppIcon name="television" :size="16" /></a>
                         </span>
-                        <PlayerAvatar :src="p.avatar" :name="displayName(p)" class="player-avatar" />
+                        <span class="player-avatar-frame">
+                          <PlayerAvatar :src="p.avatar" :name="displayName(p)" class="player-avatar" />
+                          <span
+                            v-if="!day && championCount(p)"
+                            class="champion-crown"
+                            role="img"
+                            :aria-label="championLabel(p)"
+                            :title="championLabel(p)"
+                          ><AppIcon name="crown" :size="19" /></span>
+                        </span>
                         <span>
                           <router-link class="player-name-link" :to="playerLink(p)" :aria-label="`查看 ${displayName(p)} 的完整详情`">
                             {{ displayName(p) }}
@@ -271,7 +280,16 @@
                       :title="liveRoomTitle(p)"
                     ><AppIcon name="television" :size="16" /></a>
                   </span>
-                  <PlayerAvatar :src="p.avatar" :name="displayName(p)" class="player-avatar" />
+                  <span class="player-avatar-frame">
+                    <PlayerAvatar :src="p.avatar" :name="displayName(p)" class="player-avatar" />
+                    <span
+                      v-if="!day && championCount(p)"
+                      class="champion-crown"
+                      role="img"
+                      :aria-label="championLabel(p)"
+                      :title="championLabel(p)"
+                    ><AppIcon name="crown" :size="20" /></span>
+                  </span>
                   <div class="mobile-player-identity">
                     <router-link class="player-name-link" :to="playerLink(p)" :aria-label="`查看 ${displayName(p)} 的完整详情`">
                       {{ displayName(p) }}
@@ -509,6 +527,11 @@ function liveRoomTitle(p) {
   return '正在检测开播状态'
 }
 function liveRoomLabel(p) { return `${displayName(p)}：${liveRoomTitle(p)}` }
+function championCount(p) { return (p.trophy_history || []).filter((item) => item.trophy === 'champion').length }
+function championLabel(p) {
+  const count = championCount(p)
+  return `${displayName(p)}曾获得${count > 1 ? `${count}次` : ''}冠军`
+}
 function communityRatingReady(p) { return p.community_rating?.status === 'formed' }
 function communityRatingCount(p) { return Number(p.community_rating?.total_votes || 0) }
 function hasDraftPick(p) { return Number(p.draft_pick?.pick_count || 0) > 0 }

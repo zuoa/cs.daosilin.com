@@ -14,6 +14,7 @@ const icons = {
   chevronRight: [['path', { d: 'm9 18 6-6-6-6' }]],
   database: [['ellipse', { cx: '12', cy: '5', rx: '8', ry: '3' }], ['path', { d: 'M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5' }], ['path', { d: 'M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7' }]],
   copy: [['rect', { x: '8', y: '8', width: '12', height: '12', rx: '2' }], ['path', { d: 'M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2' }]],
+  crown: [['path', { d: 'm3 7 4 4 5-7 5 7 4-4-2 12H5Z' }], ['path', { d: 'M5 19h14' }]],
   edit: [['path', { d: 'M12 20h9' }], ['path', { d: 'M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4Z' }]],
   external: [['path', { d: 'M14 4h6v6M20 4l-9 9' }], ['path', { d: 'M18 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h6' }]],
   filter: [['path', { d: 'M4 6h16M7 12h10M10 18h4' }]],
