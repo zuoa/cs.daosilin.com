@@ -107,7 +107,7 @@
                           <a
                             v-if="p.live_url"
                             class="live-room-link"
-                            :class="`is-${p.live_status || 'checking'}`"
+                            :class="[`is-${p.live_status || 'checking'}`, { 'is-stale': p.live_status_stale }]"
                             :href="p.live_url"
                             target="_blank"
                             rel="noopener noreferrer"
@@ -263,7 +263,7 @@
                     <a
                       v-if="p.live_url"
                       class="live-room-link"
-                      :class="`is-${p.live_status || 'checking'}`"
+                      :class="[`is-${p.live_status || 'checking'}`, { 'is-stale': p.live_status_stale }]"
                       :href="p.live_url"
                       target="_blank"
                       rel="noopener noreferrer"
@@ -499,6 +499,10 @@ function playerLink(p) { return `/player/${p.player_id}/${cup.value}${day.value 
 function liveRoomState(p) { return p.live_status || 'checking' }
 function liveRoomTitle(p) {
   const state = liveRoomState(p)
+  if (p.live_status_stale) {
+    const lastState = state === 'live' ? '最近一次检测为正在直播' : '最近一次检测为未开播'
+    return `状态源暂时不可用，${lastState}，点击进入直播间确认`
+  }
   if (state === 'live') return '正在直播，点击进入直播间'
   if (state === 'offline') return '当前未开播，点击进入直播间'
   if (state === 'unknown') return '暂时无法检测开播状态，点击进入直播间'
@@ -752,11 +756,16 @@ async function loadLiveStatuses(list) {
     const statuses = data.statuses || {}
     for (const player of list) {
       if (!player.live_url) continue
-      player.live_status = statuses[String(player.player_id)]?.status || 'unknown'
+      const roomStatus = statuses[String(player.player_id)]
+      player.live_status = roomStatus?.status || 'unknown'
+      player.live_status_stale = Boolean(roomStatus?.stale)
     }
   } catch {
     for (const player of list) {
-      if (player.live_url) player.live_status = 'unknown'
+      if (player.live_url) {
+        player.live_status = 'unknown'
+        player.live_status_stale = false
+      }
     }
   }
 }
