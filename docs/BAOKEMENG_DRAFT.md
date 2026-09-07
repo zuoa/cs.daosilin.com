@@ -54,7 +54,7 @@ BAOKEMENG_STABLE_SECONDS=5
 5. 有序阵容和 teamBat 连续稳定 `BAOKEMENG_STABLE_SECONDS` 秒。
 6. 在一个数据库事务中写入 session、teams、players。
 
-如果稳定窗口内盘面或 roll 再变化，重新计时；roll 被清空或退回本轮基线时立即撤销待提交项。如果选人开始后断线，重连 loading 会保留当前轮次，并把 loading 中的实时 roll 重新纳入判断。提交成功后清空本轮开始时间。同一终稿重连不会重复插入；同一阵容重新 roll 会生成新终稿并将旧 roll 版本标为 superseded。若 roll 出现 A→B→A，则重新启用原 A 版本并更新完成时间，同时将 B 标为 superseded。
+如果稳定窗口内盘面或 roll 再变化，重新计时；roll 被清空或退回本轮基线时立即撤销待提交项。如果选人开始后断线，重连 loading 会保留当前轮次，并把 loading 中的实时 roll 重新纳入判断。提交成功后，同一 roll 下继续增加或调整选手会作为该 session 的后续修订重新稳定并原位更新，且人数更少的瞬时盘面不会覆盖更完整的记录。进程冷启动取得 loading 时只允许修订数据库中已经存在的同日、同 roll 记录，不会据此创建新 session。同一终稿重连不会重复插入；同一阵容重新 roll 会生成新终稿并将旧 roll 版本标为 superseded。若 roll 出现 A→B→A，则重新启用原 A 版本并更新完成时间，同时将 B 标为 superseded。
 
 队伍数量优先参考 `appSettings.topAreaNum`，同时以 topArea 的实际 area 集合兜底，避免运行期间配置变化造成固定数量假设。
 
@@ -153,7 +153,7 @@ python baokemeng_worker.py
 - 冷启动完整旧盘面不入库。
 - 旧 roll 不绑定新阵容。
 - 不完整 teamBat 不提交。
-- 稳定等待、盘面修正、窗口内重连和重新 roll。
+- 稳定等待、盘面修正、窗口内重连、提前提交后的同 roll 修订和重新 roll。
 - roll 撤回不提交，选人后、roll 前断线不丢终稿。
 - 连续轮次各自记录 started_at，重复的历史 roll 可恢复为当前版本。
 - 终稿写入幂等及 superseded 关系。

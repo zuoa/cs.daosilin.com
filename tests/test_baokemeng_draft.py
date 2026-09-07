@@ -11,6 +11,7 @@ from baokemeng_service import (
     draft_pick_summaries,
     persist_final_draft,
     public_draft_payload,
+    reconcile_existing_draft,
     summarize_draft_pick_records,
 )
 from database import DraftPlayer, DraftSession, DraftTeam, Player
@@ -112,6 +113,42 @@ class DraftTrackerTest(unittest.TestCase):
         tracker.ingest_update(update_args(second, rolls(2, 10)), now + timedelta(seconds=4))
         self.assertIsNone(tracker.poll(now + timedelta(seconds=8)))
         self.assertIsNotNone(tracker.poll(now + timedelta(seconds=9)))
+
+    def test_same_roll_can_emit_a_fuller_board_after_an_early_commit(self):
+        now = datetime(2026, 9, 3, 19, 0)
+        tracker = DraftTracker(stable_seconds=5)
+        tracker.ingest_loading(loading_args(board([1, 1]), rolls(2)), now)
+        current_roll = rolls(2, 10)
+
+        tracker.ingest_update(
+            update_args(board([2, 1]), current_roll), now + timedelta(seconds=1)
+        )
+        self.assertIsNotNone(tracker.poll(now + timedelta(seconds=6)))
+        tracker.commit_succeeded()
+
+        tracker.ingest_update(
+            update_args(board([3, 3]), current_roll), now + timedelta(seconds=20)
+        )
+        self.assertIsNone(tracker.poll(now + timedelta(seconds=24)))
+        revised = tracker.poll(now + timedelta(seconds=25))
+        self.assertEqual([team['roster_size'] for team in revised['teams']], [3, 3])
+
+    def test_reconnect_can_emit_a_fuller_board_after_an_early_commit(self):
+        now = datetime(2026, 9, 3, 19, 0)
+        tracker = DraftTracker(stable_seconds=5)
+        tracker.ingest_loading(loading_args(board([1, 1]), rolls(2)), now)
+        current_roll = rolls(2, 10)
+        tracker.ingest_update(
+            update_args(board([2, 1]), current_roll), now + timedelta(seconds=1)
+        )
+        self.assertIsNotNone(tracker.poll(now + timedelta(seconds=6)))
+        tracker.commit_succeeded()
+
+        tracker.ingest_loading(
+            loading_args(board([3, 3]), current_roll), now + timedelta(seconds=20)
+        )
+        revised = tracker.poll(now + timedelta(seconds=25))
+        self.assertEqual([team['roster_size'] for team in revised['teams']], [3, 3])
 
     def test_reconnect_keeps_matching_pending_final(self):
         now = datetime(2026, 9, 3, 19, 0)
@@ -278,9 +315,9 @@ class DraftPersistenceTest(unittest.TestCase):
         self.database.close()
         self.bind.__exit__(None, None, None)
 
-    def snapshot(self, offset=0, completed_at=None):
+    def snapshot(self, offset=0, completed_at=None, sizes=None):
         return build_final_snapshot(
-            board([2, 3], middle=4),
+            board(sizes or [2, 3], middle=4),
             rolls(2, offset),
             area_count=2,
             started_at=datetime(2026, 9, 3, 18, 55),
@@ -327,6 +364,39 @@ class DraftPersistenceTest(unittest.TestCase):
         self.assertEqual(DraftSession.get_by_id(second.id).status, 'superseded')
         self.assertEqual(repeated.completed_at, datetime(2026, 9, 3, 19, 20))
         self.assertEqual(public_draft_payload()['selected_session']['id'], first.id)
+
+    def test_same_roll_revises_early_session_in_place(self):
+        early, created = persist_final_draft(self.snapshot(sizes=[1, 1]))
+        revised, revised_created = persist_final_draft(self.snapshot(
+            sizes=[3, 2], completed_at=datetime(2026, 9, 3, 19, 10)
+        ))
+
+        self.assertTrue(created)
+        self.assertFalse(revised_created)
+        self.assertEqual(revised.id, early.id)
+        self.assertEqual(DraftSession.select().count(), 1)
+        self.assertEqual(DraftPlayer.select().count(), 5)
+        self.assertEqual(public_draft_payload()['selected_session']['player_count'], 5)
+
+    def test_loading_snapshot_only_repairs_an_existing_session(self):
+        full = self.snapshot(
+            sizes=[3, 2], completed_at=datetime(2026, 9, 3, 19, 10)
+        )
+        missing, changed = reconcile_existing_draft(full)
+        self.assertIsNone(missing)
+        self.assertFalse(changed)
+
+        early, _ = persist_final_draft(self.snapshot(sizes=[1, 1]))
+        repaired, changed = reconcile_existing_draft(full)
+        self.assertTrue(changed)
+        self.assertEqual(repaired.id, early.id)
+        self.assertEqual(DraftPlayer.select().count(), 5)
+
+        _, downgraded = reconcile_existing_draft(self.snapshot(
+            sizes=[1, 1], completed_at=datetime(2026, 9, 3, 19, 20)
+        ))
+        self.assertFalse(downgraded)
+        self.assertEqual(DraftPlayer.select().count(), 5)
 
 
 if __name__ == '__main__':

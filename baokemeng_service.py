@@ -369,11 +369,12 @@ class DraftTracker:
         self.board_key: str | None = None
         self.baseline_roll_key: str | None = None
         self.committed_roll_key: str | None = None
+        self.committed_board_key: str | None = None
         self.started_at: datetime | None = None
         self.active = False
         self.pending: _PendingDraft | None = None
 
-    def ingest_loading(self, args: list[Any], now: datetime) -> None:
+    def ingest_loading(self, args: list[Any], now: datetime) -> dict[str, Any] | None:
         if len(args) < 3 or not isinstance(args[1], dict) or not isinstance(args[2], dict):
             raise DraftValidationError('loading 参数格式错误')
         settings = args[2].get('appSettings') or {}
@@ -382,6 +383,16 @@ class DraftTracker:
         board_key = board_fingerprint(board, area_count)
         team_bat = (args[2].get('adminToC') or {}).get('teamBat')
         roll_key = raw_roll_fingerprint(team_bat)
+        try:
+            loading_snapshot = build_final_snapshot(
+                board,
+                team_bat,
+                area_count=area_count,
+                started_at=self.started_at,
+                completed_at=now,
+            )
+        except DraftValidationError:
+            loading_snapshot = None
 
         # A reconnect loading packet is also the first authoritative state after
         # the gap. Keep an in-progress round alive and evaluate its current roll;
@@ -393,7 +404,20 @@ class DraftTracker:
             self.area_count = area_count
             self.board_key = board_key
             self._observe_roll(team_bat, now)
-            return
+            return loading_snapshot
+
+        # A reconnect immediately after an early commit can already contain a
+        # fuller board for the same roll. Keep treating that board as a
+        # revision instead of turning it into a new cold-start baseline.
+        if (self.committed_roll_key is not None
+                and roll_key == self.committed_roll_key
+                and board_key != self.committed_board_key):
+            self.board = board
+            self.area_count = area_count
+            self.board_key = board_key
+            self.active = True
+            self._observe_roll(team_bat, now)
+            return loading_snapshot
 
         # Cold starts and reconnects after a completed round only establish a
         # baseline. This prevents stale complete boards from being persisted.
@@ -402,9 +426,11 @@ class DraftTracker:
         self.board_key = board_key
         self.baseline_roll_key = roll_key
         self.committed_roll_key = None
+        self.committed_board_key = None
         self.started_at = None
         self.active = False
         self.pending = None
+        return loading_snapshot
 
     def ingest_update(self, args: list[Any], now: datetime) -> None:
         if len(args) < 2 or not isinstance(args[0], str) or not isinstance(args[1], dict):
@@ -432,12 +458,27 @@ class DraftTracker:
         self._observe_roll(team_bat, now)
 
     def _observe_roll(self, team_bat: Any, now: datetime) -> None:
-        if not self.active or self.board is None:
+        if self.board is None:
             return
         roll_key = raw_roll_fingerprint(team_bat)
-        if not roll_key or roll_key in {self.baseline_roll_key, self.committed_roll_key}:
+        if not roll_key:
             self.pending = None
             return
+        if not self.active:
+            # A roll can change without moving a player. That is a legitimate
+            # reroll of the current roster and must start a new candidate.
+            if roll_key in {self.baseline_roll_key, self.committed_roll_key}:
+                return
+            self.active = True
+            self.started_at = now
+        if roll_key == self.baseline_roll_key:
+            # The initial baseline roll may belong to the previous round. The
+            # exception is a roll we have already committed whose board has
+            # since changed: that is a later, fuller revision of the same draft.
+            if (roll_key != self.committed_roll_key
+                    or self.board_key == self.committed_board_key):
+                self.pending = None
+                return
         try:
             final = build_final_snapshot(
                 self.board,
@@ -468,6 +509,7 @@ class DraftTracker:
         if self.pending is None:
             return
         self.committed_roll_key = self.pending.raw_roll_key
+        self.committed_board_key = self.pending.key[0]
         self.baseline_roll_key = self.committed_roll_key
         self.pending = None
         self.started_at = None
@@ -484,6 +526,80 @@ def _positive_int(value: Any) -> int | None:
     except (TypeError, ValueError):
         return None
     return number if number > 0 else None
+
+
+def _snapshot_player_count(snapshot: dict[str, Any]) -> int:
+    return sum(len(team.get('players') or []) for team in snapshot.get('teams') or [])
+
+
+def _replace_draft_session(
+    session: DraftSession, snapshot: dict[str, Any],
+) -> DraftSession:
+    """Replace an early snapshot with a later snapshot from the same roll."""
+    with db.atomic():
+        (DraftSession.update(
+            started_at=session.started_at or snapshot.get('started_at'),
+            completed_at=snapshot['completed_at'],
+            roster_fingerprint=snapshot['roster_fingerprint'],
+            team_count=snapshot['team_count'],
+            status='complete',
+            updated_at=datetime.now(),
+        ).where(DraftSession.id == session.id).execute())
+        DraftPlayer.delete().where(DraftPlayer.session == session).execute()
+        DraftTeam.delete().where(DraftTeam.session == session).execute()
+        for team in snapshot['teams']:
+            DraftTeam.create(
+                session=session,
+                team_num=team['team_num'],
+                area=team['area'],
+                roster_size=team['roster_size'],
+                captain_nickname=team['players'][0]['nickname'],
+                group_name=team['group_name'],
+                roll=team['roll'],
+            )
+            DraftPlayer.insert_many([
+                {
+                    'session': session.id,
+                    'team_num': team['team_num'],
+                    **player,
+                }
+                for player in team['players']
+            ]).execute()
+    return DraftSession.get_by_id(session.id)
+
+
+def _revise_same_roll_session(
+    snapshot: dict[str, Any], play_day: str,
+) -> tuple[DraftSession | None, bool]:
+    """Update, but never shrink, the current session for an unchanged roll."""
+    existing = (
+        DraftSession.select()
+        .where(
+            (DraftSession.play_day == play_day)
+            & (DraftSession.roll_fingerprint == snapshot['roll_fingerprint'])
+            & (DraftSession.team_count == snapshot['team_count'])
+            & (DraftSession.status == 'complete')
+        )
+        .order_by(DraftSession.completed_at.desc(), DraftSession.id.desc())
+        .first()
+    )
+    if existing is None:
+        return None, False
+    stored_count = (DraftPlayer.select()
+                    .where(DraftPlayer.session == existing)
+                    .count())
+    if _snapshot_player_count(snapshot) < stored_count:
+        return existing, False
+    if existing.roster_fingerprint == snapshot['roster_fingerprint']:
+        return existing, False
+    return _replace_draft_session(existing, snapshot), True
+
+
+def reconcile_existing_draft(snapshot: dict[str, Any]) -> tuple[DraftSession | None, bool]:
+    """Use a loading snapshot only to repair an already known same-roll draft."""
+    completed_at = snapshot['completed_at']
+    play_day = (completed_at - timedelta(hours=3)).strftime('%Y%m%d')
+    return _revise_same_roll_session(snapshot, play_day)
 
 
 def persist_final_draft(snapshot: dict[str, Any]) -> tuple[DraftSession, bool]:
@@ -515,6 +631,9 @@ def persist_final_draft(snapshot: dict[str, Any]) -> tuple[DraftSession, bool]:
     existing = DraftSession.get_or_none(lookup)
     if existing:
         return activate_existing(existing)
+    revised, _ = _revise_same_roll_session(snapshot, play_day)
+    if revised is not None:
+        return revised, False
     try:
         with db.atomic():
             (DraftSession.update(status='superseded')

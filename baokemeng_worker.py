@@ -16,7 +16,12 @@ import requests
 import websocket
 
 from ajlog import logger
-from baokemeng_service import DraftTracker, DraftValidationError, persist_final_draft
+from baokemeng_service import (
+    DraftTracker,
+    DraftValidationError,
+    persist_final_draft,
+    reconcile_existing_draft,
+)
 from cache_service import invalidate_cache
 from config import BAOKEMENG_PASSWORD, BAOKEMENG_SERVER, BAOKEMENG_STABLE_SECONDS
 
@@ -67,6 +72,24 @@ def _commit_ready(tracker: DraftTracker) -> None:
     logger.info(
         f'宝可梦终稿 {"已保存" if created else "已存在"}: '
         f'session={session.id} play_day={session.play_day} teams={session.team_count} '
+        f'fingerprint={session.roster_fingerprint[:12]}'
+    )
+
+
+def _reconcile_loading_snapshot(snapshot: dict[str, Any] | None) -> None:
+    if snapshot is None:
+        return
+    try:
+        session, revised = reconcile_existing_draft(snapshot)
+    except Exception:
+        logger.exception('宝可梦完整盘面修订失败，将等待后续事件重试')
+        return
+    if not revised or session is None:
+        return
+    invalidate_cache('draft')
+    logger.info(
+        f'宝可梦终稿已由完整盘面修订: session={session.id} '
+        f'play_day={session.play_day} teams={session.team_count} '
         f'fingerprint={session.roster_fingerprint[:12]}'
     )
 
@@ -147,7 +170,8 @@ def _listen_once(
             event, args = _socket_event(frame)
             try:
                 if event == 'loading':
-                    tracker.ingest_loading(args, datetime.now())
+                    loading_snapshot = tracker.ingest_loading(args, datetime.now())
+                    _reconcile_loading_snapshot(loading_snapshot)
                     if not healthy:
                         healthy = True
                         if on_connected is not None:
