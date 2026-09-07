@@ -17,6 +17,7 @@ HISTORY_SQL_PATH = os.getenv(
 REDIS_URL = (os.getenv('REDIS_URL') or '').strip()
 SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-change-me')
 SITE_NAME = os.getenv('SITE_NAME', '熊掌CS Major')
+SITE_URL = (os.getenv('SITE_URL') or 'https://cs.daosilin.com').rstrip('/')
 
 BAOKEMENG_PASSWORD = (os.getenv('BAOKEMENG_PASSWORD') or '').strip()
 BAOKEMENG_SERVER = (os.getenv('BAOKEMENG_SERVER') or 'https://www.baokemeng.xyz').strip()

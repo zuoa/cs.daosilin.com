@@ -5,9 +5,10 @@ import secrets
 import threading
 import time
 from datetime import datetime
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
-from flask import Flask, g, request, send_file, send_from_directory
+from flask import (Flask, Response, g, make_response, redirect, request,
+                   send_file, send_from_directory)
 from peewee import fn
 
 import title_service
@@ -53,6 +54,9 @@ from community_rating_service import (COOKIE_MAX_AGE as RATING_COOKIE_MAX_AGE,
                                       new_voter, rating_payload,
                                       read_voter_id, save_daily_rating)
 from utils import success, error, resp_data
+from seo_service import (build_page as build_seo_page, build_sitemap,
+                         render_index as render_seo_index,
+                         render_not_found, robots_text)
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
@@ -87,6 +91,16 @@ def log_slow_api(response):
             f'status={response.status_code} duration_ms={elapsed_ms:.1f} '
             f'cache={response.headers.get("X-Cache", "BYPASS")}'
         )
+    return response
+
+
+@app.after_request
+def add_search_headers(response):
+    """Keep private, machine-readable, and transient views out of search."""
+    path = request.path
+    noindex_prefixes = ('/api/', '/admin/', '/compare/', '/broadcast/')
+    if path == '/draft' or path.startswith(noindex_prefixes):
+        response.headers.setdefault('X-Robots-Tag', 'noindex, follow, noarchive')
     return response
 
 
@@ -2052,6 +2066,20 @@ def _web_dist():
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), 'web', 'dist')
 
 
+@app.route('/robots.txt')
+def robots():
+    response = Response(robots_text(), content_type='text/plain; charset=utf-8')
+    response.headers['Cache-Control'] = 'public, max-age=86400'
+    return response
+
+
+@app.route('/sitemap.xml')
+def sitemap():
+    response = Response(build_sitemap(), content_type='application/xml; charset=utf-8')
+    response.headers['Cache-Control'] = 'public, max-age=900'
+    return response
+
+
 @app.route('/', defaults={'spa_path': ''})
 @app.route('/<path:spa_path>')
 def spa(spa_path):
@@ -2063,9 +2091,24 @@ def spa(spa_path):
         if os.path.isfile(candidate):
             return send_from_directory(dist, spa_path)
     index = os.path.join(dist, 'index.html')
-    if os.path.isfile(index):
-        return send_from_directory(dist, 'index.html')
-    return error(503, '前端未构建：请在 web/ 目录执行 npm install && npm run build'), 503
+    if not os.path.isfile(index):
+        return error(503, '前端未构建：请在 web/ 目录执行 npm install && npm run build'), 503
+    try:
+        page = build_seo_page(spa_path)
+    except Exception as exc:
+        logger.error(f'SEO 页面生成失败 path={request.path}: {exc}')
+        return error(503, '页面数据暂时不可用'), 503
+    if page is None:
+        return make_response(render_not_found(), 404)
+    # Flask exposes a decoded request.path while canonical paths are safely
+    # percent-encoded for links. Compare decoded values to avoid redirect loops.
+    if request.path != unquote(page.canonical_path):
+        return redirect(page.canonical_path, code=301)
+    response = make_response(render_seo_index(index, page))
+    response.headers['Content-Type'] = 'text/html; charset=utf-8'
+    response.headers['Content-Language'] = 'zh-CN'
+    response.headers['Cache-Control'] = 'public, max-age=300'
+    return response
 
 
 if __name__ == '__main__':

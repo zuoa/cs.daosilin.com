@@ -139,7 +139,7 @@ async function load() {
     const data = await api.cup(cup.value)
     cupAlias.value = data.cup_alias || data.cup
     players.value = data.players || []
-    document.title = `${cupAlias.value}从夯到拉排名 · 熊掌CS Major`
+    document.title = `${cupAlias.value}从夯到拉排名｜熊掌CS Major`
   } catch (e) {
     error.value = e.message || '票选结果暂时无法读取。'
   } finally {

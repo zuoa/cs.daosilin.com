@@ -1094,7 +1094,7 @@ async function load() {
     const data = await api.player(id.value, cup.value, day.value || null)
     if (data.canonical_player_id && String(data.canonical_player_id) !== String(id.value)) {
       await router.replace({
-        path: `/player/${encodeURIComponent(data.canonical_player_id)}/${encodeURIComponent(cup.value)}${day.value ? `/${encodeURIComponent(day.value)}` : ''}`,
+        path: `/player/${encodeURIComponent(data.canonical_player_id)}/${encodeURIComponent(cup.value)}${day.value ? `/${encodeURIComponent(day.value)}` : ''}/`,
       })
       return
     }
@@ -1115,7 +1115,7 @@ async function load() {
     killMatchups.value = data.kill_matchups || []
     seasonSummary.value = data.season_summary || null
     lastCrawl.value = data.last_crawl_time || ''
-    document.title = `${playerName.value} · ${cupAlias.value} · 熊掌CS Major`
+    document.title = `${playerName.value}｜${cupAlias.value}${day.value ? ` ${day.value}` : ''} Rating 与 K/D｜熊掌CS Major`
     loading.value = false
     await nextTick()
     drawCharts()

@@ -4,15 +4,15 @@ import { api } from './api'
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/', component: () => import('./views/Home.vue') },
-    { path: '/admin/login', component: () => import('./views/Login.vue'), meta: { title: '管理登录' } },
-    { path: '/admin/season', component: () => import('./views/AdminSeason.vue'), meta: { admin: true, title: '杯赛与采集' } },
-    { path: '/admin/players', component: () => import('./views/AdminPlayers.vue'), meta: { admin: true, title: '玩家库' } },
-    { path: '/admin/tasks', component: () => import('./views/AdminTasks.vue'), meta: { admin: true, title: '任务中心' } },
-    { path: '/admin/settings', component: () => import('./views/AdminSettings.vue'), meta: { admin: true, title: 'API 与安全' } },
-    { path: '/draft', component: () => import('./views/Draft.vue'), meta: { title: '选人结果' } },
-    { path: '/broadcast/:cup', component: () => import('./views/Broadcast.vue'), meta: { title: '赛事直播数据' } },
-    { path: '/compare/:cup/:day?', component: () => import('./views/Compare.vue') },
+    { path: '/', component: () => import('./views/Home.vue'), meta: { title: 'CS2 赛事数据、选手 Rating 与战绩' } },
+    { path: '/admin/login', component: () => import('./views/Login.vue'), meta: { title: '管理登录', noindex: true } },
+    { path: '/admin/season', component: () => import('./views/AdminSeason.vue'), meta: { admin: true, title: '杯赛与采集', noindex: true } },
+    { path: '/admin/players', component: () => import('./views/AdminPlayers.vue'), meta: { admin: true, title: '玩家库', noindex: true } },
+    { path: '/admin/tasks', component: () => import('./views/AdminTasks.vue'), meta: { admin: true, title: '任务中心', noindex: true } },
+    { path: '/admin/settings', component: () => import('./views/AdminSettings.vue'), meta: { admin: true, title: 'API 与安全', noindex: true } },
+    { path: '/draft', component: () => import('./views/Draft.vue'), meta: { title: '选人结果', noindex: true } },
+    { path: '/broadcast/:cup', component: () => import('./views/Broadcast.vue'), meta: { title: '赛事直播数据', noindex: true } },
+    { path: '/compare/:cup/:day?', component: () => import('./views/Compare.vue'), meta: { noindex: true } },
     { path: '/player/:id/:cup?/:day?', component: () => import('./views/Player.vue') },
     { path: '/:cup/community', component: () => import('./views/CommunityShelves.vue'), meta: { title: '从夯到拉排名' } },
     { path: '/:cup/:day?', component: () => import('./views/Season.vue') },
@@ -34,6 +34,10 @@ router.beforeEach(async (to) => {
 
 router.afterEach((to) => {
   document.title = to.meta.title ? `${to.meta.title} · 熊掌CS Major` : '熊掌CS Major'
+  const robots = document.querySelector('meta[name="robots"]')
+  if (robots) robots.setAttribute('content', to.meta.noindex ? 'noindex,follow' : 'index,follow')
+  const canonical = document.querySelector('link[rel="canonical"]')
+  if (canonical) canonical.setAttribute('href', new URL(to.path, window.location.origin).href)
 })
 
 export default router

@@ -136,7 +136,7 @@ async function load() {
     siteName.value = data.site_name || meta.site_name || '熊掌CS Major'
     seasons.value = data.seasons || []
     lastCrawl.value = data.last_crawl_time || ''
-    document.title = siteName.value
+    document.title = `${siteName.value}｜CS2 赛事数据、选手 Rating 与战绩`
   } catch (e) {
     error.value = e.message
   } finally {

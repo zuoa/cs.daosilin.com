@@ -740,7 +740,9 @@ async function load() {
     championBracketEnabled.value = Boolean(data.champion_bracket_enabled)
     championBracket.value = data.champion_bracket || null
     lastCrawl.value = data.last_crawl_time || ''
-    document.title = `${cupAlias.value}${day.value ? ` · ${day.value}` : ''} · 熊掌CS Major`
+    document.title = day.value
+      ? `${cupAlias.value} ${day.value} 当日数据｜熊掌CS Major`
+      : `${cupAlias.value} 选手排名与战绩｜熊掌CS Major`
   } catch (e) {
     error.value = e.message
   } finally {
