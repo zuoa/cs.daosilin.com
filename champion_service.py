@@ -157,10 +157,16 @@ def _completed_bo3_series(match_list, team_aliases=None):
 
         if series['wins'][winner] == 2:
             loser = team2 if winner == team1 else team1
+            series_team1, series_team2 = series['teams']
             completed.append({
                 'winner': winner,
                 'loser': loser,
                 'teams': pairing,
+                'ordered_teams': series['teams'],
+                'team_scores': (
+                    series['wins'][series_team1],
+                    series['wins'][series_team2],
+                ),
                 'score': (2, series['wins'][loser]),
                 'map_count': series['map_count'],
                 'completed_at': match.get('end_time'),
@@ -172,18 +178,12 @@ def _completed_bo3_series(match_list, team_aliases=None):
     return completed, display_names
 
 
-def calculate_daily_podium(match_list, team_aliases=None):
-    """Resolve a day's champion and runner-up from the eight-team BO3 format.
-
-    The first series for each team is round one. In round two, teams may only
-    meet an opponent with the same round-one record. The two 2-0 teams then
-    play the final. A result is returned only when all four round-one series,
-    all four round-two series, and the final are complete.
-    """
-    series_list, display_names = _completed_bo3_series(match_list, team_aliases)
+def _classify_daily_series(series_list):
+    """Classify completed BO3s and retain the winner-side title route."""
     histories = defaultdict(list)
     round_one = []
     round_two = []
+    title_round = []
     finals = []
 
     for series in series_list:
@@ -199,15 +199,96 @@ def calculate_daily_podium(match_list, team_aliases=None):
             and winner_history[0] == loser_history[0]
         ):
             round_two.append(series)
+            if winner_history[0] == 'W':
+                title_round.append(series)
         elif winner_history == ['W', 'W'] and loser_history == ['W', 'W']:
             finals.append(series)
         else:
-            # This pairing does not belong to the advertised daily format.
-            # Do not let it manufacture a 2-0 path for a later match.
             continue
 
         histories[winner].append('W')
         histories[loser].append('L')
+
+    return round_one, round_two, title_round, finals
+
+
+def _series_payload(series, display_names):
+    ordered_teams = series.get('ordered_teams') or tuple(series['teams'])
+    team_scores = series.get('team_scores') or (0, 0)
+    return {
+        'teams': [
+            {
+                'name': display_names.get(team, team),
+                'score': team_scores[index],
+                'winner': team == series['winner'],
+            }
+            for index, team in enumerate(ordered_teams)
+        ],
+        'map_count': series['map_count'],
+        'completed_at': (
+            series['completed_at'].isoformat(timespec='seconds')
+            if hasattr(series.get('completed_at'), 'isoformat')
+            else series.get('completed_at')
+        ),
+    }
+
+
+def build_daily_champion_bracket(match_list, team_aliases=None):
+    """Build the public 4-to-2-to-1 title route used by the daily page."""
+    series_list, display_names = _completed_bo3_series(match_list, team_aliases)
+    round_one, _, title_round, finals = _classify_daily_series(series_list)
+    final = finals[0] if len(finals) == 1 else None
+
+    # Arrange each source series beside the next series it feeds into. This
+    # keeps CSS connectors truthful even when the source data arrives in a
+    # different chronological order.
+    ordered_title_round = []
+    if final:
+        for finalist in final.get('ordered_teams') or tuple(final['teams']):
+            source = next((series for series in title_round if series['winner'] == finalist), None)
+            if source and source not in ordered_title_round:
+                ordered_title_round.append(source)
+    ordered_title_round.extend(series for series in title_round if series not in ordered_title_round)
+
+    ordered_round_one = []
+    for title_series in ordered_title_round:
+        for contender in title_series.get('ordered_teams') or tuple(title_series['teams']):
+            source = next((series for series in round_one if series['winner'] == contender), None)
+            if source and source not in ordered_round_one:
+                ordered_round_one.append(source)
+    ordered_round_one.extend(series for series in round_one if series not in ordered_round_one)
+
+    rounds = (
+        ('opening', '首轮', ordered_round_one),
+        ('qualification', '晋级轮', ordered_title_round),
+        ('final', '冠军战', [final] if final else []),
+    )
+    return {
+        'format': 'eight_team_daily_bo3',
+        'status': 'complete' if final else 'in_progress',
+        'rounds': [
+            {
+                'key': key,
+                'label': label,
+                'series': [_series_payload(series, display_names) for series in items],
+            }
+            for key, label, items in rounds
+        ],
+        'champion_team': display_names.get(final['winner'], final['winner']) if final else None,
+        'runner_up_team': display_names.get(final['loser'], final['loser']) if final else None,
+    }
+
+
+def calculate_daily_podium(match_list, team_aliases=None):
+    """Resolve a day's champion and runner-up from the eight-team BO3 format.
+
+    The first series for each team is round one. In round two, teams may only
+    meet an opponent with the same round-one record. The two 2-0 teams then
+    play the final. A result is returned only when all four round-one series,
+    all four round-two series, and the final are complete.
+    """
+    series_list, display_names = _completed_bo3_series(match_list, team_aliases)
+    round_one, round_two, _, finals = _classify_daily_series(series_list)
 
     round_one_teams = set().union(*(s['teams'] for s in round_one)) if round_one else set()
     round_two_teams = set().union(*(s['teams'] for s in round_two)) if round_two else set()

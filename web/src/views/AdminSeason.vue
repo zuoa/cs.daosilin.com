@@ -518,10 +518,36 @@
           <input id="season-hit" v-model.number="form.hit" type="range" min="0" max="100" step="5">
           <div class="range-labels"><span>宽松 0%</span><span>严格 100%</span></div>
         </div>
-        <label class="field-group checkbox-field" for="season-champion">
-          <span><input id="season-champion" v-model="form.championEnabled" type="checkbox"> 计算冠军和亚军</span>
-          <small>关闭后仍采集并展示比赛、选手数据与排名，不运行冠军判断任务。</small>
-        </label>
+        <div class="switch-stack" role="group" aria-label="冠军功能">
+          <label class="switch-row" for="season-champion">
+            <span>
+              <strong>计算冠军和亚军</strong>
+              <small>根据每日 BO3 结果判断冠亚军，关闭后仍保留比赛、选手数据与排名。</small>
+            </span>
+            <input
+              id="season-champion"
+              v-model="form.championEnabled"
+              type="checkbox"
+              role="switch"
+              aria-controls="season-champion-bracket-row"
+              :aria-expanded="form.championEnabled"
+            >
+            <span class="switch-control" aria-hidden="true"></span>
+          </label>
+          <label
+            v-if="form.championEnabled"
+            id="season-champion-bracket-row"
+            class="switch-row nested"
+            for="season-champion-bracket"
+          >
+            <span>
+              <strong>展示每日夺冠晋级路线图</strong>
+              <small>在每个比赛日页面呈现首轮、晋级轮和冠军战，样式参考 Liquipedia。</small>
+            </span>
+            <input id="season-champion-bracket" v-model="form.championBracketEnabled" type="checkbox" role="switch">
+            <span class="switch-control" aria-hidden="true"></span>
+          </label>
+        </div>
         <div class="form-actions">
           <button
             v-if="editingExisting"
@@ -589,7 +615,12 @@ const matchDetailTab = ref('info')
 let crawlTimer
 let toastTimer
 
-function defaultForm() { return { cup: '', alias: '', type: 'custom', start: '', end: '', hit: 60, status: 'active', championEnabled: false } }
+function defaultForm() {
+  return {
+    cup: '', alias: '', type: 'custom', start: '', end: '', hit: 60, status: 'active',
+    championEnabled: false, championBracketEnabled: false,
+  }
+}
 const currentSeason = computed(() => seasons.value.find((s) => s.cup_name === currentCup.value))
 const seasonExpired = computed(() => {
   const end = currentSeason.value?.end_date
@@ -750,6 +781,7 @@ function editSeason(s) {
     hit: pct(s.hit_ratio),
     status: s.status || 'active',
     championEnabled: Boolean(s.champion_enabled),
+    championBracketEnabled: Boolean(s.champion_bracket_enabled),
   }
   seasonModalOpen.value = true
 }
@@ -785,6 +817,7 @@ async function saveSeason() {
       status: form.value.status,
       hit_percent: String(form.value.hit ?? 60),
       champion_enabled: form.value.championEnabled ? '1' : '0',
+      champion_bracket_enabled: form.value.championEnabled && form.value.championBracketEnabled ? '1' : '0',
     })
     show(typeof data === 'string' ? data : '杯赛已保存')
     const cup = form.value.cup.trim()

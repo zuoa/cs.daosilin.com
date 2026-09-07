@@ -38,6 +38,13 @@
         </div>
       </nav>
 
+      <ChampionBracket
+        v-if="day && championBracketEnabled"
+        :bracket="championBracket"
+        :champion-roster="championRoster"
+        :day="day"
+      />
+
       <section class="leaderboard-section">
         <div class="section-heading public-heading leaderboard-heading">
           <h2>选手榜单</h2>
@@ -425,6 +432,7 @@ import { useRoute } from 'vue-router'
 import { api } from '../api'
 import AppIcon from '../components/AppIcon.vue'
 import CompareTray from '../components/CompareTray.vue'
+import ChampionBracket from '../components/ChampionBracket.vue'
 import PlayerAvatar from '../components/PlayerAvatar.vue'
 import PerfectRankBadge from '../components/PerfectRankBadge.vue'
 import { addComparedPlayer, hydrateComparedPlayers, isPlayerCompared, removeComparedPlayer } from '../playerCompare'
@@ -435,6 +443,8 @@ const day = computed(() => route.params.day || '')
 const cupAlias = ref('')
 const players = ref([])
 const cupDays = ref([])
+const championBracketEnabled = ref(false)
+const championBracket = ref(null)
 const lastCrawl = ref('')
 const error = ref('')
 const loading = ref(true)
@@ -474,6 +484,7 @@ const filteredPlayers = computed(() => {
 })
 const topRating = computed(() => players.value.length ? n2(Math.max(...players.value.map((p) => Number(p.avg_pw_rating || 0)))) : '0.00')
 const averageRating = computed(() => players.value.length ? n2(players.value.reduce((sum, p) => sum + Number(p.avg_pw_rating || 0), 0) / players.value.length) : '0.00')
+const championRoster = computed(() => players.value.filter((player) => player.is_champion))
 const quickVoteOptions = computed(() => quickVoteData.value?.options || defaultQuickVoteOptions)
 const selectedQuickVoteLabel = computed(() => quickVoteOptions.value.find(
   (option) => option.score === quickVoteData.value?.viewer_score,
@@ -711,6 +722,8 @@ async function load() {
   quickVoteCache.clear()
   error.value = ''
   loading.value = true
+  championBracketEnabled.value = false
+  championBracket.value = null
   open.value = ''
   try {
     const data = await api.cup(cup.value, day.value || null)
@@ -720,6 +733,8 @@ async function load() {
     loadLiveStatuses(players.value)
     // “赛季总览”在模板中单独置顶；比赛日统一按日期倒序展示。
     cupDays.value = [...new Set((data.cup_days || []).filter(Boolean))].sort().reverse()
+    championBracketEnabled.value = Boolean(data.champion_bracket_enabled)
+    championBracket.value = data.champion_bracket || null
     lastCrawl.value = data.last_crawl_time || ''
     document.title = `${cupAlias.value}${day.value ? ` · ${day.value}` : ''} · 熊掌CS Major`
   } catch (e) {

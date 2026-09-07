@@ -211,6 +211,13 @@ def _m019_player_account_groups():
     logger.info('player 主账号与子账号关系字段已补齐')
 
 
+def _m020_season_champion_bracket():
+    if _table_exists('season') and not _column_exists('season', 'champion_bracket_enabled'):
+        ddl = 'BOOLEAN DEFAULT FALSE' if is_postgres() else 'INTEGER DEFAULT 0'
+        _add_column('season', 'champion_bracket_enabled', ddl)
+        logger.info('season.champion_bracket_enabled 已补列')
+
+
 MIGRATIONS = [
     ('001_player_in_library', _m001_player_in_library),
     ('002_season_hit_ratio', _m002_season_hit_ratio),
@@ -231,6 +238,7 @@ MIGRATIONS = [
     ('017_player_community_rating', _m017_player_community_rating),
     ('018_baokemeng_draft', _m018_baokemeng_draft),
     ('019_player_account_groups', _m019_player_account_groups),
+    ('020_season_champion_bracket', _m020_season_champion_bracket),
 ]
 
 

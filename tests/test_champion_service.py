@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from champion_service import (_player_ids_by_team, _resolved_team_key,
                               _team_aliases_from_players,
+                              build_daily_champion_bracket,
                               calculate_daily_podium, judge_champion)
 
 
@@ -134,6 +135,35 @@ class DailyPodiumCalculationTest(unittest.TestCase):
 
         self.assertNotEqual(aliases['a'], aliases['b'])
         self.assertEqual(renamed_groups, [])
+
+    def test_builds_four_to_two_to_one_title_route(self):
+        bracket = build_daily_champion_bracket(full_day_matches())
+
+        self.assertEqual(bracket['status'], 'complete')
+        self.assertEqual(bracket['champion_team'], 'E')
+        self.assertEqual(bracket['runner_up_team'], 'A')
+        self.assertEqual(
+            [len(round_data['series']) for round_data in bracket['rounds']],
+            [4, 2, 1],
+        )
+        final_teams = bracket['rounds'][2]['series'][0]['teams']
+        self.assertEqual(
+            [(team['name'], team['score'], team['winner']) for team in final_teams],
+            [('A', 1, False), ('E', 2, True)],
+        )
+
+    def test_builds_partial_route_from_completed_series(self):
+        first_round_map_count = 2 + 3 + 2 + 3
+        bracket = build_daily_champion_bracket(
+            full_day_matches()[:first_round_map_count],
+        )
+
+        self.assertEqual(bracket['status'], 'in_progress')
+        self.assertIsNone(bracket['champion_team'])
+        self.assertEqual(
+            [len(round_data['series']) for round_data in bracket['rounds']],
+            [4, 0, 0],
+        )
 
 
 class ChampionPersistenceTest(unittest.TestCase):

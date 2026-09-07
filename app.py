@@ -18,7 +18,8 @@ from auth import (captcha_ok, captcha_response, clear_login_fail, current_admin,
                   record_login_fail,
                   revoke_database_external_api_token, save_external_api_token,
                   verify_password)
-from champion_service import judge_champion
+from champion_service import (build_daily_champion_bracket, judge_champion,
+                              _team_aliases_from_players)
 from cache_service import (cached_response, init_cache, invalidate_profiles,
                            invalidate_season, season_scope)
 from config import (ADMIN_PASSWORD, ADMIN_USERNAME, DEMO_BACKFILL_DAYS,
@@ -405,12 +406,29 @@ def api_draft():
 def api_cup(cup):
     day = request.args.get('day') or None
     players, cup_days = _build_cup_players(cup, day)
+    season = Season.get_by_cup(cup) or {}
+    cup_alias = (
+        season.get('cup_alias') or season.get('name') or season.get('cup_name') or cup
+    )
+    bracket_enabled = bool(
+        season.get('champion_enabled') and season.get('champion_bracket_enabled')
+    )
+    champion_bracket = None
+    if day and bracket_enabled:
+        day_players = MatchPlayer.filter_records(cup_name=cup, play_day=day)
+        team_aliases, _ = _team_aliases_from_players(day_players)
+        champion_bracket = build_daily_champion_bracket(
+            Match.filter_records(cup_name=cup, play_day=day),
+            team_aliases,
+        )
     return success({
         'cup': cup,
-        'cup_alias': Season.display_name(cup),
+        'cup_alias': cup_alias,
         'day': day,
         'cup_days': cup_days,
         'players': players,
+        'champion_bracket_enabled': bracket_enabled,
+        'champion_bracket': champion_bracket,
         'last_crawl_time': Config.get_value("last_crawl_time"),
     })
 
@@ -1148,6 +1166,13 @@ def api_admin_season_save():
         if champion_raw is not None
         else bool(existing.champion_enabled) if existing else False
     )
+    bracket_raw = request.args.get('champion_bracket_enabled')
+    champion_bracket_enabled = (
+        bracket_raw.lower() in ('1', 'true', 'yes', 'on')
+        if bracket_raw is not None
+        else bool(existing.champion_bracket_enabled) if existing else False
+    )
+    champion_bracket_enabled = champion_enabled and champion_bracket_enabled
     fields = {
         'name': request.args.get('cup_alias') or request.args.get('name'),
         'cup_alias': request.args.get('cup_alias') or request.args.get('name'),
@@ -1157,6 +1182,7 @@ def api_admin_season_save():
         'status': request.args.get('status') or 'active',
         'hit_ratio': _parse_hit_ratio(),
         'champion_enabled': champion_enabled,
+        'champion_bracket_enabled': champion_bracket_enabled,
     }
     if existing:
         Season.update(**fields).where(Season.cup_name == cup).execute()

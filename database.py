@@ -1467,6 +1467,7 @@ class Season(BaseModel, CRUDMixin):
     status = CharField(max_length=16, default='active')  # 'active' | 'archived'
     hit_ratio = FloatField(default=0.6)  # 场内库内人数占比门槛，默认 60%
     champion_enabled = BooleanField(default=False)  # 是否计算每日冠军/亚军；自定义赛季默认关闭
+    champion_bracket_enabled = BooleanField(default=False)  # 是否在每日公开页展示夺冠晋级路线图
 
     class Meta:
         table_name = 'season'

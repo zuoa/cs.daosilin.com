@@ -235,6 +235,31 @@ class ExternalPlayersApiTest(unittest.TestCase):
         player = next(item for item in payload['players'] if item['player_id'] == 'p1')
         self.assertEqual(player['live_url'], 'https://www.douyu.com/731778')
 
+    def test_daily_cup_exposes_champion_bracket_only_when_enabled(self):
+        expected = {
+            'format': 'eight_team_daily_bo3',
+            'status': 'in_progress',
+            'rounds': [],
+            'champion_team': None,
+            'runner_up_team': None,
+        }
+        try:
+            (Season.update(champion_enabled=True, champion_bracket_enabled=True)
+             .where(Season.cup_name == 'season-one').execute())
+            cache.clear()
+            with patch('app.build_daily_champion_bracket', return_value=expected) as builder:
+                payload = self.client.get(
+                    '/api/v1/cup/season-one?day=20250101'
+                ).get_json()['data']
+
+            self.assertTrue(payload['champion_bracket_enabled'])
+            self.assertEqual(payload['champion_bracket'], expected)
+            builder.assert_called_once()
+        finally:
+            (Season.update(champion_enabled=False, champion_bracket_enabled=False)
+             .where(Season.cup_name == 'season-one').execute())
+            cache.clear()
+
     def test_cup_leaderboard_exposes_readable_draft_pick_round(self):
         session = DraftSession.create(
             play_day='20250101', completed_at=datetime(2025, 1, 1, 20),
@@ -1032,6 +1057,38 @@ class ExternalPlayersApiTest(unittest.TestCase):
             season = Season.get(Season.cup_name == cup)
             self.assertEqual(season.start_date, datetime(2026, 9, 1, 2, 0))
             self.assertEqual(season.end_date, datetime(2026, 9, 1, 3, 0))
+        finally:
+            Season.delete_with_related_data(cup)
+
+    def test_admin_bracket_setting_depends_on_champion_calculation(self):
+        cup = 'season-bracket-setting-test'
+        self._login_admin()
+        base_query = {
+            'cup': cup,
+            'cup_alias': '路线图设置测试',
+            'start_date': '2026-09-01T02:00',
+            'end_date': '2026-09-01T23:00',
+            'status': 'archived',
+            'champion_bracket_enabled': '1',
+        }
+        try:
+            disabled = self.client.get('/api/admin/season/save', query_string={
+                **base_query,
+                'champion_enabled': '0',
+            })
+            self.assertEqual(disabled.status_code, 200)
+            season = Season.get(Season.cup_name == cup)
+            self.assertFalse(season.champion_enabled)
+            self.assertFalse(season.champion_bracket_enabled)
+
+            enabled = self.client.get('/api/admin/season/save', query_string={
+                **base_query,
+                'champion_enabled': '1',
+            })
+            self.assertEqual(enabled.status_code, 200)
+            season = Season.get(Season.cup_name == cup)
+            self.assertTrue(season.champion_enabled)
+            self.assertTrue(season.champion_bracket_enabled)
         finally:
             Season.delete_with_related_data(cup)
 
