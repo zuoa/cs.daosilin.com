@@ -2,7 +2,13 @@ import unittest
 from unittest.mock import patch
 
 from champion_service import opening_round_loser_teams
-from honours_service import _award, _minimum_matches, _percentiles
+from honours_service import (
+    _award,
+    _minimum_matches,
+    _pair_award,
+    _pair_records,
+    _percentiles,
+)
 
 
 def add_bo3(matches, left, right, winner):
@@ -58,6 +64,35 @@ class HonourCalculationTest(unittest.TestCase):
         add_bo3(matches, 'Charlie', 'Delta', 'Delta')
 
         self.assertEqual(opening_round_loser_teams(matches), {'bravo', 'charlie'})
+
+    def test_pair_award_counts_same_team_maps_and_ranks_lowest_win_rate(self):
+        players = {
+            'a': {'player_id': 'a', 'name': 'Alpha', 'avatar': 'a.png'},
+            'b': {'player_id': 'b', 'name': 'Bravo', 'avatar': 'b.png'},
+            'c': {'player_id': 'c', 'name': 'Charlie', 'avatar': 'c.png'},
+        }
+        rows = []
+        for match_id, winner in [('m1', True), ('m2', False), ('m3', False)]:
+            rows.extend([
+                {'match_id': match_id, 'team': 1, 'player_id': 'a-alt', 'win': int(winner)},
+                {'match_id': match_id, 'team': 1, 'player_id': 'b', 'win': int(winner)},
+            ])
+        for match_id in ('m4', 'm5', 'm6'):
+            rows.extend([
+                {'match_id': match_id, 'team': 2, 'player_id': 'a', 'win': 1},
+                {'match_id': match_id, 'team': 2, 'player_id': 'c', 'win': 1},
+            ])
+
+        records = _pair_records(rows, {'a-alt': 'a'}, players)
+        award = _pair_award(
+            key='duo-slump', title='相遇即低谷', description='示例', method='示例',
+            pair_records=records, players=players, minimum_maps=3, lowest=True,
+        )
+
+        self.assertEqual(award['entries'][0]['name'], 'Alpha × Bravo')
+        self.assertEqual(award['entries'][0]['display_value'], '33.3% 胜率')
+        self.assertEqual(award['entries'][0]['members'][0]['player_id'], 'a')
+        self.assertEqual(award['entries'][1]['name'], 'Alpha × Charlie')
 
     @patch('app.build_season_honours')
     def test_public_api_exposes_the_honours_payload(self, build_honours):

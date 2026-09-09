@@ -35,3 +35,14 @@ export function honourStatus(status) {
     ? { label: '最终荣誉榜', note: '赛季数据已封存' }
     : { label: '实时预展', note: '随新比赛持续更新' }
 }
+
+export function carouselIndex(index, total) {
+  if (!total) return 0
+  return ((Number(index) % total) + total) % total
+}
+
+export function honourIndexByHash(awards = [], hash = '') {
+  const anchor = String(hash || '').replace(/^#/, '')
+  const index = awards.findIndex((award) => honourAnchor(award.key) === anchor)
+  return index < 0 ? 0 : index
+}

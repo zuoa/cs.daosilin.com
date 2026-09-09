@@ -2,9 +2,11 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  carouselIndex,
   groupHonours,
   honourAnchor,
   honourFilename,
+  honourIndexByHash,
   honourSharePath,
   honourStatus,
   podiumSlots,
@@ -35,4 +37,13 @@ test('share paths, anchors and filenames are safe and stable', () => {
 test('status copy distinguishes provisional and final boards', () => {
   assert.equal(honourStatus('provisional').label, '实时预展')
   assert.equal(honourStatus('final').label, '最终荣誉榜')
+})
+
+test('carousel navigation wraps and resolves an award hash', () => {
+  const awards = [{ key: 'gold' }, { key: 'duo-slump' }, { key: 'best-ct' }]
+
+  assert.equal(carouselIndex(-1, awards.length), 2)
+  assert.equal(carouselIndex(3, awards.length), 0)
+  assert.equal(honourIndexByHash(awards, '#honour-duo-slump'), 1)
+  assert.equal(honourIndexByHash(awards, '#missing'), 0)
 })

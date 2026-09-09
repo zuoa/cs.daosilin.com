@@ -70,7 +70,7 @@ Four-point named scale in `tokens.css`. Production CSS uses semantic tokens rath
 - Home may use the existing CSS-built radar as Tier-A enrichment below the marquee fold.
 - Season and player pages may use real data visualisation only.
 - Player comparison uses an esports-broadcast Workbench: a charcoal vertical specification matrix, P1–P4 rails, a sticky metric column, and one finite signal sweep. It may mark per-metric leaders but must not invent a composite winner.
-- Season honours use a **Catalogue** macrostructure: a large season masthead, six sticky category indexes, and a two-column run of fixed award plates. Each plate uses a real-data podium; desktop may arrange it silver–gold–bronze visually while semantic and mobile order remain first–second–third. Gold, silver, and warning-soft bronze are contained rank signals. Downloadable 16:9 award cards inherit the same light Tactical Signal palette and may add a QR link, but never invent a winner when the sample threshold is unmet.
+- Season honours use a **Stat-Led Exhibition × Catalogue** macrostructure: the default view is one award at a time on a contained charcoal star field, with explicit previous/next/pause controls and a progress rail; visitors can switch to a full catalogue of every award. Sparse stars, restrained rank glints, gold/silver/bronze podium signals, and real player imagery are allowed only inside this route. The stage never fabricates CT/T conclusions when side-level data is missing. Downloadable 16:9 award cards keep the light Tactical Signal palette and may add a QR link.
 - Public feedback is a reusable modal contract with page-specific language. The honours entry reads as a community nomination slip, while the admin view uses an inbox-and-reader workbench; anonymous references are browser-bound and administrator replies return through the same entry point.
 - Broadcast overlays use a **Stat-Led broadcast rundown**: transparent canvas, one charcoal information surface anchored inside the OBS safe area, and the latest real score as the lead figure. They have no site navigation or conventional footer; a restrained status rail communicates rotation, stale data, and update time. Signal green marks live/leader state only, and motion is limited to panel replacement plus functional loading.
 - Admin pages use no enrichment; function carries the page.
@@ -108,6 +108,20 @@ Four-point named scale in `tokens.css`. Production CSS uses semantic tokens rath
   --color-rule: oklch(88.5% 0.014 188);
   --color-accent: oklch(59% 0.132 163);
   --color-focus: oklch(49% 0.15 163);
+  --color-honour-night: oklch(10.5% 0.03 255);
+  --color-honour-night-2: oklch(15% 0.035 252);
+  --color-honour-surface: oklch(18% 0.035 250);
+  --color-honour-surface-soft: oklch(21% 0.035 248);
+  --color-honour-rule: oklch(78% 0.035 220 / 0.18);
+  --color-honour-rule-strong: oklch(86% 0.04 210 / 0.34);
+  --color-honour-text: oklch(95% 0.012 205);
+  --color-honour-muted: oklch(73% 0.025 220);
+  --color-star: oklch(96% 0.045 100);
+  --color-star-cool: oklch(91% 0.045 215);
+  --color-star-faint: oklch(89% 0.025 220 / 0.38);
+  --color-star-transparent: oklch(96% 0.045 100 / 0);
+  --color-gold-bright: oklch(82% 0.15 86);
+  --color-gold-glow: oklch(78% 0.14 84 / 0.26);
   --font-display: "DIN Alternate", "Arial Narrow", "SF Pro Display", sans-serif;
   --font-body: Inter, "SF Pro Text", "PingFang SC", sans-serif;
   --font-outlier: "SFMono-Regular", Menlo, monospace;
@@ -138,7 +152,21 @@ Four-point named scale in `tokens.css`. Production CSS uses semantic tokens rath
     "ink-2": { "$value": "oklch(23% 0.029 242)", "$type": "color" },
     "rule": { "$value": "oklch(88.5% 0.014 188)", "$type": "color" },
     "accent": { "$value": "oklch(59% 0.132 163)", "$type": "color" },
-    "focus": { "$value": "oklch(49% 0.15 163)", "$type": "color" }
+    "focus": { "$value": "oklch(49% 0.15 163)", "$type": "color" },
+    "honour-night": { "$value": "oklch(10.5% 0.03 255)", "$type": "color" },
+    "honour-night-2": { "$value": "oklch(15% 0.035 252)", "$type": "color" },
+    "honour-surface": { "$value": "oklch(18% 0.035 250)", "$type": "color" },
+    "honour-surface-soft": { "$value": "oklch(21% 0.035 248)", "$type": "color" },
+    "honour-rule": { "$value": "oklch(78% 0.035 220 / 0.18)", "$type": "color" },
+    "honour-rule-strong": { "$value": "oklch(86% 0.04 210 / 0.34)", "$type": "color" },
+    "honour-text": { "$value": "oklch(95% 0.012 205)", "$type": "color" },
+    "honour-muted": { "$value": "oklch(73% 0.025 220)", "$type": "color" },
+    "star": { "$value": "oklch(96% 0.045 100)", "$type": "color" },
+    "star-cool": { "$value": "oklch(91% 0.045 215)", "$type": "color" },
+    "star-faint": { "$value": "oklch(89% 0.025 220 / 0.38)", "$type": "color" },
+    "star-transparent": { "$value": "oklch(96% 0.045 100 / 0)", "$type": "color" },
+    "gold-bright": { "$value": "oklch(82% 0.15 86)", "$type": "color" },
+    "gold-glow": { "$value": "oklch(78% 0.14 84 / 0.26)", "$type": "color" }
   },
   "font": {
     "display": { "$value": "DIN Alternate, Arial Narrow, SF Pro Display, sans-serif", "$type": "fontFamily" },
@@ -185,5 +213,25 @@ Four-point named scale in `tokens.css`. Production CSS uses semantic tokens rath
   --input: 88.5% 0.014 188;
   --ring: 49% 0.15 163;
   --radius: 12px;
+}
+
+.honours-theme {
+  --background: 10.5% 0.03 255;
+  --foreground: 95% 0.012 205;
+  --card: 18% 0.035 250;
+  --card-foreground: 95% 0.012 205;
+  --popover: 21% 0.035 248;
+  --popover-foreground: 95% 0.012 205;
+  --primary: 59% 0.132 163;
+  --primary-foreground: 98.2% 0.008 178;
+  --secondary: 21% 0.035 248;
+  --secondary-foreground: 95% 0.012 205;
+  --muted: 21% 0.035 248;
+  --muted-foreground: 73% 0.025 220;
+  --accent: 82% 0.15 86;
+  --accent-foreground: 10.5% 0.03 255;
+  --border: 38% 0.03 225;
+  --input: 38% 0.03 225;
+  --ring: 59% 0.132 163;
 }
 ```

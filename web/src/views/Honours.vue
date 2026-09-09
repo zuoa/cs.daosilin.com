@@ -14,33 +14,40 @@
       <section class="honours-hero">
         <div class="honours-title-block">
           <p class="section-kicker">SEASON HONOURS · {{ payload?.status === 'final' ? 'FINAL' : 'LIVE' }}</p>
-          <h1>{{ payload?.cup_alias || cup }}<span>荣誉展</span></h1>
-          <p>不只给冠军留位置。这里记录银牌、首轮、手感曲线，以及服务器数据和群友印象之间那些很难解释的瞬间。</p>
+          <h1><span class="honours-season-name">{{ payload?.cup_alias || cup }}</span><span class="honours-title-line">星光荣誉展</span></h1>
+          <p>冠军只是其中一束光。银牌、手感曲线、奇怪搭档，以及服务器没忘掉的每一种名场面，都在这里轮流登台。</p>
           <div class="honours-hero-actions">
-            <button class="button primary" type="button" @click="feedbackOpen = true"><AppIcon name="message" :size="16" />提名一个新奖项</button>
-            <small>说说奖项叫什么、它表彰什么，水友的脑洞会进入管理后台。</small>
+            <button class="button primary" type="button" @click="feedbackOpen = true"><AppIcon name="message" :size="16" />提名新奖项</button>
+            <small>先说这个奖想表彰什么，公式可以之后再想。</small>
           </div>
         </div>
         <dl class="honours-summary" aria-label="荣誉展概览">
-          <div>
-            <dt>状态</dt>
-            <dd><span class="signal-dot"></span>{{ statusCopy.label }}</dd>
-            <small>{{ statusCopy.note }}</small>
-          </div>
-          <div><dt>已开奖</dt><dd>{{ payload?.available_award_count || 0 }}<small>/ 18 项</small></dd></div>
+          <div><dt>状态</dt><dd><span class="signal-dot"></span>{{ statusCopy.label }}</dd><small>{{ statusCopy.note }}</small></div>
+          <div><dt>已开奖</dt><dd>{{ payload?.available_award_count || 0 }}<small>/ {{ awards.length }} 项</small></dd></div>
           <div><dt>入围样本</dt><dd>{{ payload?.eligible_player_count || 0 }}<small>名选手</small></dd></div>
-          <div><dt>基础门槛</dt><dd>{{ payload?.minimum_matches || 0 }}<small>张地图</small></dd></div>
+          <div><dt>组合门槛</dt><dd>{{ payload?.minimum_pair_maps || 0 }}<small>张同队地图</small></dd></div>
         </dl>
       </section>
 
-      <nav v-if="groups.length" class="honours-catalogue" aria-label="荣誉分类">
-        <a v-for="(group, index) in groups" :key="group.key" :href="`#category-${group.key}`">
-          <span>{{ pad(index + 1) }}</span>{{ group.label }}<small>{{ group.awards.length }}</small>
-        </a>
-      </nav>
+      <section v-if="groups.length" class="honours-command" aria-label="荣誉展浏览方式">
+        <div class="honours-view-switch" role="group" aria-label="切换荣誉展模式">
+          <button type="button" :aria-pressed="viewMode === 'carousel'" @click="setViewMode('carousel')"><AppIcon name="television" :size="16" />逐项轮播</button>
+          <button type="button" :aria-pressed="viewMode === 'overview'" @click="setViewMode('overview')"><AppIcon name="layers" :size="16" />一览全部</button>
+        </div>
+        <button
+          v-if="viewMode === 'carousel'"
+          class="honours-autoplay"
+          type="button"
+          :aria-pressed="isPaused"
+          @click="toggleAutoplay"
+        >
+          <AppIcon :name="isPaused ? 'play' : 'pause'" :size="15" />
+          {{ isPaused ? '继续轮播' : '暂停轮播' }}
+        </button>
+      </section>
 
       <div v-if="loading" class="honours-loading" aria-live="polite" aria-label="正在读取赛季荣誉">
-        <article v-for="index in 6" :key="index" class="honour-skeleton"><span></span><strong></strong><i></i></article>
+        <article v-for="index in 3" :key="index" class="honour-skeleton"><span></span><strong></strong><i></i></article>
       </div>
       <section v-else-if="error" class="panel empty-state public-empty" role="alert">
         <span><AppIcon name="alert" :size="25" /></span>
@@ -48,85 +55,167 @@
         <p>{{ error }}</p>
         <button class="button subtle" type="button" @click="load">重新加载</button>
       </section>
-      <template v-else>
+      <template v-else-if="awards.length">
         <section
-          v-for="(group, groupIndex) in groups"
-          :id="`category-${group.key}`"
-          :key="group.key"
-          class="honour-category"
+          v-if="viewMode === 'carousel'"
+          ref="theatreEl"
+          class="honours-theatre"
+          aria-roledescription="轮播"
+          aria-label="赛季荣誉逐项展览"
+          @mouseenter="theatreHovered = true"
+          @mouseleave="theatreHovered = false"
+          @focusin="theatreFocused = true"
+          @focusout="handleStageFocusOut"
         >
-          <header class="honour-category-heading">
-            <span>{{ pad(groupIndex + 1) }}</span>
-            <div><h2>{{ group.label }}</h2><p>{{ categoryNotes[group.key] }}</p></div>
+          <div class="honours-starfield" aria-hidden="true"><span></span><span></span><span></span></div>
+          <header class="honours-theatre-header">
+            <div>
+              <span>{{ activeGroup?.label }}</span>
+              <p>{{ pad(activeIndex + 1) }} / {{ pad(awards.length) }}</p>
+            </div>
+            <nav aria-label="按分类跳转奖项">
+              <button
+                v-for="group in groups"
+                :key="group.key"
+                type="button"
+                :aria-current="activeAward?.category === group.key ? 'true' : undefined"
+                @click="jumpToGroup(group.key)"
+              >{{ group.label }}</button>
+            </nav>
           </header>
-          <div class="honours-grid">
-            <article
-              v-for="award in group.awards"
-              :id="honourAnchor(award.key)"
-              :key="award.key"
-              class="honour-card"
-              :class="{ 'is-collecting': award.status !== 'ready' }"
-            >
-              <header class="honour-card-heading">
-                <div>
-                  <span>{{ awardCode(award) }}</span>
-                  <h3>{{ award.title }}</h3>
-                </div>
-                <span class="honour-state">{{ award.status === 'ready' ? 'TOP 3' : '待开奖' }}</span>
-              </header>
-              <p class="honour-description">{{ award.description }}</p>
 
-              <ol class="honour-podium" :aria-label="`${award.title}前三名`">
-                <li
-                  v-for="slot in podiumSlots(award.entries)"
-                  :key="slot.position"
-                  :class="`position-${slot.position}`"
-                >
+          <Transition :name="transitionDirection === 'next' ? 'honour-next' : 'honour-prev'" mode="out-in">
+            <article
+              :id="honourAnchor(activeAward.key)"
+              :key="activeAward.key"
+              class="honour-spotlight"
+              :class="{ 'is-collecting': activeAward.status !== 'ready' }"
+            >
+              <header class="honour-spotlight-heading">
+                <div>
+                  <span>{{ awardCode(activeAward) }}</span>
+                  <h2>{{ activeAward.title }}</h2>
+                  <p>{{ activeAward.description }}</p>
+                </div>
+                <span class="honour-state">{{ awardStatusLabel(activeAward) }}</span>
+              </header>
+
+              <ol class="honour-podium spotlight-podium" :aria-label="`${activeAward.title}前三名`">
+                <li v-for="slot in podiumSlots(activeAward.entries)" :key="slot.position" :class="`position-${slot.position}`">
                   <template v-if="slot.entry">
+                    <div v-if="slot.entry.members?.length" class="podium-player podium-duo">
+                      <span class="podium-duo-avatars">
+                        <router-link
+                          v-for="member in slot.entry.members"
+                          :key="member.player_id"
+                          class="podium-avatar"
+                          :to="`/player/${encodeURIComponent(member.player_id)}/${encodeURIComponent(cup)}/`"
+                          :aria-label="`查看 ${member.name} 的详情`"
+                        ><PlayerAvatar :src="member.avatar" :name="member.name" /></router-link>
+                        <b>{{ slot.position }}</b>
+                      </span>
+                      <strong>{{ slot.entry.name }}</strong>
+                    </div>
                     <router-link
+                      v-else
                       class="podium-player"
                       :to="`/player/${encodeURIComponent(slot.entry.player_id)}/${encodeURIComponent(cup)}/`"
                       :aria-label="`查看第 ${slot.position} 名 ${slot.entry.name} 的详情`"
                     >
-                      <span class="podium-avatar">
-                        <PlayerAvatar :src="slot.entry.avatar" :name="slot.entry.name" />
-                        <b>{{ slot.position }}</b>
-                      </span>
+                      <span class="podium-avatar"><PlayerAvatar :src="slot.entry.avatar" :name="slot.entry.name" /><b>{{ slot.position }}</b></span>
                       <strong>{{ slot.entry.name }}</strong>
                     </router-link>
                     <span class="podium-value">{{ slot.entry.display_value }}</span>
                     <small>{{ slot.entry.evidence }}<em v-if="slot.entry.tied">同值</em></small>
                   </template>
                   <template v-else>
-                    <span class="podium-avatar empty"><AppIcon name="users" :size="20" /><b>{{ slot.position }}</b></span>
-                    <strong>待开奖</strong>
+                    <span class="podium-avatar empty"><AppIcon :name="activeAward.status === 'data_required' ? 'database' : 'users'" :size="21" /><b>{{ slot.position }}</b></span>
+                    <strong>{{ activeAward.status === 'data_required' ? '等待阵营数据' : '待开奖' }}</strong>
                     <span class="podium-value">—</span>
-                    <small>样本仍在积累</small>
+                    <small>{{ activeAward.status === 'data_required' ? '不使用整图数据猜测 CT/T 表现' : '样本仍在积累' }}</small>
                   </template>
                   <span class="podium-plinth" aria-hidden="true"></span>
                 </li>
               </ol>
 
-              <footer class="honour-card-footer">
-                <details>
-                  <summary>怎么算的</summary>
-                  <p>{{ award.method }}</p>
-                </details>
+              <footer class="honour-spotlight-footer">
+                <div><span>计算口径</span><p>{{ activeAward.method }}</p></div>
                 <button
-                  v-if="award.status === 'ready'"
-                  class="button subtle small"
+                  v-if="activeAward.status === 'ready'"
+                  class="button honour-download"
                   type="button"
                   :disabled="Boolean(exportingKey)"
-                  @click="downloadAward(award)"
+                  @click="downloadAward(activeAward)"
                 >
-                  <span v-if="exportingKey === award.key" class="button-spinner dark"></span>
+                  <span v-if="exportingKey === activeAward.key" class="button-spinner"></span>
                   <AppIcon v-else name="save" :size="15" />
-                  {{ exportingKey === award.key ? '生成中' : '下载奖卡' }}
+                  {{ exportingKey === activeAward.key ? '生成中' : '下载奖卡' }}
                 </button>
               </footer>
             </article>
-          </div>
+          </Transition>
+
+          <footer class="honours-theatre-controls">
+            <button type="button" aria-label="上一个奖项" @click="previousAward"><AppIcon name="arrowLeft" :size="20" /></button>
+            <div class="honours-progress" aria-hidden="true">
+              <span
+                v-if="!autoplayPaused"
+                :key="activeAward.key"
+                :style="{ '--autoplay-duration': `${autoplayDelay}ms` }"
+              ></span>
+            </div>
+            <button type="button" aria-label="下一个奖项" @click="nextAward"><AppIcon name="arrowRight" :size="20" /></button>
+          </footer>
         </section>
+
+        <div v-else class="honours-overview">
+          <nav class="honours-catalogue" aria-label="荣誉分类">
+            <a v-for="group in groups" :key="group.key" :href="`#category-${group.key}`">{{ group.label }}<small>{{ group.awards.length }}</small></a>
+          </nav>
+          <section v-for="group in groups" :id="`category-${group.key}`" :key="group.key" class="honour-category">
+            <header class="honour-category-heading"><h2>{{ group.label }}</h2><p>{{ categoryNotes[group.key] }}</p></header>
+            <div class="honours-grid">
+              <article
+                v-for="award in group.awards"
+                :id="honourAnchor(award.key)"
+                :key="award.key"
+                class="honour-card"
+                :class="{ 'is-collecting': award.status !== 'ready' }"
+              >
+                <header class="honour-card-heading"><div><span>{{ awardCode(award) }}</span><h3>{{ award.title }}</h3></div><span class="honour-state">{{ awardStatusLabel(award) }}</span></header>
+                <p class="honour-description">{{ award.description }}</p>
+                <ol class="honour-podium" :aria-label="`${award.title}前三名`">
+                  <li v-for="slot in podiumSlots(award.entries)" :key="slot.position" :class="`position-${slot.position}`">
+                    <template v-if="slot.entry">
+                      <div v-if="slot.entry.members?.length" class="podium-player podium-duo">
+                        <span class="podium-duo-avatars">
+                          <router-link v-for="member in slot.entry.members" :key="member.player_id" class="podium-avatar" :to="`/player/${encodeURIComponent(member.player_id)}/${encodeURIComponent(cup)}/`" :aria-label="`查看 ${member.name} 的详情`"><PlayerAvatar :src="member.avatar" :name="member.name" /></router-link>
+                          <b>{{ slot.position }}</b>
+                        </span>
+                        <strong>{{ slot.entry.name }}</strong>
+                      </div>
+                      <router-link v-else class="podium-player" :to="`/player/${encodeURIComponent(slot.entry.player_id)}/${encodeURIComponent(cup)}/`" :aria-label="`查看第 ${slot.position} 名 ${slot.entry.name} 的详情`">
+                        <span class="podium-avatar"><PlayerAvatar :src="slot.entry.avatar" :name="slot.entry.name" /><b>{{ slot.position }}</b></span><strong>{{ slot.entry.name }}</strong>
+                      </router-link>
+                      <span class="podium-value">{{ slot.entry.display_value }}</span><small>{{ slot.entry.evidence }}<em v-if="slot.entry.tied">同值</em></small>
+                    </template>
+                    <template v-else>
+                      <span class="podium-avatar empty"><AppIcon :name="award.status === 'data_required' ? 'database' : 'users'" :size="20" /><b>{{ slot.position }}</b></span>
+                      <strong>{{ award.status === 'data_required' ? '等待阵营数据' : '待开奖' }}</strong><span class="podium-value">—</span><small>{{ award.status === 'data_required' ? '不猜测 CT/T 表现' : '样本仍在积累' }}</small>
+                    </template>
+                    <span class="podium-plinth" aria-hidden="true"></span>
+                  </li>
+                </ol>
+                <footer class="honour-card-footer">
+                  <details><summary>怎么算的</summary><p>{{ award.method }}</p></details>
+                  <button v-if="award.status === 'ready'" class="button honour-download small" type="button" :disabled="Boolean(exportingKey)" @click="downloadAward(award)">
+                    <span v-if="exportingKey === award.key" class="button-spinner"></span><AppIcon v-else name="save" :size="15" />{{ exportingKey === award.key ? '生成中' : '下载奖卡' }}
+                  </button>
+                </footer>
+              </article>
+            </div>
+          </section>
+        </div>
         <p v-if="downloadError" class="honour-download-error" role="alert"><AppIcon name="alert" :size="15" />{{ downloadError }}</p>
       </template>
     </main>
@@ -150,7 +239,11 @@
         </div>
         <ol class="honour-poster-podium">
           <li v-for="slot in podiumSlots(exportAward.entries)" :key="slot.position" :class="`position-${slot.position}`">
-            <span class="poster-avatar">
+            <span v-if="slot.entry?.members?.length" class="poster-duo-avatars">
+              <span v-for="member in slot.entry.members" :key="member.player_id" class="poster-avatar"><PlayerAvatar :src="member.avatar" :name="member.name" /></span>
+              <b>{{ slot.position }}</b>
+            </span>
+            <span v-else class="poster-avatar">
               <PlayerAvatar v-if="slot.entry" :src="slot.entry.avatar" :name="slot.entry.name" />
               <AppIcon v-else name="users" :size="28" />
               <b>{{ slot.position }}</b>
@@ -181,16 +274,18 @@
 </template>
 
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '../api'
 import AppIcon from '../components/AppIcon.vue'
 import FeedbackDialog from '../components/FeedbackDialog.vue'
 import PlayerAvatar from '../components/PlayerAvatar.vue'
 import {
+  carouselIndex,
   groupHonours,
   honourAnchor,
   honourFilename,
+  honourIndexByHash,
   honourSharePath,
   honourStatus,
   podiumSlots,
@@ -208,6 +303,16 @@ const posterQr = ref('')
 const downloadError = ref('')
 const announcement = ref('')
 const feedbackOpen = ref(false)
+const viewMode = ref('carousel')
+const activeIndex = ref(0)
+const transitionDirection = ref('next')
+const isPaused = ref(false)
+const theatreHovered = ref(false)
+const theatreFocused = ref(false)
+const pageHidden = ref(false)
+const theatreEl = ref(null)
+const autoplayDelay = 7000
+let autoplayTimer = null
 
 const feedbackCopy = {
   eyebrow: 'COMMUNITY NOMINATION',
@@ -236,9 +341,18 @@ const categoryNotes = {
   contrast: '数字、段位和群友评价各说各话。',
   match: '输赢之外，服务器还记住了这些习惯。',
   specialist: '技能点没乱加，只是加得很有方向。',
+  chemistry: '有些组合互相抬高上限，有些组合只抬高血压。',
+  side: '这两项必须等逐回合阵营数据，先把位置留在星图里。',
 }
 
 const groups = computed(() => groupHonours(payload.value?.categories, payload.value?.awards))
+const awards = computed(() => payload.value?.awards || [])
+const activeAward = computed(() => awards.value[activeIndex.value] || null)
+const activeGroup = computed(() => groups.value.find((group) => group.key === activeAward.value?.category))
+const autoplayPaused = computed(() => (
+  isPaused.value || theatreHovered.value || theatreFocused.value || pageHidden.value
+  || viewMode.value !== 'carousel' || awards.value.length < 2
+))
 const statusCopy = computed(() => honourStatus(payload.value?.status))
 
 function pad(value) { return String(value).padStart(2, '0') }
@@ -247,10 +361,72 @@ function awardCode(award) {
   return `HONOUR ${pad(index + 1)}`
 }
 
+function awardStatusLabel(award) {
+  if (award.status === 'ready') return 'TOP 3'
+  if (award.status === 'data_required') return '待补数据'
+  return '待开奖'
+}
+
+function syncAwardHash(award) {
+  if (!award || typeof window === 'undefined') return
+  const url = `${window.location.pathname}${window.location.search}#${honourAnchor(award.key)}`
+  window.history.replaceState(window.history.state, '', url)
+}
+
+function setActiveAward(index, { announce = true, syncHash = true, direction = '' } = {}) {
+  const nextIndex = carouselIndex(index, awards.value.length)
+  transitionDirection.value = direction || (nextIndex < activeIndex.value ? 'prev' : 'next')
+  activeIndex.value = nextIndex
+  if (syncHash) syncAwardHash(activeAward.value)
+  if (announce && activeAward.value) announcement.value = `正在展示：${activeAward.value.title}`
+}
+
+function nextAward() { setActiveAward(activeIndex.value + 1, { direction: 'next' }) }
+function previousAward() { setActiveAward(activeIndex.value - 1, { direction: 'prev' }) }
+
+function jumpToGroup(groupKey) {
+  const index = awards.value.findIndex((award) => award.category === groupKey)
+  if (index >= 0) setActiveAward(index)
+}
+
+async function setViewMode(mode) {
+  viewMode.value = mode
+  announcement.value = mode === 'carousel' ? '已切换到逐项轮播' : '已切换到一览全部'
+  await nextTick()
+  if (mode === 'overview' && route.hash) {
+    document.getElementById(route.hash.slice(1))?.scrollIntoView({ block: 'start' })
+  }
+}
+
+function toggleAutoplay() {
+  isPaused.value = !isPaused.value
+  announcement.value = isPaused.value ? '已暂停自动轮播' : '已继续自动轮播'
+}
+
+function handleStageFocusOut(event) {
+  if (!event.currentTarget.contains(event.relatedTarget)) theatreFocused.value = false
+}
+
+function scheduleAutoplay() {
+  window.clearTimeout(autoplayTimer)
+  autoplayTimer = null
+  if (autoplayPaused.value) return
+  autoplayTimer = window.setTimeout(() => {
+    setActiveAward(activeIndex.value + 1, { announce: false, syncHash: false })
+  }, autoplayDelay)
+}
+
+function handleVisibilityChange() {
+  pageHidden.value = document.hidden
+}
+
 async function scrollToHash() {
   if (!route.hash) return
   await nextTick()
-  document.getElementById(route.hash.slice(1))?.scrollIntoView({ block: 'start' })
+  activeIndex.value = honourIndexByHash(awards.value, route.hash)
+  if (viewMode.value === 'overview') {
+    document.getElementById(route.hash.slice(1))?.scrollIntoView({ block: 'start' })
+  }
 }
 
 async function load() {
@@ -310,5 +486,14 @@ async function downloadAward(award) {
 
 watch(() => route.hash, scrollToHash)
 watch(cup, load)
-onMounted(load)
+watch([activeIndex, autoplayPaused, () => awards.value.length], scheduleAutoplay)
+onMounted(() => {
+  isPaused.value = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches || false
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+  load()
+})
+onBeforeUnmount(() => {
+  window.clearTimeout(autoplayTimer)
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+})
 </script>

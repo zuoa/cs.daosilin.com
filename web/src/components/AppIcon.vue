@@ -22,6 +22,8 @@ const icons = {
   key: [['circle', { cx: '8', cy: '15', r: '4' }], ['path', { d: 'm11 12 8-8M15 8l3 3M17 6l2 2' }]],
   layers: [['path', { d: 'm12 2 9 5-9 5-9-5Z' }], ['path', { d: 'm3 12 9 5 9-5M3 17l9 5 9-5' }]],
   message: [['path', { d: 'M4 5h16v11H8l-4 4Z' }], ['path', { d: 'M8 9h8M8 12h5' }]],
+  pause: [['path', { d: 'M8 5v14M16 5v14' }]],
+  play: [['path', { d: 'm8 5 11 7-11 7Z' }]],
   logout: [['path', { d: 'M10 17l5-5-5-5M15 12H3' }], ['path', { d: 'M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5' }]],
   plus: [['path', { d: 'M12 5v14M5 12h14' }]],
   refresh: [['path', { d: 'M20 11a8 8 0 1 0-2.3 5.7' }], ['path', { d: 'M20 4v7h-7' }]],

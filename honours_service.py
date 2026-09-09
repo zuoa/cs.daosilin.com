@@ -6,6 +6,7 @@ import math
 import statistics
 from collections import defaultdict
 from datetime import datetime
+from itertools import combinations
 from typing import Any, Callable
 
 from baokemeng_service import draft_pick_summaries
@@ -22,6 +23,8 @@ CATEGORIES = (
     ('contrast', '反差观察'),
     ('match', '对局人物'),
     ('specialist', '技术偏科'),
+    ('chemistry', '搭档化学'),
+    ('side', '阵营天赋'),
 )
 
 
@@ -210,6 +213,111 @@ def _award(
     }
 
 
+def _pair_records(
+    rows: list[dict[str, Any]],
+    account_map: dict[str, str],
+    players: dict[str, dict[str, Any]],
+) -> dict[tuple[str, str], dict[str, int]]:
+    """Count maps and wins for canonical player pairs on the same team."""
+    lineups = defaultdict(lambda: {'players': set(), 'win': False})
+    for row in rows:
+        player_id = account_map.get(
+            str(row.get('player_id') or ''), str(row.get('player_id') or ''),
+        )
+        match_id = str(row.get('match_id') or '')
+        team = str(row.get('team') or '')
+        if not player_id or player_id not in players or not match_id or not team:
+            continue
+        lineup = lineups[(match_id, team)]
+        lineup['players'].add(player_id)
+        lineup['win'] = lineup['win'] or int(row.get('win') or 0) == 1
+
+    result = defaultdict(lambda: {'matches': 0, 'wins': 0})
+    for lineup in lineups.values():
+        for pair in combinations(sorted(lineup['players']), 2):
+            result[pair]['matches'] += 1
+            result[pair]['wins'] += int(lineup['win'])
+    return dict(result)
+
+
+def _pair_award(
+    *,
+    key: str,
+    title: str,
+    description: str,
+    method: str,
+    pair_records: dict[tuple[str, str], dict[str, int]],
+    players: dict[str, dict[str, Any]],
+    minimum_maps: int,
+    lowest: bool = False,
+) -> dict[str, Any]:
+    candidates = []
+    for pair, stats in pair_records.items():
+        matches = int(stats.get('matches') or 0)
+        if matches < minimum_maps:
+            continue
+        wins = int(stats.get('wins') or 0)
+        candidates.append({
+            'pair': pair,
+            'matches': matches,
+            'wins': wins,
+            'win_rate': wins / matches if matches else 0.0,
+        })
+    candidates.sort(key=lambda item: (
+        item['win_rate'] if lowest else -item['win_rate'],
+        -item['matches'],
+        tuple((players.get(player_id) or {}).get('name') or player_id for player_id in item['pair']),
+        item['pair'],
+    ))
+    value_counts = defaultdict(int)
+    for candidate in candidates:
+        value_counts[round(candidate['win_rate'], 10)] += 1
+
+    entries = []
+    for position, candidate in enumerate(candidates[:3], start=1):
+        members = [
+            {
+                'player_id': player_id,
+                'name': players[player_id]['name'],
+                'avatar': players[player_id].get('avatar') or '',
+            }
+            for player_id in candidate['pair']
+        ]
+        losses = candidate['matches'] - candidate['wins']
+        entries.append({
+            'position': position,
+            'player_id': '+'.join(candidate['pair']),
+            'name': ' × '.join(member['name'] for member in members),
+            'avatar': '',
+            'members': members,
+            'value': round(candidate['win_rate'], 4),
+            'display_value': f"{candidate['win_rate'] * 100:.1f}% 胜率",
+            'evidence': f"同队 {candidate['matches']} 张地图 · {candidate['wins']} 胜 {losses} 负",
+            'tied': value_counts[round(candidate['win_rate'], 10)] > 1,
+        })
+    return {
+        'key': key,
+        'category': 'chemistry',
+        'title': title,
+        'description': description,
+        'method': method,
+        'status': 'ready' if entries else 'collecting',
+        'entries': entries,
+    }
+
+
+def _planned_side_award(key: str, title: str, description: str) -> dict[str, Any]:
+    return {
+        'key': key,
+        'category': 'side',
+        'title': title,
+        'description': description,
+        'method': '需要逐回合记录选手所在的 CT/T 阵营及该阵营表现。当前整图聚合数据无法可靠计算。',
+        'status': 'data_required',
+        'entries': [],
+    }
+
+
 def build_season_honours(cup: str) -> dict[str, Any]:
     season = Season.get_by_cup(cup) or {}
     cup_alias = season.get('cup_alias') or season.get('name') or season.get('cup_name') or cup
@@ -385,6 +493,11 @@ def build_season_honours(cup: str) -> dict[str, Any]:
     decimal_display = lambda field, prefix='': lambda player: f"{prefix}{_number(player.get(field)):.2f}"
     percent_display = lambda field: lambda player: f"{_number(player.get(field)) * 100:.1f}%"
     percentile_display = lambda field: lambda player: f"{_number(player.get(field)) * 100:.1f} 个百分位"
+    pair_records = _pair_records(raw_rows, account_map, players)
+    maximum_pair_maps = max(
+        (int(item.get('matches') or 0) for item in pair_records.values()), default=0,
+    )
+    minimum_pair_maps = max(3, math.ceil(maximum_pair_maps * 0.30)) if maximum_pair_maps else 3
 
     awards = [
         _award(key='champion-counter', category='podium', title='金牌柜台',
@@ -467,6 +580,23 @@ def build_season_honours(cup: str) -> dict[str, Any]:
                description='买都买了，绝不带回下一回合。', method='按手雷与燃烧总伤害除以总回合数排名。',
                players=players, metric='utility_damage_rate', eligible=general,
                display=decimal_display('utility_damage_rate'), evidence=lambda p: f"道具总伤害 {int(p['total_utility_damage'])}"),
+        _pair_award(key='duo-engine', title='双人成行',
+                    description='这两个人一组队，胜率就开始往上走。',
+                    method=f'统计同队至少 {minimum_pair_maps} 张地图的二人组合，按共同出场胜率从高到低排名。',
+                    pair_records=pair_records, players=players, minimum_maps=minimum_pair_maps),
+        _pair_award(key='duo-slump', title='相遇即低谷',
+                    description='单看都没问题，一起上场却总差一点意思。',
+                    method=f'统计同队至少 {minimum_pair_maps} 张地图的二人组合，按共同出场胜率从低到高排名。',
+                    pair_records=pair_records, players=players, minimum_maps=minimum_pair_maps,
+                    lowest=True),
+        _planned_side_award(
+            'best-ct', '警队定海神针',
+            '谁更适合站在防守方，要等逐回合阵营数据说话。',
+        ),
+        _planned_side_award(
+            'best-t', '匪帮破局手',
+            '谁更适合打进攻方，要等逐回合阵营数据说话。',
+        ),
     ]
 
     return {
@@ -476,8 +606,8 @@ def build_season_honours(cup: str) -> dict[str, Any]:
         'generated_at': _iso(datetime.now()),
         'eligible_player_count': len(generally_eligible),
         'minimum_matches': minimum_matches,
+        'minimum_pair_maps': minimum_pair_maps,
         'available_award_count': sum(award['status'] == 'ready' for award in awards),
         'categories': [{'key': key, 'label': label} for key, label in CATEGORIES],
         'awards': awards,
     }
-

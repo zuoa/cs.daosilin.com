@@ -43,6 +43,22 @@
   --color-dark-surface: oklch(100% 0 0 / 0.055);
   --color-dark-overlay: oklch(10% 0.02 244 / 0.74);
   --color-backdrop: oklch(10% 0.02 244 / 0.58);
+  --color-honour-night: oklch(10.5% 0.03 255);
+  --color-honour-night-2: oklch(15% 0.035 252);
+  --color-honour-surface: oklch(18% 0.035 250);
+  --color-honour-surface-soft: oklch(21% 0.035 248);
+  --color-honour-rule: oklch(78% 0.035 220 / 0.18);
+  --color-honour-rule-strong: oklch(86% 0.04 210 / 0.34);
+  --color-honour-text: oklch(95% 0.012 205);
+  --color-honour-muted: oklch(73% 0.025 220);
+  --color-star: oklch(96% 0.045 100);
+  --color-star-cool: oklch(91% 0.045 215);
+  --color-star-faint: oklch(89% 0.025 220 / 0.38);
+  --color-star-transparent: oklch(96% 0.045 100 / 0);
+  --color-gold-bright: oklch(82% 0.15 86);
+  --color-gold-glow: oklch(78% 0.14 84 / 0.26);
+  --color-silver-bright: oklch(84% 0.025 230);
+  --color-bronze-bright: oklch(72% 0.115 58);
   --color-accent-a08: oklch(59% 0.132 163 / 0.08);
   --color-accent-a12: oklch(59% 0.132 163 / 0.12);
   --color-accent-a17: oklch(59% 0.132 163 / 0.17);
@@ -98,6 +114,8 @@
   --shadow-card: 0 1px 2px oklch(17% 0.027 244 / 0.05);
   --shadow-float: 0 18px 54px oklch(12.5% 0.025 246 / 0.14);
   --shadow-inset-accent: inset 0 var(--rule-fine) var(--color-accent);
+  --shadow-honour-stage: 0 32px 90px oklch(6% 0.025 255 / 0.42);
+  --shadow-honour-gold: 0 0 34px var(--color-gold-glow);
 
   --z-base: 1;
   --z-raised: 10;
@@ -111,4 +129,5 @@
   --gradient-context: linear-gradient(90deg, var(--color-accent-soft), var(--color-accent-faint));
   --gradient-skeleton: linear-gradient(90deg, var(--color-paper-3) 25%, var(--color-paper-2) 50%, var(--color-paper-3) 75%);
   --gradient-map-overlay: linear-gradient(180deg, oklch(12.5% 0.025 246 / 0.12), oklch(12.5% 0.025 246 / 0.92));
+  --gradient-honour-sky: radial-gradient(circle at 72% 12%, var(--color-accent-a12), var(--color-star-transparent) 28%), linear-gradient(145deg, var(--color-honour-night-2), var(--color-honour-night));
 }
