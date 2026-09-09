@@ -279,6 +279,19 @@ def build_daily_champion_bracket(match_list, team_aliases=None):
     }
 
 
+def opening_round_loser_teams(match_list, team_aliases=None):
+    """Return canonical team keys that lost their first title-path series.
+
+    The daily format still gives those teams another placement series, but the
+    opening loss removes them from that day's championship route.  Keeping the
+    result in canonical team-key form lets callers safely join renamed teams
+    back to the recorded player rosters.
+    """
+    series_list, _ = _completed_bo3_series(match_list, team_aliases)
+    round_one, _, _, _ = _classify_daily_series(series_list)
+    return {series['loser'] for series in round_one}
+
+
 def calculate_daily_podium(match_list, team_aliases=None):
     """Resolve a day's champion and runner-up from the eight-team BO3 format.
 

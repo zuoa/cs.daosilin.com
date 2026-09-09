@@ -24,6 +24,10 @@
           <AppIcon name="activity" />
           <span>任务中心</span>
         </router-link>
+        <router-link to="/admin/feedback">
+          <AppIcon name="message" />
+          <span>反馈收件箱</span>
+        </router-link>
         <router-link to="/admin/settings">
           <AppIcon name="key" />
           <span>API 与安全</span>

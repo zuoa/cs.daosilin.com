@@ -46,6 +46,27 @@ class SeoServiceTest(unittest.TestCase):
     def test_unknown_day_is_a_real_missing_page(self, _days, _get_by_cup):
         self.assertIsNone(build_page('cup/19990101'))
 
+    @patch('seo_service._season_players', return_value=[])
+    @patch('seo_service._season_days', return_value=[])
+    @patch('seo_service.Season.get_by_cup', return_value={
+        'cup_name': 'cup', 'cup_alias': '测试赛季',
+    })
+    def test_season_page_still_resolves(self, _get_by_cup, _days, _players):
+        page = build_page('cup')
+
+        self.assertEqual(page.canonical_path, '/cup/')
+        self.assertIn('测试赛季', page.title)
+
+    @patch('seo_service._honours_page', return_value=SeoPage(
+        title='赛季荣誉展', description='荣誉', canonical_path='/cup/honours',
+    ))
+    @patch('seo_service.Season.get_by_cup', return_value={'cup_name': 'cup'})
+    def test_honours_route_is_resolved_before_a_day(self, _get_by_cup, honours_page):
+        page = build_page('cup/honours')
+
+        self.assertEqual(page.canonical_path, '/cup/honours')
+        honours_page.assert_called_once()
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -12,6 +12,7 @@ from peewee import fn
 
 from config import SITE_NAME, SITE_URL
 from database import MatchPlayer, Player, Season
+from honours_service import build_season_honours
 
 
 @dataclass
@@ -29,6 +30,7 @@ _ADMIN_PATHS = {
     'admin/season',
     'admin/players',
     'admin/tasks',
+    'admin/feedback',
     'admin/settings',
 }
 
@@ -198,6 +200,49 @@ def _season_page(season, day=None, community=False):
     )
 
 
+def _honours_page(season):
+    cup = str(season['cup_name'])
+    name = _display_name(season)
+    payload = build_season_honours(cup)
+    canonical_path = _url_path(cup, 'honours')
+    award_items = []
+    for award in payload.get('awards') or []:
+        winners = '、'.join(
+            f"{entry['position']}. {entry['name']}（{entry['display_value']}）"
+            for entry in award.get('entries') or []
+        ) or '样本积累中'
+        award_items.append(
+            '<article id="honour-{key}"><h2>{title}</h2><p>{description}</p>'
+            '<p>{winners}</p><small>{method}</small></article>'.format(
+                key=escape(str(award.get('key') or ''), quote=True),
+                title=escape(str(award.get('title') or '')),
+                description=escape(str(award.get('description') or '')),
+                winners=escape(winners),
+                method=escape(str(award.get('method') or '')),
+            )
+        )
+    description = (
+        f'{name} CS2 赛季荣誉展：冠军、亚军、决赛次数、首轮出局、'
+        'Rating 波动、社区评分反差与对局专项数据 TOP3。'
+    )
+    body = f'''<div class="public-site honours-page seo-snapshot"><main>
+      <nav><a href="{escape(_url_path(cup, trailing=True), quote=True)}">返回 {escape(name)} 赛季数据</a></nav>
+      <section><h1>{escape(name)} 荣誉展</h1><p>{escape(description)}</p></section>
+      <section>{''.join(award_items)}</section>
+    </main></div>'''
+    return SeoPage(
+        title=f'{name} 赛季荣誉展与趣味数据 TOP3｜{SITE_NAME}',
+        description=description,
+        canonical_path=canonical_path,
+        body_html=body,
+        structured_data=[_breadcrumbs([
+            (SITE_NAME, '/'),
+            (name, _url_path(cup, trailing=True)),
+            ('赛季荣誉展', canonical_path),
+        ])],
+    )
+
+
 def _player_page(player_id, season, day=None):
     cup = str(season['cup_name'])
     days = _season_days(cup)
@@ -319,6 +364,8 @@ def build_page(spa_path):
         return None
     if len(parts) == 2 and parts[1] == 'community':
         return _season_page(season, community=True)
+    if len(parts) == 2 and parts[1] == 'honours':
+        return _honours_page(season)
     if len(parts) in (1, 2):
         return _season_page(season, parts[1] if len(parts) == 2 else None)
     return None
@@ -416,6 +463,7 @@ def build_sitemap():
         modified = latest_cup.get(cup) or season.updated_at
         add(_url_path(cup, trailing=True), modified)
         add(_url_path(cup, 'community'), modified)
+        add(_url_path(cup, 'honours'), modified)
 
     daily_entries = []
     for row in raw_rows:

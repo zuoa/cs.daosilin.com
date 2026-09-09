@@ -33,6 +33,11 @@ export const api = {
     return request(`/api/v1/draft${query ? `?${query}` : ''}`)
   },
   cup: (cup, day) => request(`/api/v1/cup/${encodeURIComponent(cup)}${day ? `?day=${encodeURIComponent(day)}` : ''}`),
+  honours: (cup) => request(`/api/v1/cup/${encodeURIComponent(cup)}/honours`),
+  submitFeedback: (body) => request('/api/v1/feedback', {
+    method: 'POST', body: JSON.stringify(body),
+  }),
+  feedbackStatus: (reference) => request(`/api/v1/feedback/${encodeURIComponent(reference)}`),
   broadcast: (cup) => request(`/api/v1/broadcast/${encodeURIComponent(cup)}`),
   liveStatuses: (playerIds) => request(
     `/api/v1/live-status?${new URLSearchParams({ player_ids: playerIds.join(',') })}`,

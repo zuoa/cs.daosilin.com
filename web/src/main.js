@@ -4,6 +4,7 @@ import router from './router'
 import './style.css'
 import './player-compare.css'
 import './broadcast.css'
+import './honours.css'
 
 if (window.location.pathname.startsWith('/broadcast/')) {
   document.documentElement.classList.add('broadcast-document')

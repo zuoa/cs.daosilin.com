@@ -13,6 +13,9 @@
         <div class="season-title-block">
           <h1>{{ cupAlias || cup }}</h1>
           <p>{{ day ? `${day} · 当日选手数据` : '赛季综合数据与选手排名' }}</p>
+          <router-link v-if="!day" class="button subtle season-honours-link" :to="`/${cup}/honours`">
+            <AppIcon name="trophy" :size="16" />逛赛季荣誉展
+          </router-link>
         </div>
         <div class="season-summary" aria-label="赛季数据概览">
           <div><span>选手</span><strong>{{ players.length }}</strong></div>

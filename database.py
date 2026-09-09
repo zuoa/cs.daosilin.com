@@ -1773,6 +1773,40 @@ class AdminUser(BaseModel, CRUDMixin):
         table_name = 'admin_user'
 
 
+class FeedbackSubmission(BaseModel, CRUDMixin):
+    """Reusable public feedback inbox.
+
+    Page-specific forms map their language onto this stable shape.  Context
+    and details stay as JSON so new feedback surfaces do not require a schema
+    migration for every optional field.
+    """
+    public_id = CharField(max_length=32, unique=True)
+    feedback_type = CharField(max_length=48)
+    subject = CharField(max_length=120)
+    content = TextField()
+    submitter_name = CharField(max_length=64, null=True)
+    context_type = CharField(max_length=48, null=True)
+    context_id = CharField(max_length=128, null=True)
+    context_json = TextField(default='{}')
+    details_json = TextField(default='{}')
+    source_path = CharField(max_length=500, null=True)
+    fingerprint = CharField(max_length=64)
+    submission_key = CharField(max_length=64)
+    status = CharField(max_length=24, default='new')
+    reply_content = TextField(null=True)
+    replied_by = CharField(max_length=64, null=True)
+    replied_at = DateTimeField(null=True)
+
+    class Meta:
+        table_name = 'feedback_submission'
+        indexes = (
+            (('feedback_type', 'status', 'created_at'), False),
+            (('context_type', 'context_id', 'created_at'), False),
+            (('fingerprint', 'created_at'), False),
+            (('submission_key',), False),
+        )
+
+
 class SchemaMigration(BaseModel):
     version = CharField(max_length=64, unique=True)
     applied_at = DateTimeField(default=datetime.now)
@@ -1898,5 +1932,5 @@ def create_tables():
                           PlayerSeasonSummary,
                           DemoCredential, DemoAnalysis, DemoPlayerStats, Season, SeasonRoster,
                           MatchSelection, DraftSession, DraftTeam, DraftPlayer,
-                          AdminUser, SchemaMigration], safe=True)
+                          AdminUser, FeedbackSubmission, SchemaMigration], safe=True)
     migrate_schema()

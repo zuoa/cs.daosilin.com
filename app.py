@@ -36,6 +36,14 @@ from demo_service import (demo_analysis_enabled, demo_credential_status,
                           set_demo_analysis_enabled)
 from live_service import (LiveRoomError, fetch_live_avatar, get_live_statuses,
                           normalize_live_room, resolve_live_room)
+from honours_service import build_season_honours
+from feedback_service import (COOKIE_MAX_AGE as FEEDBACK_COOKIE_MAX_AGE,
+                              COOKIE_NAME as FEEDBACK_COOKIE_NAME,
+                              FeedbackError, feedback_inbox,
+                              get_public_feedback, new_visitor,
+                              public_feedback_payload, read_visitor_id,
+                              submit_feedback, update_feedback,
+                              visitor_fingerprint)
 from scheduler import (crawl_season_with_status, get_crawl_status,
                        crawl_is_running, is_auto_crawl_enabled, season_crawl_phase,
                        set_auto_crawl_enabled, set_crawl_status)
@@ -456,6 +464,108 @@ def api_cup(cup):
         'public, max-age=15, stale-while-revalidate=45, stale-if-error=300'
     )
     return response
+
+
+@app.route('/api/v1/cup/<string:cup>/honours')
+@cached_response(timeout=60, scopes=lambda: (
+    season_scope(request.view_args['cup']), 'profiles', 'draft'))
+def api_cup_honours(cup):
+    response = success(build_season_honours(cup))
+    response.headers['Cache-Control'] = (
+        'public, max-age=15, stale-while-revalidate=45, stale-if-error=300'
+    )
+    return response
+
+
+@app.route('/api/v1/feedback', methods=['POST'])
+def api_feedback():
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return error(400, '反馈内容格式无效'), 400
+
+    # A hidden field gives ordinary bots a cheap exit without exposing the
+    # moderation strategy or filling the inbox with obvious form spam.
+    if body.get('_website'):
+        return success({'status': 'received'})
+
+    visitor_id = read_visitor_id(
+        app.secret_key, request.cookies.get(FEEDBACK_COOKIE_NAME),
+    )
+    visitor_token = None
+    if not visitor_id:
+        visitor_id, visitor_token = new_visitor(app.secret_key)
+    try:
+        row, duplicate = submit_feedback(
+            body, visitor_fingerprint(app.secret_key, visitor_id),
+        )
+    except FeedbackError as exc:
+        return error(exc.status_code, str(exc)), exc.status_code
+
+    response = success(public_feedback_payload(row, duplicate))
+    response.status_code = 200 if duplicate else 201
+    if visitor_token:
+        response.set_cookie(
+            FEEDBACK_COOKIE_NAME,
+            visitor_token,
+            max_age=FEEDBACK_COOKIE_MAX_AGE,
+            httponly=True,
+            secure=request.is_secure,
+            samesite='Lax',
+            path='/',
+        )
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
+@app.route('/api/v1/feedback/<string:reference>')
+def api_feedback_status(reference):
+    visitor_id = read_visitor_id(
+        app.secret_key, request.cookies.get(FEEDBACK_COOKIE_NAME),
+    )
+    if not visitor_id:
+        return error(404, '未找到这条反馈'), 404
+    row = get_public_feedback(
+        reference, visitor_fingerprint(app.secret_key, visitor_id),
+    )
+    if not row:
+        return error(404, '未找到这条反馈'), 404
+    response = success(public_feedback_payload(row))
+    response.headers['Cache-Control'] = 'no-store'
+    return response
+
+
+@app.route('/api/admin/feedback')
+def api_admin_feedback():
+    try:
+        page = max(1, int(request.args.get('page') or 1))
+        page_size = min(100, max(1, int(request.args.get('page_size') or 40)))
+    except (TypeError, ValueError):
+        return error(400, '分页参数无效'), 400
+    try:
+        payload = feedback_inbox(
+            feedback_type=(request.args.get('type') or '').strip(),
+            status=(request.args.get('status') or '').strip(),
+            query_text=request.args.get('q') or '',
+            page=page,
+            page_size=page_size,
+        )
+    except FeedbackError as exc:
+        return error(exc.status_code, str(exc)), exc.status_code
+    return success(payload)
+
+
+@app.route('/api/admin/feedback/<string:reference>', methods=['PATCH'])
+def api_admin_feedback_update(reference):
+    try:
+        row = update_feedback(
+            reference, request.get_json(silent=True), current_admin() or 'admin',
+        )
+    except FeedbackError as exc:
+        return error(exc.status_code, str(exc)), exc.status_code
+    if not row:
+        return error(404, '未找到这条反馈'), 404
+    from feedback_service import admin_feedback_payload
+    return success(admin_feedback_payload(row))
 
 
 @app.route('/api/v1/live-status')

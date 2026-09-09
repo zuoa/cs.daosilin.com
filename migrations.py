@@ -5,7 +5,7 @@ from ajlog import logger
 from config import ADMIN_PASSWORD, ADMIN_USERNAME
 from database import (AdminUser, DemoAnalysis, DemoCredential, DemoPlayerStats,
                       DraftPlayer, DraftSession, DraftTeam, PlayerCommunityRating,
-                      PlayerPerfectRankHistory, PlayerSeasonSummary,
+                      FeedbackSubmission, PlayerPerfectRankHistory, PlayerSeasonSummary,
                       SchemaMigration, _add_column, _column_exists, _table_exists,
                       backfill_current_perfect_rank_history, db, is_postgres)
 
@@ -218,6 +218,11 @@ def _m020_season_champion_bracket():
         logger.info('season.champion_bracket_enabled 已补列')
 
 
+def _m021_feedback_submission():
+    db.create_tables([FeedbackSubmission], safe=True)
+    logger.info('通用用户反馈表已创建')
+
+
 MIGRATIONS = [
     ('001_player_in_library', _m001_player_in_library),
     ('002_season_hit_ratio', _m002_season_hit_ratio),
@@ -239,6 +244,7 @@ MIGRATIONS = [
     ('018_baokemeng_draft', _m018_baokemeng_draft),
     ('019_player_account_groups', _m019_player_account_groups),
     ('020_season_champion_bracket', _m020_season_champion_bracket),
+    ('021_feedback_submission', _m021_feedback_submission),
 ]
 
 

@@ -9,15 +9,18 @@ const router = createRouter({
     { path: '/admin/season', component: () => import('./views/AdminSeason.vue'), meta: { admin: true, title: '杯赛与采集', noindex: true } },
     { path: '/admin/players', component: () => import('./views/AdminPlayers.vue'), meta: { admin: true, title: '玩家库', noindex: true } },
     { path: '/admin/tasks', component: () => import('./views/AdminTasks.vue'), meta: { admin: true, title: '任务中心', noindex: true } },
+    { path: '/admin/feedback', component: () => import('./views/AdminFeedback.vue'), meta: { admin: true, title: '反馈收件箱', noindex: true } },
     { path: '/admin/settings', component: () => import('./views/AdminSettings.vue'), meta: { admin: true, title: 'API 与安全', noindex: true } },
     { path: '/draft', component: () => import('./views/Draft.vue'), meta: { title: '选人结果', noindex: true } },
     { path: '/broadcast/:cup', component: () => import('./views/Broadcast.vue'), meta: { title: '赛事直播数据', noindex: true } },
     { path: '/compare/:cup/:day?', component: () => import('./views/Compare.vue'), meta: { noindex: true } },
     { path: '/player/:id/:cup?/:day?', component: () => import('./views/Player.vue') },
     { path: '/:cup/community', component: () => import('./views/CommunityShelves.vue'), meta: { title: '从夯到拉排名' } },
+    { path: '/:cup/honours', component: () => import('./views/Honours.vue'), meta: { title: '赛季荣誉展' } },
     { path: '/:cup/:day?', component: () => import('./views/Season.vue') },
   ],
-  scrollBehavior() {
+  scrollBehavior(to) {
+    if (to.hash) return { el: to.hash, top: 20, behavior: 'smooth' }
     return { top: 0 }
   },
 })
