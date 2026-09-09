@@ -68,6 +68,9 @@
           @focusout="handleStageFocusOut"
         >
           <div class="honours-starfield" aria-hidden="true"><span></span><span></span><span></span></div>
+          <div :key="activeAward.key" class="honours-fireworks" aria-hidden="true">
+            <span></span><span></span><span></span>
+          </div>
           <header class="honours-theatre-header">
             <div>
               <span>{{ activeGroup?.label }}</span>
@@ -131,7 +134,7 @@
                   <template v-else>
                     <span class="podium-avatar empty"><AppIcon :name="activeAward.status === 'data_required' ? 'database' : 'users'" :size="21" /><b>{{ slot.position }}</b></span>
                     <strong>{{ activeAward.status === 'data_required' ? '等待阵营数据' : '待开奖' }}</strong>
-                    <span class="podium-value">—</span>
+                    <span class="podium-value">-</span>
                     <small>{{ activeAward.status === 'data_required' ? '不使用整图数据猜测 CT/T 表现' : '样本仍在积累' }}</small>
                   </template>
                   <span class="podium-plinth" aria-hidden="true"></span>
@@ -139,6 +142,13 @@
               </ol>
 
               <footer class="honour-spotlight-footer">
+                <div class="honours-progress" aria-hidden="true">
+                  <span
+                    v-if="!autoplayPaused"
+                    :key="activeAward.key"
+                    :style="{ '--autoplay-duration': `${autoplayDelay}ms` }"
+                  ></span>
+                </div>
                 <div><span>计算口径</span><p>{{ activeAward.method }}</p></div>
                 <button
                   v-if="activeAward.status === 'ready'"
@@ -155,33 +165,19 @@
             </article>
           </Transition>
 
-          <footer class="honours-theatre-controls">
-            <button type="button" aria-label="上一个奖项" @click="previousAward"><AppIcon name="arrowLeft" :size="20" /></button>
-            <div class="honours-progress" aria-hidden="true">
-              <span
-                v-if="!autoplayPaused"
-                :key="activeAward.key"
-                :style="{ '--autoplay-duration': `${autoplayDelay}ms` }"
-              ></span>
-            </div>
-            <button type="button" aria-label="下一个奖项" @click="nextAward"><AppIcon name="arrowRight" :size="20" /></button>
-          </footer>
+          <button class="honours-stage-arrow previous" type="button" aria-label="上一个奖项" @click="previousAward"><AppIcon name="arrowLeft" :size="22" /></button>
+          <button class="honours-stage-arrow next" type="button" aria-label="下一个奖项" @click="nextAward"><AppIcon name="arrowRight" :size="22" /></button>
         </section>
 
         <div v-else class="honours-overview">
-          <nav class="honours-catalogue" aria-label="荣誉分类">
-            <a v-for="group in groups" :key="group.key" :href="`#category-${group.key}`">{{ group.label }}<small>{{ group.awards.length }}</small></a>
-          </nav>
-          <section v-for="group in groups" :id="`category-${group.key}`" :key="group.key" class="honour-category">
-            <header class="honour-category-heading"><h2>{{ group.label }}</h2><p>{{ categoryNotes[group.key] }}</p></header>
-            <div class="honours-grid">
-              <article
-                v-for="award in group.awards"
-                :id="honourAnchor(award.key)"
-                :key="award.key"
-                class="honour-card"
-                :class="{ 'is-collecting': award.status !== 'ready' }"
-              >
+          <div class="honours-grid" aria-label="全部赛季荣誉">
+            <article
+              v-for="award in awards"
+              :id="honourAnchor(award.key)"
+              :key="award.key"
+              class="honour-card"
+              :class="{ 'is-collecting': award.status !== 'ready' }"
+            >
                 <header class="honour-card-heading"><div><span>{{ awardCode(award) }}</span><h3>{{ award.title }}</h3></div><span class="honour-state">{{ awardStatusLabel(award) }}</span></header>
                 <p class="honour-description">{{ award.description }}</p>
                 <ol class="honour-podium" :aria-label="`${award.title}获奖名单`">
@@ -201,7 +197,7 @@
                     </template>
                     <template v-else>
                       <span class="podium-avatar empty"><AppIcon :name="award.status === 'data_required' ? 'database' : 'users'" :size="20" /><b>{{ slot.position }}</b></span>
-                      <strong>{{ award.status === 'data_required' ? '等待阵营数据' : '待开奖' }}</strong><span class="podium-value">—</span><small>{{ award.status === 'data_required' ? '不猜测 CT/T 表现' : '样本仍在积累' }}</small>
+                      <strong>{{ award.status === 'data_required' ? '等待阵营数据' : '待开奖' }}</strong><span class="podium-value">-</span><small>{{ award.status === 'data_required' ? '不猜测 CT/T 表现' : '样本仍在积累' }}</small>
                     </template>
                     <span class="podium-plinth" aria-hidden="true"></span>
                   </li>
@@ -212,9 +208,8 @@
                     <span v-if="exportingKey === award.key" class="button-spinner"></span><AppIcon v-else name="save" :size="15" />{{ exportingKey === award.key ? '生成中' : '下载奖卡' }}
                   </button>
                 </footer>
-              </article>
-            </div>
-          </section>
+            </article>
+          </div>
         </div>
         <p v-if="downloadError" class="honour-download-error" role="alert"><AppIcon name="alert" :size="15" />{{ downloadError }}</p>
       </template>
@@ -249,7 +244,7 @@
               <b>{{ slot.position }}</b>
             </span>
             <strong>{{ slot.entry?.name || '待开奖' }}</strong>
-            <span>{{ slot.entry?.display_value || '—' }}</span>
+            <span>{{ slot.entry?.display_value || '-' }}</span>
             <small>{{ slot.entry?.evidence || '样本仍在积累' }}</small>
           </li>
         </ol>
@@ -333,18 +328,6 @@ const feedbackCopy = {
 const feedbackDetails = [
   { key: 'method', label: '你觉得可以怎么算（可选）', placeholder: '可以写数据口径，也可以举一个具体例子。', maxlength: 500 },
 ]
-
-const categoryNotes = {
-  podium: '奖杯附近，总有一些熟面孔。',
-  schedule: '来都来了，赛程总得留下点东西。',
-  form: '把这个赛季和他自己的过去摆在一起。',
-  contrast: '数字、段位和群友评价各说各话。',
-  match: '输赢之外，服务器还记住了这些习惯。',
-  specialist: '技能点没乱加，只是加得很有方向。',
-  chemistry: '有些组合互相抬高上限，有些组合只抬高血压。',
-  side: '这两项必须等逐回合阵营数据，先把位置留在星图里。',
-  manual: '有些名场面不该只交给公式，评审把理由一起写在这里。',
-}
 
 const groups = computed(() => groupHonours(payload.value?.categories, payload.value?.awards))
 const awards = computed(() => payload.value?.awards || [])
