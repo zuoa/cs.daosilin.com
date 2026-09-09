@@ -97,7 +97,7 @@
       </section>
     </main>
 
-    <footer class="public-footer statement-footer"><strong>数据用于比赛复盘与社区统计。</strong><span>{{ siteName }} · CS DATA ARCHIVE · Made with 🩷 By ZUOAJ</span></footer>
+    <footer class="public-footer statement-footer"><strong>数据用于比赛复盘与社区统计。</strong><span>{{ siteName }} · CS DATA ARCHIVE · Made with 🩷 <AuthorSupport /></span></footer>
   </div>
 </template>
 
@@ -105,6 +105,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { api } from '../api'
 import AppIcon from '../components/AppIcon.vue'
+import AuthorSupport from '../components/AuthorSupport.vue'
 
 const seasons = ref([])
 const lastCrawl = ref('')

@@ -566,6 +566,65 @@ img.player-monogram { object-fit: cover; }
 .skeleton-card span:last-child { width: 55%; }
 .public-footer { display: flex; min-height: 76px; align-items: center; justify-content: space-between; gap: 20px; border-top: 1px solid var(--line); padding: 18px max(32px, calc((100% - 1420px) / 2)); background: var(--canvas); color: var(--ink-500); font-family: var(--font-body); font-size: .62rem; letter-spacing: .04em; }
 .public-footer a:hover { color: var(--signal-dark); }
+.author-support { position: relative; display: inline-flex; align-items: center; gap: 5px; color: inherit; letter-spacing: normal; vertical-align: middle; }
+.author-by { color: inherit; }
+.author-trigger { display: inline-flex; min-height: 30px; align-items: center; gap: 5px; border: 1px solid var(--color-gold); border-radius: var(--radius-input); padding: 5px 8px 5px 9px; background: var(--gold-soft); color: var(--ink-900); font-family: var(--font-outlier); font-size: .68rem; font-weight: 800; letter-spacing: .08em; line-height: 1; transition: border-color var(--dur-short) var(--ease-out), background-color var(--dur-short) var(--ease-out), color var(--dur-short) var(--ease-out), transform var(--dur-micro) var(--ease-out); }
+.author-trigger:hover { border-color: var(--color-gold); background: var(--color-warning); color: var(--ink-950); }
+.author-trigger:active { transform: translateY(1px); }
+.author-trigger svg { transition: transform var(--dur-short) var(--ease-out); }
+.author-trigger svg.rotated { transform: rotate(180deg); }
+.author-popover { position: absolute; z-index: var(--z-dropdown); right: 0; bottom: calc(100% + 12px); width: min(484px, calc(100vw - 28px)); border: 1px solid var(--line-strong); border-radius: var(--radius-panel); padding: 15px; background: var(--surface); color: var(--ink-900); box-shadow: var(--shadow-float); letter-spacing: normal; }
+.author-popover::after { position: absolute; right: 19px; bottom: -7px; width: 12px; height: 12px; border-right: 1px solid var(--line-strong); border-bottom: 1px solid var(--line-strong); background: var(--surface); content: ""; transform: rotate(45deg); }
+.author-popover-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 2px 2px 12px; }
+.author-popover-header > div { display: flex; flex-direction: column; gap: 2px; }
+.author-popover-header strong { color: var(--ink-950); font-family: var(--font-display); font-size: .94rem; letter-spacing: -.01em; }
+.author-popover-header span { color: var(--ink-500); font-size: .68rem; }
+.author-popover-header > button { display: inline-grid; width: 30px; height: 30px; flex: 0 0 auto; place-items: center; border: 1px solid var(--line); border-radius: var(--radius-input); background: var(--surface-soft); color: var(--ink-600); }
+.author-popover-header > button:hover { border-color: var(--line-strong); color: var(--ink-950); }
+.author-popover-header > button:active { transform: translateY(1px); }
+.author-code-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.author-code-grid figure { min-width: 0; margin: 0; border: 1px solid var(--line); border-radius: var(--radius-card); padding: 9px 9px 11px; background: var(--surface-soft); }
+.author-code-frame { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-input); background: var(--surface); aspect-ratio: 1; }
+.author-code-frame img { width: 100%; height: 100%; object-fit: contain; }
+.author-code-grid figcaption { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 9px 2px 0; }
+.author-code-grid figcaption strong { color: var(--ink-950); font-size: .78rem; }
+.author-code-grid figcaption span { color: var(--ink-500); font-size: .61rem; white-space: nowrap; }
+.author-popover-enter-active, .author-popover-leave-active { transition: opacity var(--dur-short) var(--ease-out), transform var(--dur-short) var(--ease-out); transform-origin: right bottom; }
+.author-popover-enter-from, .author-popover-leave-to { opacity: 0; transform: translateY(7px) scale(.98); }
+.statement-footer .author-trigger,
+.honours-page .author-trigger { border-color: var(--color-gold-bright); background: var(--color-gold-glow); color: var(--color-gold-bright); }
+.statement-footer .author-trigger:hover,
+.honours-page .author-trigger:hover { background: var(--color-gold-bright); color: var(--color-honour-night); }
+.statement-footer .author-popover,
+.honours-page .author-popover { border-color: var(--color-honour-rule-strong); background: var(--color-honour-night-2); color: var(--color-honour-text); box-shadow: var(--shadow-honour-stage); }
+.statement-footer .author-popover { right: auto; left: 0; }
+.statement-footer .author-popover::after,
+.honours-page .author-popover::after { border-color: var(--color-honour-rule-strong); background: var(--color-honour-night-2); }
+.statement-footer .author-popover::after { right: auto; left: 19px; }
+.statement-footer .author-popover-header strong,
+.honours-page .author-popover-header strong,
+.statement-footer .author-code-grid figcaption strong,
+.honours-page .author-code-grid figcaption strong { color: var(--color-honour-text); }
+.statement-footer .author-popover-header strong { max-width: none; font-size: .94rem; letter-spacing: -.01em; line-height: 1.2; }
+.statement-footer .author-popover-header span { font-size: .68rem; }
+.statement-footer .author-trigger > span { color: inherit; font-size: inherit; }
+.statement-footer .author-popover-header span,
+.honours-page .author-popover-header span,
+.statement-footer .author-code-grid figcaption span,
+.honours-page .author-code-grid figcaption span { color: var(--color-honour-muted); }
+.statement-footer .author-popover-header > button,
+.honours-page .author-popover-header > button { border-color: var(--color-honour-rule); background: var(--color-honour-surface); color: var(--color-honour-muted); }
+.statement-footer .author-popover-header > button:hover,
+.honours-page .author-popover-header > button:hover { border-color: var(--color-honour-rule-strong); color: var(--color-honour-text); }
+.statement-footer .author-code-grid figure,
+.honours-page .author-code-grid figure { border-color: var(--color-honour-rule); background: var(--color-honour-surface); }
+.statement-footer .author-code-frame,
+.honours-page .author-code-frame { border-color: var(--color-honour-rule); background: var(--surface); }
+
+@media (max-width: 56rem) {
+  .statement-footer .author-popover { position: fixed; right: 14px; bottom: 14px; left: 14px; width: auto; max-height: calc(100dvh - 28px); overflow-y: auto; }
+  .statement-footer .author-popover::after { display: none; }
+}
 
 /* Public leaderboard */
 .season-hero { display: flex; width: min(1420px, calc(100% - 64px)); min-height: 258px; align-items: center; justify-content: space-between; gap: 40px; margin: 0 auto; padding: 38px 0; }
@@ -1101,6 +1160,9 @@ img.player-monogram { object-fit: cover; }
   .season-grid { grid-template-columns: 1fr; }
   .season-card { min-height: 290px; }
   .public-footer { align-items: flex-start; flex-direction: column; padding: 20px 14px; }
+  .author-popover,
+  .statement-footer .author-popover { position: fixed; right: 14px; bottom: 14px; left: 14px; width: auto; max-height: calc(100dvh - 28px); overflow-y: auto; }
+  .author-popover::after { display: none; }
   .season-summary { grid-template-columns: repeat(2, 1fr); }
   .season-summary > div:nth-child(2) { border-right: 0; }
   .season-summary > div:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
@@ -1157,6 +1219,20 @@ img.player-monogram { object-fit: cover; }
   .player-chart { height: 285px; }
   .login-form-side { align-items: flex-start; padding: 30px 20px; }
   .login-heading { margin-top: 50px; }
+}
+
+@media (max-width: 460px) {
+  .author-popover { padding: 12px; }
+  .author-code-grid { grid-template-columns: 1fr 1fr; gap: 7px; }
+  .author-code-grid figure { padding: 6px 6px 9px; }
+  .author-code-grid figcaption { align-items: flex-start; flex-direction: column; gap: 1px; padding-top: 7px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .author-trigger,
+  .author-trigger svg,
+  .author-popover-enter-active,
+  .author-popover-leave-active { transition: none; }
 }
 
 @media (max-width: 27.5rem) {

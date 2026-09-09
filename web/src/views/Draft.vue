@@ -108,7 +108,7 @@
 
     <footer class="public-footer">
       <router-link to="/">返回数据首页</router-link>
-      <span>{{ siteName }} · DRAFT ARCHIVE · Made with 🩷 By ZUOAJ</span>
+      <span>{{ siteName }} · DRAFT ARCHIVE · Made with 🩷 <AuthorSupport /></span>
     </footer>
   </div>
 </template>
@@ -118,6 +118,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api'
 import AppIcon from '../components/AppIcon.vue'
+import AuthorSupport from '../components/AuthorSupport.vue'
 import {
   chronologicalDraftSessions,
   draftGroupPlayerCount,

@@ -115,7 +115,7 @@
                           :to="`/player/${encodeURIComponent(member.player_id)}/${encodeURIComponent(cup)}/`"
                           :aria-label="`查看 ${member.name} 的详情`"
                         ><PlayerAvatar :src="member.avatar" :name="member.name" /></router-link>
-                        <b>{{ slot.position }}</b>
+                        <span class="podium-crown" role="img" :aria-label="rankLabel(slot.position)"><AppIcon name="crown" :size="24" /></span>
                       </span>
                       <strong>{{ slot.entry.name }}</strong>
                     </div>
@@ -125,14 +125,14 @@
                       :to="`/player/${encodeURIComponent(slot.entry.player_id)}/${encodeURIComponent(cup)}/`"
                       :aria-label="`查看第 ${slot.position} 名 ${slot.entry.name} 的详情`"
                     >
-                      <span class="podium-avatar"><PlayerAvatar :src="slot.entry.avatar" :name="slot.entry.name" /><b>{{ slot.position }}</b></span>
+                      <span class="podium-avatar"><PlayerAvatar :src="slot.entry.avatar" :name="slot.entry.name" /><span class="podium-crown" role="img" :aria-label="rankLabel(slot.position)"><AppIcon name="crown" :size="24" /></span></span>
                       <strong>{{ slot.entry.name }}</strong>
                     </router-link>
                     <span class="podium-value">{{ slot.entry.display_value }}</span>
                     <small>{{ slot.entry.evidence }}<em v-if="slot.entry.tied">同值</em></small>
                   </template>
                   <template v-else>
-                    <span class="podium-avatar empty"><AppIcon :name="activeAward.status === 'data_required' ? 'database' : 'users'" :size="21" /><b>{{ slot.position }}</b></span>
+                    <span class="podium-avatar empty"><AppIcon :name="activeAward.status === 'data_required' ? 'database' : 'users'" :size="21" /><span class="podium-crown" role="img" :aria-label="rankLabel(slot.position)"><AppIcon name="crown" :size="24" /></span></span>
                     <strong>{{ activeAward.status === 'data_required' ? '等待阵营数据' : '待开奖' }}</strong>
                     <span class="podium-value">-</span>
                     <small>{{ activeAward.status === 'data_required' ? '不使用整图数据猜测 CT/T 表现' : '样本仍在积累' }}</small>
@@ -186,17 +186,17 @@
                       <div v-if="slot.entry.members?.length" class="podium-player podium-duo">
                         <span class="podium-duo-avatars">
                           <router-link v-for="member in slot.entry.members" :key="member.player_id" class="podium-avatar" :to="`/player/${encodeURIComponent(member.player_id)}/${encodeURIComponent(cup)}/`" :aria-label="`查看 ${member.name} 的详情`"><PlayerAvatar :src="member.avatar" :name="member.name" /></router-link>
-                          <b>{{ slot.position }}</b>
+                          <span class="podium-crown" role="img" :aria-label="rankLabel(slot.position)"><AppIcon name="crown" :size="24" /></span>
                         </span>
                         <strong>{{ slot.entry.name }}</strong>
                       </div>
                       <router-link v-else class="podium-player" :to="`/player/${encodeURIComponent(slot.entry.player_id)}/${encodeURIComponent(cup)}/`" :aria-label="`查看第 ${slot.position} 名 ${slot.entry.name} 的详情`">
-                        <span class="podium-avatar"><PlayerAvatar :src="slot.entry.avatar" :name="slot.entry.name" /><b>{{ slot.position }}</b></span><strong>{{ slot.entry.name }}</strong>
+                        <span class="podium-avatar"><PlayerAvatar :src="slot.entry.avatar" :name="slot.entry.name" /><span class="podium-crown" role="img" :aria-label="rankLabel(slot.position)"><AppIcon name="crown" :size="24" /></span></span><strong>{{ slot.entry.name }}</strong>
                       </router-link>
                       <span class="podium-value">{{ slot.entry.display_value }}</span><small>{{ slot.entry.evidence }}<em v-if="slot.entry.tied">同值</em></small>
                     </template>
                     <template v-else>
-                      <span class="podium-avatar empty"><AppIcon :name="award.status === 'data_required' ? 'database' : 'users'" :size="20" /><b>{{ slot.position }}</b></span>
+                      <span class="podium-avatar empty"><AppIcon :name="award.status === 'data_required' ? 'database' : 'users'" :size="20" /><span class="podium-crown" role="img" :aria-label="rankLabel(slot.position)"><AppIcon name="crown" :size="24" /></span></span>
                       <strong>{{ award.status === 'data_required' ? '等待阵营数据' : '待开奖' }}</strong><span class="podium-value">-</span><small>{{ award.status === 'data_required' ? '不猜测 CT/T 表现' : '样本仍在积累' }}</small>
                     </template>
                     <span class="podium-plinth" aria-hidden="true"></span>
@@ -217,41 +217,45 @@
 
     <footer class="public-footer">
       <router-link :to="`/${cup}/`">返回赛季数据</router-link>
-      <span>{{ payload?.cup_alias || cup }} · 熊掌CS Major · Made with 🩷 By ZUOAJ</span>
+      <span>{{ payload?.cup_alias || cup }} · 熊掌CS Major · Made with 🩷 <AuthorSupport /></span>
     </footer>
 
     <div v-if="exportAward" class="honour-poster-render" aria-hidden="true">
     <article ref="posterEl" class="honour-poster">
       <header>
         <div class="honour-poster-brand"><span><AppIcon name="target" :size="27" /></span><strong>熊掌CS Major</strong></div>
-        <p>{{ payload?.cup_alias || cup }} · SEASON HONOURS</p>
+        <div class="honour-poster-edition"><span>AWARD CARD</span><p>{{ payload?.cup_alias || cup }} · SEASON HONOURS</p></div>
       </header>
       <section>
         <div class="honour-poster-copy">
-          <span>{{ awardCode(exportAward) }}</span>
+          <div><span>{{ awardCode(exportAward) }}</span><span>SEASON TOP 3</span></div>
           <h2>{{ exportAward.title }}</h2>
           <p>{{ exportAward.description }}</p>
         </div>
-        <ol class="honour-poster-podium">
-          <li v-for="slot in awardSlots(exportAward)" :key="slot.position" :class="`position-${slot.position}`">
-            <span v-if="slot.entry?.members?.length" class="poster-duo-avatars">
-              <span v-for="member in slot.entry.members" :key="member.player_id" class="poster-avatar"><PlayerAvatar :src="member.avatar" :name="member.name" /></span>
-              <b>{{ slot.position }}</b>
-            </span>
-            <span v-else class="poster-avatar">
-              <PlayerAvatar v-if="slot.entry" :src="slot.entry.avatar" :name="slot.entry.name" />
-              <AppIcon v-else name="users" :size="28" />
-              <b>{{ slot.position }}</b>
-            </span>
-            <strong>{{ slot.entry?.name || '待开奖' }}</strong>
-            <span>{{ slot.entry?.display_value || '-' }}</span>
-            <small>{{ slot.entry?.evidence || '样本仍在积累' }}</small>
-          </li>
-        </ol>
+        <div class="honour-poster-stage">
+          <ol class="honour-poster-podium">
+            <li v-for="slot in awardSlots(exportAward)" :key="slot.position" :class="`position-${slot.position}`">
+              <span v-if="slot.entry?.members?.length" class="poster-duo-avatars">
+                <span v-for="member in slot.entry.members" :key="member.player_id" class="poster-avatar"><PlayerAvatar :src="member.avatar" :name="member.name" /></span>
+                <span class="podium-crown" aria-hidden="true"><AppIcon name="crown" :size="32" /></span>
+              </span>
+              <span v-else class="poster-avatar">
+                <PlayerAvatar v-if="slot.entry" :src="slot.entry.avatar" :name="slot.entry.name" />
+                <AppIcon v-else name="users" :size="28" />
+                <span class="podium-crown" aria-hidden="true"><AppIcon name="crown" :size="32" /></span>
+              </span>
+              <span class="poster-rank-name">{{ rankLabel(slot.position) }}</span>
+              <strong>{{ slot.entry?.name || '待开奖' }}</strong>
+              <span class="poster-value">{{ slot.entry?.display_value || '-' }}</span>
+              <small>{{ slot.entry?.evidence || '样本仍在积累' }}</small>
+              <i aria-hidden="true"></i>
+            </li>
+          </ol>
+        </div>
       </section>
       <footer>
-        <p>{{ exportAward.method }}</p>
-        <div><span>扫码查看完整荣誉展</span><img v-if="posterQr" :src="posterQr" alt=""></div>
+        <div class="honour-poster-method"><span>计算口径</span><p>{{ exportAward.method }}</p></div>
+        <div class="honour-poster-scan"><span><strong>扫码查看完整荣誉展</strong><small>把这一刻带回赛季现场</small></span><img v-if="posterQr" :src="posterQr" alt=""></div>
       </footer>
     </article>
     </div>
@@ -273,6 +277,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '../api'
 import AppIcon from '../components/AppIcon.vue'
+import AuthorSupport from '../components/AuthorSupport.vue'
 import FeedbackDialog from '../components/FeedbackDialog.vue'
 import PlayerAvatar from '../components/PlayerAvatar.vue'
 import {
@@ -340,6 +345,9 @@ const autoplayPaused = computed(() => (
 const statusCopy = computed(() => honourStatus(payload.value?.status))
 
 function pad(value) { return String(value).padStart(2, '0') }
+function rankLabel(position) {
+  return ({ 1: '冠军', 2: '亚军', 3: '季军' })[Number(position)] || `第 ${position} 名`
+}
 function awardCode(award) {
   const index = (payload.value?.awards || []).findIndex((item) => item.key === award.key)
   return `HONOUR ${pad(index + 1)}`
@@ -454,13 +462,13 @@ async function downloadAward(award) {
   try {
     const shareUrl = new URL(honourSharePath(cup.value, award.key), window.location.origin).href
     const [{ toDataURL }, { toPng }] = await Promise.all([import('qrcode'), import('html-to-image')])
-    posterQr.value = await toDataURL(shareUrl, { width: 112, margin: 1 })
+    posterQr.value = await toDataURL(shareUrl, { width: 144, margin: 1 })
     exportAward.value = award
     await nextTick()
     await waitForImages(posterEl.value)
     const dataUrl = await toPng(posterEl.value, {
-      width: 1200,
-      height: 675,
+      width: 768,
+      height: 1024,
       pixelRatio: 1,
       cacheBust: true,
     })

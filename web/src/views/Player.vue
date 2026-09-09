@@ -599,7 +599,7 @@
       </div>
     </AppModal>
 
-    <footer class="public-footer"><router-link :to="cup ? `/${cup}/` : '/'">返回 {{ cupAlias || '赛季榜单' }}</router-link><span>PLAYER INTELLIGENCE · 熊掌CS Major · Made with 🩷 By ZUOAJ</span></footer>
+    <footer class="public-footer"><router-link :to="cup ? `/${cup}/` : '/'">返回 {{ cupAlias || '赛季榜单' }}</router-link><span>PLAYER INTELLIGENCE · 熊掌CS Major · Made with 🩷 <AuthorSupport /></span></footer>
     <CompareTray v-if="cup" :cup="String(cup)" :day="String(day || '')" />
     <p class="sr-only" aria-live="polite">{{ compareAnnouncement }}</p>
   </div>
@@ -613,6 +613,7 @@ import { LineChart, RadarChart } from 'echarts/charts'
 import { GridComponent, RadarComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 import { api, avatarUrl } from '../api'
+import AuthorSupport from '../components/AuthorSupport.vue'
 import AppModal from '../components/AppModal.vue'
 import AppIcon from '../components/AppIcon.vue'
 import CompareTray from '../components/CompareTray.vue'

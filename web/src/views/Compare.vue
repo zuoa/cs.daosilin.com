@@ -144,7 +144,7 @@
       <p class="sr-only" aria-live="polite">{{ announcement }}</p>
     </main>
 
-    <footer class="public-footer compare-footer"><router-link :to="seasonRoute">返回选手榜单</router-link><span>同口径数据 · 单项领先 · 熊掌CS Major · Made with 🩷 By ZUOAJ</span></footer>
+    <footer class="public-footer compare-footer"><router-link :to="seasonRoute">返回选手榜单</router-link><span>同口径数据 · 单项领先 · 熊掌CS Major · Made with 🩷 <AuthorSupport /></span></footer>
   </div>
 </template>
 
@@ -153,6 +153,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api'
 import AppIcon from '../components/AppIcon.vue'
+import AuthorSupport from '../components/AuthorSupport.vue'
 import PlayerAvatar from '../components/PlayerAvatar.vue'
 import {
   PLAYER_COMPARE_LIMIT,

@@ -399,7 +399,7 @@
         </div>
       </section>
     </main>
-    <footer class="public-footer"><router-link to="/">返回全部赛季</router-link><span>{{ cupAlias || cup }} · 熊掌CS Major · Made with 🩷 By ZUOAJ</span></footer>
+    <footer class="public-footer"><router-link to="/">返回全部赛季</router-link><span>{{ cupAlias || cup }} · 熊掌CS Major · Made with 🩷 <AuthorSupport /></span></footer>
     <CompareTray :cup="String(cup || '')" :day="String(day || '')" />
 
     <Teleport to="body">
@@ -452,6 +452,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '../api'
 import AppIcon from '../components/AppIcon.vue'
+import AuthorSupport from '../components/AuthorSupport.vue'
 import CompareTray from '../components/CompareTray.vue'
 import ChampionBracket from '../components/ChampionBracket.vue'
 import PlayerAvatar from '../components/PlayerAvatar.vue'
