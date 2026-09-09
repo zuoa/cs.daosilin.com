@@ -1,3 +1,5 @@
+export const DEFAULT_HONOURS_VIEW = 'overview'
+
 export function podiumSlots(entries = []) {
   const byPosition = new Map(entries.map((entry) => [Number(entry.position), entry]))
   return [1, 2, 3].map((position) => ({
@@ -28,6 +30,18 @@ export function honourFilename(cupAlias, title) {
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
   return `${safe || 'season-honour'}.png`
+}
+
+export function honourPosterOptions() {
+  return {
+    width: 768,
+    height: 1024,
+    pixelRatio: 1,
+    cacheBust: true,
+    // Player avatars share the wsrv.nl pathname and differ by query string.
+    // html-to-image otherwise collapses them into one cached resource.
+    includeQueryParams: true,
+  }
 }
 
 export function honourStatus(status) {

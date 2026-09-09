@@ -1,8 +1,8 @@
 /* Hallmark · genre: modern-minimal · macrostructure: Stat-Led Exhibition × Catalogue
  * tone: star-lit CS2 hall of fame · palette-anchor: signal green
  * theme: Tactical Signal · design-system: design.md · designed-as-app
- * pre-emit critique: P5 H5 E5 S5 R5 V4 · contrast: pass (40–41)
- * enrichment: Tier-A CSS star field · ranked crowns · 3:4 share card · nav: N9 · footer: Ft2 · slop: pass (42–49) · mobile: pass (34, 49–57)
+ * pre-emit critique: P5 H5 E5 S5 R5 V4 · contrast: pass (40-41)
+ * enrichment: Tier-A CSS star field · ranked crowns · 3:4 share card · nav: N9 · footer: Ft2 · slop: pass (42-49) · mobile: pass (34, 49-57)
  */
 
 .honours-page { min-height: 100vh; background: var(--canvas); }
@@ -43,11 +43,78 @@
 .position-3 .podium-avatar { border-color: var(--amber); }
 .podium-avatar img, .podium-avatar .avatar-fallback { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
 .podium-avatar .avatar-fallback { display: grid; place-items: center; background: var(--surface-soft); color: var(--ink-600); font-family: var(--font-display); font-size: var(--text-lg); }
-.podium-crown { position: absolute; z-index: var(--z-raised); top: calc(-1 * var(--space-md)); left: 50%; display: grid; width: 30px; height: 30px; place-items: center; color: var(--color-honour-text); transform: translateX(-50%); pointer-events: none; }
-.podium-crown svg { width: 100%; height: 100%; stroke-width: 1.55; }
-.position-1 .podium-crown { width: 38px; height: 38px; color: var(--color-gold-bright); }
-.position-2 .podium-crown { color: var(--color-silver-bright); }
-.position-3 .podium-crown { color: var(--color-bronze-bright); }
+.podium-crown {
+  --crown-jewel: var(--color-honour-text);
+  --crown-glow: var(--color-honour-rule-strong);
+  position: absolute;
+  z-index: var(--z-raised);
+  top: calc(-1 * var(--space-md));
+  left: 50%;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  color: var(--color-honour-text);
+  filter: drop-shadow(0 2px 1px var(--color-honour-night)) drop-shadow(0 0 7px var(--crown-glow));
+  pointer-events: none;
+  transform: translateX(-50%);
+  transform-origin: 50% 75%;
+}
+.podium-crown::before {
+  position: absolute;
+  z-index: -1;
+  inset: 8% 2% 0;
+  border-radius: 50%;
+  background: currentColor;
+  content: "";
+  opacity: .12;
+  transform: scale(1.22);
+}
+.podium-crown::after {
+  position: absolute;
+  z-index: 2;
+  bottom: 19%;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  border: var(--rule-hair) solid var(--color-honour-night);
+  border-radius: 50%;
+  background: var(--crown-jewel);
+  box-shadow: -9px 1px 0 -1px currentColor, 9px 1px 0 -1px currentColor;
+  content: "";
+  transform: translateX(-50%);
+}
+.podium-crown svg {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  fill: currentColor;
+  fill-opacity: .2;
+  stroke-width: 1.65;
+}
+.position-1 .podium-crown {
+  --crown-jewel: var(--color-danger);
+  --crown-glow: var(--color-gold-glow);
+  width: 44px;
+  height: 44px;
+  color: var(--color-gold-bright);
+  transform: translateX(-50%) rotate(-3deg);
+}
+.position-1 .podium-crown svg { fill-opacity: .32; stroke-width: 1.8; }
+.position-2 .podium-crown {
+  --crown-jewel: var(--color-accent);
+  --crown-glow: var(--color-honour-rule-strong);
+  color: var(--color-silver-bright);
+  transform: translateX(-50%) rotate(-5deg);
+}
+.position-3 .podium-crown {
+  --crown-jewel: var(--color-gold-bright);
+  --crown-glow: var(--color-bronze-bright);
+  color: var(--color-bronze-bright);
+  transform: translateX(-50%) rotate(5deg);
+}
 .honour-podium li > strong, .podium-player > strong { max-width: 100%; overflow: hidden; margin-top: var(--space-xs); color: var(--ink-900); font-size: var(--text-sm); text-overflow: ellipsis; white-space: nowrap; }
 .podium-player:hover > strong { color: var(--signal-dark); }
 .podium-value { margin-top: var(--space-3xs); color: var(--ink-950); font-family: var(--font-outlier); font-size: var(--text-sm); font-weight: 800; }
@@ -497,6 +564,7 @@
 .honours-overview .position-1 .podium-avatar { width: 60px; height: 60px; box-shadow: 0 0 0 2px var(--color-honour-surface-soft); }
 .honours-overview .podium-crown { top: calc(-1 * var(--space-sm)); width: 22px; height: 22px; }
 .honours-overview .position-1 .podium-crown { width: 28px; height: 28px; }
+.honours-overview .podium-crown::after { width: 3px; height: 3px; box-shadow: -6px 1px 0 -1px currentColor, 6px 1px 0 -1px currentColor; }
 .honours-overview .honour-podium li > strong,
 .honours-overview .podium-player > strong { margin-top: var(--space-2xs); font-size: var(--text-xs); }
 .honours-overview .podium-value { font-size: var(--text-xs); }

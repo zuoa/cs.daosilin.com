@@ -281,11 +281,13 @@ import AuthorSupport from '../components/AuthorSupport.vue'
 import FeedbackDialog from '../components/FeedbackDialog.vue'
 import PlayerAvatar from '../components/PlayerAvatar.vue'
 import {
+  DEFAULT_HONOURS_VIEW,
   carouselIndex,
   groupHonours,
   honourAnchor,
   honourFilename,
   honourIndexByHash,
+  honourPosterOptions,
   honourSharePath,
   honourStatus,
   podiumSlots,
@@ -303,7 +305,7 @@ const posterQr = ref('')
 const downloadError = ref('')
 const announcement = ref('')
 const feedbackOpen = ref(false)
-const viewMode = ref('carousel')
+const viewMode = ref(DEFAULT_HONOURS_VIEW)
 const activeIndex = ref(0)
 const transitionDirection = ref('next')
 const isPaused = ref(false)
@@ -466,12 +468,7 @@ async function downloadAward(award) {
     exportAward.value = award
     await nextTick()
     await waitForImages(posterEl.value)
-    const dataUrl = await toPng(posterEl.value, {
-      width: 768,
-      height: 1024,
-      pixelRatio: 1,
-      cacheBust: true,
-    })
+    const dataUrl = await toPng(posterEl.value, honourPosterOptions())
     const link = document.createElement('a')
     link.download = honourFilename(payload.value?.cup_alias || cup.value, award.title)
     link.href = dataUrl

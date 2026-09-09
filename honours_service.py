@@ -33,7 +33,7 @@ CATEGORIES = (
 )
 
 MANUAL_CATEGORY = ('manual', '评审特别奖')
-HONOURS_SCHEMA_VERSION = 2
+HONOURS_SCHEMA_VERSION = 3
 _snapshot_lock = threading.RLock()
 
 
@@ -58,7 +58,7 @@ def _iso(value: object) -> str | None:
 
 
 def _percentiles(values: dict[str, float]) -> dict[str, float]:
-    """Return 0–1 percentiles with average ranks for ties."""
+    """Return 0-1 percentiles with average ranks for ties."""
     if not values:
         return {}
     if len(values) == 1:
@@ -375,6 +375,146 @@ def _unused_utility_stats(
     return _summarize_unused_utility(query, account_map, players)
 
 
+def _summarize_side_stats(
+    rows: list[dict[str, Any]],
+    account_map: dict[str, str],
+    players: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, float]]:
+    """Aggregate CT/T demo counts for canonical season players."""
+    totals = defaultdict(lambda: {
+        'match_ids': set(),
+        'ct_rounds': 0.0,
+        't_rounds': 0.0,
+        'ct_kills': 0.0,
+        't_kills': 0.0,
+        'ct_damage': 0.0,
+        't_damage': 0.0,
+        'ct_kast_rounds': 0.0,
+        't_kast_rounds': 0.0,
+    })
+    value_fields = (
+        'ct_rounds', 't_rounds', 'ct_kills', 't_kills',
+        'ct_damage', 't_damage', 'ct_kast_rounds', 't_kast_rounds',
+    )
+    for row in rows:
+        raw_player_id = str(row.get('player_id') or '')
+        player_id = account_map.get(raw_player_id, raw_player_id)
+        match_id = str(row.get('match_id') or '')
+        if not match_id or player_id not in players:
+            continue
+        stats = totals[player_id]
+        stats['match_ids'].add(match_id)
+        for field in value_fields:
+            stats[field] += _number(row.get(field))
+
+    result = {}
+    for player_id, stats in totals.items():
+        player = {'demo_match_count': len(stats['match_ids'])}
+        for side in ('ct', 't'):
+            rounds = stats[f'{side}_rounds']
+            player[f'{side}_rounds'] = int(rounds)
+            player[f'{side}_kills'] = int(stats[f'{side}_kills'])
+            player[f'{side}_adr'] = stats[f'{side}_damage'] / rounds if rounds else None
+            player[f'{side}_adr_sample'] = int(rounds)
+            player[f'{side}_kast'] = stats[f'{side}_kast_rounds'] / rounds if rounds else None
+            player[f'{side}_kast_sample'] = int(rounds)
+            player[f'{side}_kills_per_round'] = stats[f'{side}_kills'] / rounds if rounds else None
+        result[player_id] = player
+    return result
+
+
+def _side_stats(
+    cup: str,
+    account_map: dict[str, str],
+    players: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, float]]:
+    """Read side metrics only from completed, current-version demos."""
+    if not players:
+        return {}
+    query = (DemoPlayerStats
+             .select(
+                 DemoPlayerStats.match_id,
+                 DemoPlayerStats.player_id,
+                 DemoPlayerStats.rounds_ct,
+                 DemoPlayerStats.rounds_t,
+                 DemoPlayerStats.ct_kills,
+                 DemoPlayerStats.t_kills,
+                 DemoPlayerStats.ct_damage,
+                 DemoPlayerStats.t_damage,
+                 DemoPlayerStats.ct_kast_rounds,
+                 DemoPlayerStats.t_kast_rounds,
+             )
+             .join(MatchPlayer, on=(
+                 (DemoPlayerStats.match_id == MatchPlayer.match_id)
+                 & (DemoPlayerStats.player_id == MatchPlayer.player_id)
+             ))
+             .switch(DemoPlayerStats)
+             .join(DemoAnalysis, on=(DemoAnalysis.match_id == DemoPlayerStats.match_id))
+             .where(
+                 MatchPlayer.cup_name == cup,
+                 DemoAnalysis.status == 'completed',
+                 DemoAnalysis.metric_version == DEMO_METRIC_VERSION,
+             )
+             .dicts())
+    return _summarize_side_stats(query, account_map, players)
+
+
+def _minimum_side_rounds(
+    side_stats: dict[str, dict[str, float]], side: str,
+) -> int:
+    maximum = max(
+        (int(stats.get(f'{side}_rounds') or 0) for stats in side_stats.values()),
+        default=0,
+    )
+    return max(12, math.ceil(maximum * 0.30)) if maximum else 12
+
+
+def _side_award(
+    *,
+    key: str,
+    title: str,
+    description: str,
+    players: dict[str, dict[str, Any]],
+    side_stats: dict[str, dict[str, float]],
+    side: str,
+) -> dict[str, Any]:
+    minimum_rounds = _minimum_side_rounds(side_stats, side)
+    is_ct = side == 'ct'
+    metric = f'{side}_{"kast" if is_ct else "adr"}'
+    award = _award(
+        key=key,
+        category='side',
+        title=title,
+        description=description,
+        method=(
+            f'仅统计已完成 Demo 分析的 {side.upper()} 回合，至少 {minimum_rounds} 回合。'
+            + ('按 KAST 从高到低排名。' if is_ct else '按 ADR 从高到低排名。')
+        ),
+        players=players,
+        metric=metric,
+        eligible=lambda player: int(player.get(f'{side}_rounds') or 0) >= minimum_rounds,
+        display=(
+            (lambda player: f"{_number(player.get('ct_kast')) * 100:.1f}% KAST")
+            if is_ct else
+            (lambda player: f"{_number(player.get('t_adr')):.1f} ADR")
+        ),
+        evidence=(
+            (lambda player: (
+                f"CT ADR {_number(player.get('ct_adr')):.1f}"
+                f" · {int(player.get('ct_rounds') or 0)} 回合"
+            ))
+            if is_ct else
+            (lambda player: (
+                f"T KAST {_number(player.get('t_kast')) * 100:.1f}%"
+                f" · {int(player.get('t_rounds') or 0)} 回合"
+            ))
+        ),
+    )
+    if not any(int(stats.get(f'{side}_rounds') or 0) for stats in side_stats.values()):
+        award['status'] = 'data_required'
+    return award
+
+
 def _matchup_records(
     rows: list[dict[str, Any]],
     account_map: dict[str, str],
@@ -493,18 +633,6 @@ def _matchup_award(
     }
 
 
-def _planned_side_award(key: str, title: str, description: str) -> dict[str, Any]:
-    return {
-        'key': key,
-        'category': 'side',
-        'title': title,
-        'description': description,
-        'method': '需要逐回合记录选手所在的 CT/T 阵营及该阵营表现。当前整图聚合数据无法可靠计算。',
-        'status': 'data_required',
-        'entries': [],
-    }
-
-
 def _calculate_season_honours(cup: str) -> dict[str, Any]:
     season = Season.get_by_cup(cup) or {}
     cup_alias = season.get('cup_alias') or season.get('name') or season.get('cup_name') or cup
@@ -572,6 +700,9 @@ def _calculate_season_honours(cup: str) -> dict[str, Any]:
     draft_stats = draft_pick_summaries(days, player_ids)
     community = community_rating_summaries(cup, player_ids) if player_ids else {}
     unused_utility = _unused_utility_stats(cup, account_map, players)
+    side_stats = _side_stats(cup, account_map, players)
+    for player_id, stats in side_stats.items():
+        players[player_id].update(stats)
 
     losing_rating = defaultdict(lambda: {'sum': 0.0, 'matches': 0})
     for row in raw_rows:
@@ -730,9 +861,9 @@ def _calculate_season_honours(cup: str) -> dict[str, Any]:
                description='平台段位与群友评价，画出了两种印象。', method='比较完美平台分数与正式社区评分在各自人群中的百分位差。',
                players=players, metric='perfect_community_gap', eligible=lambda p: p.get('perfect_community_gap') is not None,
                display=percentile_display('perfect_community_gap'), evidence=lambda p: (
-                   f"平台段位更高 · 社区 {p.get('community_label') or '—'}"
+                   f"平台段位更高 · 社区 {p.get('community_label') or '暂无'}"
                    if p['perfect_percentile'] > p['community_percentile']
-                   else f"社区评价更高 · 平台 {p.get('perfect_level') or '—'}"
+                   else f"社区评价更高 · 平台 {p.get('perfect_level') or '暂无'}"
                )),
         _award(key='data-reputation', category='contrast', title='数据口碑两张脸',
                description='服务器记录和观众印象，没有得出同一个结论。', method='比较赛季 PWR 与正式社区评分在各自人群中的百分位差。',
@@ -740,7 +871,7 @@ def _calculate_season_honours(cup: str) -> dict[str, Any]:
                display=percentile_display('data_community_gap'), evidence=lambda p: (
                    f"数据排名更高 · PWR {_number(p['avg_pw_rating']):.2f}"
                    if p['pwr_percentile'] > p['community_percentile']
-                   else f"社区评价更高 · {p.get('community_label') or '—'}"
+                   else f"社区评价更高 · {p.get('community_label') or '暂无'}"
                )),
         _award(key='late-pick-gem', category='contrast', title='末轮淘宝王',
                description='选得靠后，打出来却一点不靠后。', method='用 PWR 百分位减去选人优先级百分位。',
@@ -764,7 +895,7 @@ def _calculate_season_honours(cup: str) -> dict[str, Any]:
                players=players, metric='headshot_rate', eligible=general,
                display=percent_display('headshot_rate'), evidence=lambda p: f"爆头 {int(p['total_headshots'])} / 击杀 {int(p['total_kills'])}"),
         _award(key='clutch-overtime', category='specialist', title='残局加班王',
-               description='队友下班之后，他还在服务器里处理残局。', method='1v2–1v5 分别按 1–4 加权，再除以比赛数。',
+               description='队友下班之后，他还在服务器里处理残局。', method='1v2-1v5 分别按 1-4 加权，再除以比赛数。',
                players=players, metric='weighted_clutch_rate', eligible=positive('weighted_clutch_rate'),
                display=decimal_display('weighted_clutch_rate'), evidence=lambda p: f"1v2/3/4/5：{int(p['total_1v2'])}/{int(p['total_1v3'])}/{int(p['total_1v4'])}/{int(p['total_1v5'])}"),
         _award(key='utility-clearance', category='specialist', title='道具不留过夜',
@@ -792,13 +923,15 @@ def _calculate_season_honours(cup: str) -> dict[str, Any]:
                     method=f'统计同队至少 {minimum_pair_maps} 张地图的二人组合，按共同出场胜率从低到高排名。',
                     pair_records=pair_records, players=players, minimum_maps=minimum_pair_maps,
                     lowest=True),
-        _planned_side_award(
-            'best-ct', '警队定海神针',
-            '谁更适合站在防守方，要等逐回合阵营数据说话。',
+        _side_award(
+            key='best-ct', title='警队定海神针',
+            description='防守方最稳的支点，总能把回合留在可控范围内。',
+            players=players, side_stats=side_stats, side='ct',
         ),
-        _planned_side_award(
-            'best-t', '匪帮破局手',
-            '谁更适合打进攻方，要等逐回合阵营数据说话。',
+        _side_award(
+            key='best-t', title='匪帮破局手',
+            description='进攻方最锋利的缺口制造者，用伤害把局面撕开。',
+            players=players, side_stats=side_stats, side='t',
         ),
     ]
 
@@ -986,7 +1119,7 @@ def save_manual_honour(cup: str, data: dict[str, Any], award_id: int | None = No
         raise HonourValidationError('奖项说明不能为空，且不能超过 1000 个字符')
     recipients = data.get('recipients')
     if not isinstance(recipients, list) or not 1 <= len(recipients) <= 3:
-        raise HonourValidationError('请选择 1–3 名获奖选手')
+        raise HonourValidationError('请选择 1-3 名获奖选手')
     valid_players = {item['player_id'] for item in _player_directory(cup)}
     normalized = []
     seen = set()

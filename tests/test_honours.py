@@ -13,6 +13,8 @@ from honours_service import (
     _pair_award,
     _pair_records,
     _percentiles,
+    _side_award,
+    _summarize_side_stats,
     _summarize_unused_utility,
     build_season_honours,
     refresh_season_honours,
@@ -160,6 +162,63 @@ class HonourCalculationTest(unittest.TestCase):
         self.assertEqual(result['a'], {'total': 1200.0, 'matches': 2, 'average': 600.0})
         self.assertEqual(result['b'], {'total': 300.0, 'matches': 1, 'average': 300.0})
         self.assertNotIn('outsider', result)
+
+    def test_side_awards_use_canonical_demo_totals_and_sample_thresholds(self):
+        players = {
+            'a': {'player_id': 'a', 'name': 'Alpha', 'avg_pw_rating': 1.1},
+            'b': {'player_id': 'b', 'name': 'Bravo', 'avg_pw_rating': 1.2},
+        }
+        rows = [
+            {
+                'match_id': 'm1', 'player_id': 'a-alt',
+                'ct_rounds': 16, 't_rounds': 14,
+                'ct_kills': 12, 't_kills': 11,
+                'ct_damage': 1280, 't_damage': 1260,
+                'ct_kast_rounds': 12, 't_kast_rounds': 10,
+            },
+            {
+                'match_id': 'm2', 'player_id': 'a',
+                'ct_rounds': 14, 't_rounds': 16,
+                'ct_kills': 10, 't_kills': 13,
+                'ct_damage': 980, 't_damage': 1600,
+                'ct_kast_rounds': 11, 't_kast_rounds': 12,
+            },
+            {
+                'match_id': 'm1', 'player_id': 'b',
+                'ct_rounds': 30, 't_rounds': 30,
+                'ct_kills': 20, 't_kills': 18,
+                'ct_damage': 2100, 't_damage': 2400,
+                'ct_kast_rounds': 21, 't_kast_rounds': 22,
+            },
+        ]
+
+        side_stats = _summarize_side_stats(rows, {'a-alt': 'a'}, players)
+        for player_id, stats in side_stats.items():
+            players[player_id].update(stats)
+        ct_award = _side_award(
+            key='best-ct', title='CT', description='CT', players=players,
+            side_stats=side_stats, side='ct',
+        )
+        t_award = _side_award(
+            key='best-t', title='T', description='T', players=players,
+            side_stats=side_stats, side='t',
+        )
+
+        self.assertEqual(side_stats['a']['demo_match_count'], 2)
+        self.assertEqual(side_stats['a']['ct_rounds'], 30)
+        self.assertEqual(ct_award['entries'][0]['player_id'], 'a')
+        self.assertEqual(ct_award['entries'][0]['display_value'], '76.7% KAST')
+        self.assertEqual(t_award['entries'][0]['player_id'], 'a')
+        self.assertEqual(t_award['entries'][0]['display_value'], '95.3 ADR')
+
+    def test_side_award_requests_data_when_no_demo_rounds_exist(self):
+        award = _side_award(
+            key='best-ct', title='CT', description='CT',
+            players={}, side_stats={}, side='ct',
+        )
+
+        self.assertEqual(award['status'], 'data_required')
+        self.assertEqual(award['entries'], [])
 
     @patch('honours_service._with_manual_awards', side_effect=lambda payload, _cup: payload)
     @patch('honours_service._calculate_season_honours')
