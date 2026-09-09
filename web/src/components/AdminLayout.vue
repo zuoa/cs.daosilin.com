@@ -16,6 +16,10 @@
           <AppIcon name="layers" />
           <span>杯赛与采集</span>
         </router-link>
+        <router-link to="/admin/drafts">
+          <AppIcon name="archive" />
+          <span>选人记录</span>
+        </router-link>
         <router-link to="/admin/players">
           <AppIcon name="users" />
           <span>玩家库</span>

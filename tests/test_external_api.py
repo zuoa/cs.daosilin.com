@@ -19,7 +19,7 @@ from app import app  # noqa: E402
 import cache_service  # noqa: E402
 from cache_service import cache, invalidate_season  # noqa: E402
 from auth import EXTERNAL_TOKEN_HASH_KEY, EXTERNAL_TOKEN_HINT_KEY  # noqa: E402
-from database import (Config, CupDayChampion, DraftPlayer, DraftSession,
+from database import (Config, CupDayChampion, DraftPlayer, DraftSession, DraftTeam,
                       Match, MatchPlayer, MatchSelection, Player,
                       PlayerCommunityRating, PlayerSeasonSummary, PlayerTitle,
                       Season, SeasonRoster, db)  # noqa: E402
@@ -1053,6 +1053,50 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         records = response.get_json()['data']['list']
         self.assertEqual(records[0]['start_time'], '2025-02-03T20:15:30')
+
+    def test_admin_can_list_and_delete_a_draft_record(self):
+        draft = DraftSession.create(
+            play_day='20990101',
+            started_at=datetime(2099, 1, 1, 18, 50),
+            completed_at=datetime(2099, 1, 1, 19, 0),
+            roster_fingerprint='admin-draft-roster',
+            roll_fingerprint='admin-draft-roll',
+            team_count=1,
+            status='complete',
+        )
+        DraftTeam.create(
+            session=draft, team_num=0, area='area1', roster_size=1,
+            captain_nickname='测试队长', group_name='A', roll=100,
+        )
+        DraftPlayer.create(
+            session=draft, team_num=0, slot=1, is_captain=True,
+            nickname='测试队长', needs_steam=True,
+        )
+        try:
+            unauthenticated = self.client.get('/api/admin/drafts')
+            self.assertEqual(unauthenticated.status_code, 401)
+
+            self._login_admin()
+            response = self.client.get('/api/admin/drafts?status=complete')
+            self.assertEqual(response.status_code, 200)
+            item = next(
+                row for row in response.get_json()['data']['items']
+                if row['id'] == draft.id
+            )
+            self.assertEqual(item['player_count'], 1)
+            self.assertEqual(item['captains'], ['测试队长'])
+
+            invalid = self.client.get('/api/admin/drafts?status=unknown')
+            self.assertEqual(invalid.status_code, 400)
+            deleted = self.client.delete(f'/api/admin/drafts/{draft.id}')
+            self.assertEqual(deleted.status_code, 200)
+            self.assertFalse(DraftSession.select().where(DraftSession.id == draft.id).exists())
+            self.assertFalse(DraftTeam.select().where(DraftTeam.session == draft.id).exists())
+            self.assertFalse(DraftPlayer.select().where(DraftPlayer.session == draft.id).exists())
+        finally:
+            DraftPlayer.delete().where(DraftPlayer.session == draft.id).execute()
+            DraftTeam.delete().where(DraftTeam.session == draft.id).execute()
+            DraftSession.delete().where(DraftSession.id == draft.id).execute()
 
     def test_admin_can_save_season_when_datetime_omits_zero_seconds(self):
         cup = 'season-minute-precision-test'

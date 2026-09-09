@@ -7,6 +7,7 @@ const router = createRouter({
     { path: '/', component: () => import('./views/Home.vue'), meta: { title: 'CS2 赛事数据、选手 Rating 与战绩' } },
     { path: '/admin/login', component: () => import('./views/Login.vue'), meta: { title: '管理登录', noindex: true } },
     { path: '/admin/season', component: () => import('./views/AdminSeason.vue'), meta: { admin: true, title: '杯赛与采集', noindex: true } },
+    { path: '/admin/drafts', component: () => import('./views/AdminDrafts.vue'), meta: { admin: true, title: '选人记录', noindex: true } },
     { path: '/admin/players', component: () => import('./views/AdminPlayers.vue'), meta: { admin: true, title: '玩家库', noindex: true } },
     { path: '/admin/honours', component: () => import('./views/AdminHonours.vue'), meta: { admin: true, title: '荣誉奖项', noindex: true } },
     { path: '/admin/tasks', component: () => import('./views/AdminTasks.vue'), meta: { admin: true, title: '任务中心', noindex: true } },

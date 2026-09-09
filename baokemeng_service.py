@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
-from peewee import IntegrityError
+from peewee import IntegrityError, fn
 
 from database import DraftPlayer, DraftSession, DraftTeam, Player, db
 
@@ -677,6 +677,67 @@ def persist_final_draft(snapshot: dict[str, Any]) -> tuple[DraftSession, bool]:
 
 def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value else None
+
+
+def admin_draft_records(status: str | None = None) -> dict[str, Any]:
+    """Return every persisted draft session with enough context to manage it."""
+    query = DraftSession.select()
+    if status:
+        query = query.where(DraftSession.status == status)
+
+    sessions = list(query.order_by(
+        DraftSession.completed_at.desc(), DraftSession.id.desc()
+    ))
+    session_ids = [session.id for session in sessions]
+    teams_by_session: dict[int, list[DraftTeam]] = {}
+    player_counts: dict[int, int] = {}
+    if session_ids:
+        for team in (DraftTeam.select()
+                     .where(DraftTeam.session.in_(session_ids))
+                     .order_by(DraftTeam.session, DraftTeam.team_num)):
+            teams_by_session.setdefault(team.session_id, []).append(team)
+        for row in (DraftPlayer
+                    .select(DraftPlayer.session, fn.COUNT(DraftPlayer.id).alias('count'))
+                    .where(DraftPlayer.session.in_(session_ids))
+                    .group_by(DraftPlayer.session)):
+            player_counts[row.session_id] = int(row.count or 0)
+
+    all_counts = {
+        row.status: int(row.count or 0)
+        for row in (DraftSession
+                    .select(DraftSession.status, fn.COUNT(DraftSession.id).alias('count'))
+                    .group_by(DraftSession.status))
+    }
+    return {
+        'items': [{
+            'id': session.id,
+            'play_day': session.play_day,
+            'started_at': _iso(session.started_at),
+            'completed_at': _iso(session.completed_at),
+            'status': session.status,
+            'team_count': session.team_count,
+            'player_count': player_counts.get(session.id, 0),
+            'group_count': len({team.group_name for team in teams_by_session.get(session.id, [])}),
+            'captains': [
+                team.captain_nickname
+                for team in teams_by_session.get(session.id, [])
+                if team.captain_nickname
+            ],
+        } for session in sessions],
+        'counts': all_counts,
+    }
+
+
+def delete_draft_session(session_id: int) -> bool:
+    """Permanently remove a draft session and its child rows."""
+    session = DraftSession.get_or_none(DraftSession.id == session_id)
+    if session is None:
+        return False
+    with db.atomic():
+        DraftPlayer.delete().where(DraftPlayer.session == session_id).execute()
+        DraftTeam.delete().where(DraftTeam.session == session_id).execute()
+        deleted = DraftSession.delete().where(DraftSession.id == session_id).execute()
+    return bool(deleted)
 
 
 def public_draft_payload(day: str | None = None, session_id: int | None = None) -> dict[str, Any]:

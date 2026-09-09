@@ -6,8 +6,10 @@ from unittest.mock import patch
 from peewee import SqliteDatabase
 
 from baokemeng_service import (
+    admin_draft_records,
     DraftTracker,
     build_final_snapshot,
+    delete_draft_session,
     draft_pick_summaries,
     persist_final_draft,
     public_draft_payload,
@@ -397,6 +399,27 @@ class DraftPersistenceTest(unittest.TestCase):
         ))
         self.assertFalse(downgraded)
         self.assertEqual(DraftPlayer.select().count(), 5)
+
+    def test_admin_records_include_superseded_sessions_and_delete_children(self):
+        old, _ = persist_final_draft(self.snapshot())
+        current, _ = persist_final_draft(self.snapshot(
+            offset=20, completed_at=datetime(2026, 9, 3, 19, 10)
+        ))
+
+        payload = admin_draft_records()
+        self.assertEqual(payload['counts'], {'complete': 1, 'superseded': 1})
+        self.assertEqual([item['id'] for item in payload['items']], [current.id, old.id])
+        self.assertEqual(payload['items'][0]['player_count'], 5)
+        self.assertEqual(payload['items'][0]['group_count'], 1)
+        self.assertEqual(len(payload['items'][0]['captains']), 2)
+
+        filtered = admin_draft_records('superseded')
+        self.assertEqual([item['id'] for item in filtered['items']], [old.id])
+        self.assertTrue(delete_draft_session(old.id))
+        self.assertFalse(delete_draft_session(old.id))
+        self.assertFalse(DraftTeam.select().where(DraftTeam.session == old.id).exists())
+        self.assertFalse(DraftPlayer.select().where(DraftPlayer.session == old.id).exists())
+        self.assertEqual(DraftSession.select().count(), 1)
 
 
 if __name__ == '__main__':

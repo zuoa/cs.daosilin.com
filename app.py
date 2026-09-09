@@ -21,8 +21,8 @@ from auth import (captcha_ok, captcha_response, clear_login_fail, current_admin,
                   verify_password)
 from champion_service import (build_daily_champion_bracket, judge_champion,
                               _team_aliases_from_players)
-from cache_service import (cached_response, init_cache, invalidate_profiles,
-                           invalidate_season, season_scope)
+from cache_service import (cached_response, init_cache, invalidate_cache,
+                           invalidate_profiles, invalidate_season, season_scope)
 from config import (ADMIN_PASSWORD, ADMIN_USERNAME, DEMO_BACKFILL_DAYS,
                     EXTERNAL_API_TOKEN, LLM_MODEL_NAME, REDIS_URL,
                     SECRET_KEY, SITE_NAME)
@@ -429,6 +429,24 @@ def api_draft():
     response = success({'site_name': SITE_NAME, **payload})
     response.headers['Cache-Control'] = 'no-store'
     return response
+
+
+@app.route('/api/admin/drafts')
+def api_admin_drafts():
+    status = (request.args.get('status') or '').strip() or None
+    if status not in (None, 'complete', 'superseded'):
+        return error(400, '选人记录状态无效'), 400
+    from baokemeng_service import admin_draft_records
+    return success(admin_draft_records(status))
+
+
+@app.route('/api/admin/drafts/<int:session_id>', methods=['DELETE'])
+def api_admin_draft_delete(session_id):
+    from baokemeng_service import delete_draft_session
+    if not delete_draft_session(session_id):
+        return error(404, '选人记录不存在'), 404
+    invalidate_cache('draft', 'external')
+    return success({'message': '选人记录已删除', 'id': session_id})
 
 
 @app.route('/api/v1/cup/<string:cup>')
