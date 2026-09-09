@@ -20,6 +20,10 @@
           <AppIcon name="users" />
           <span>玩家库</span>
         </router-link>
+        <router-link to="/admin/honours">
+          <AppIcon name="trophy" />
+          <span>荣誉奖项</span>
+        </router-link>
         <router-link to="/admin/tasks">
           <AppIcon name="activity" />
           <span>任务中心</span>

@@ -1544,6 +1544,12 @@ class Season(BaseModel, CRUDMixin):
                 'player_summaries': PlayerSeasonSummary.delete().where(
                     PlayerSeasonSummary.cup_name == cup_name
                 ).execute(),
+                'honour_snapshots': SeasonHonourSnapshot.delete().where(
+                    SeasonHonourSnapshot.cup_name == cup_name
+                ).execute(),
+                'manual_honours': ManualHonourAward.delete().where(
+                    ManualHonourAward.cup_name == cup_name
+                ).execute(),
                 'champions': CupDayChampion.delete().where(
                     CupDayChampion.cup_name == cup_name
                 ).execute(),
@@ -1773,6 +1779,30 @@ class AdminUser(BaseModel, CRUDMixin):
         table_name = 'admin_user'
 
 
+class SeasonHonourSnapshot(BaseModel, CRUDMixin):
+    """Persisted automatic honour calculation for one season."""
+    cup_name = CharField(max_length=128, unique=True)
+    payload_json = TextField()
+    calculated_at = DateTimeField(default=datetime.now)
+
+    class Meta:
+        table_name = 'season_honour_snapshot'
+
+
+class ManualHonourAward(BaseModel, CRUDMixin):
+    """Administrator-curated season award and its ordered recipients."""
+    cup_name = CharField(max_length=128, index=True)
+    title = CharField(max_length=120)
+    description = TextField()
+    recipients_json = TextField(default='[]')
+
+    class Meta:
+        table_name = 'manual_honour_award'
+        indexes = (
+            (('cup_name', 'created_at'), False),
+        )
+
+
 class FeedbackSubmission(BaseModel, CRUDMixin):
     """Reusable public feedback inbox.
 
@@ -1932,5 +1962,6 @@ def create_tables():
                           PlayerSeasonSummary,
                           DemoCredential, DemoAnalysis, DemoPlayerStats, Season, SeasonRoster,
                           MatchSelection, DraftSession, DraftTeam, DraftPlayer,
-                          AdminUser, FeedbackSubmission, SchemaMigration], safe=True)
+                          AdminUser, SeasonHonourSnapshot, ManualHonourAward,
+                          FeedbackSubmission, SchemaMigration], safe=True)
     migrate_schema()

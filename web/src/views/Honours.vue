@@ -100,8 +100,8 @@
                 <span class="honour-state">{{ awardStatusLabel(activeAward) }}</span>
               </header>
 
-              <ol class="honour-podium spotlight-podium" :aria-label="`${activeAward.title}前三名`">
-                <li v-for="slot in podiumSlots(activeAward.entries)" :key="slot.position" :class="`position-${slot.position}`">
+              <ol class="honour-podium spotlight-podium" :aria-label="`${activeAward.title}获奖名单`">
+                <li v-for="slot in awardSlots(activeAward)" :key="slot.position" :class="`position-${slot.position}`">
                   <template v-if="slot.entry">
                     <div v-if="slot.entry.members?.length" class="podium-player podium-duo">
                       <span class="podium-duo-avatars">
@@ -184,8 +184,8 @@
               >
                 <header class="honour-card-heading"><div><span>{{ awardCode(award) }}</span><h3>{{ award.title }}</h3></div><span class="honour-state">{{ awardStatusLabel(award) }}</span></header>
                 <p class="honour-description">{{ award.description }}</p>
-                <ol class="honour-podium" :aria-label="`${award.title}前三名`">
-                  <li v-for="slot in podiumSlots(award.entries)" :key="slot.position" :class="`position-${slot.position}`">
+                <ol class="honour-podium" :aria-label="`${award.title}获奖名单`">
+                  <li v-for="slot in awardSlots(award)" :key="slot.position" :class="`position-${slot.position}`">
                     <template v-if="slot.entry">
                       <div v-if="slot.entry.members?.length" class="podium-player podium-duo">
                         <span class="podium-duo-avatars">
@@ -238,7 +238,7 @@
           <p>{{ exportAward.description }}</p>
         </div>
         <ol class="honour-poster-podium">
-          <li v-for="slot in podiumSlots(exportAward.entries)" :key="slot.position" :class="`position-${slot.position}`">
+          <li v-for="slot in awardSlots(exportAward)" :key="slot.position" :class="`position-${slot.position}`">
             <span v-if="slot.entry?.members?.length" class="poster-duo-avatars">
               <span v-for="member in slot.entry.members" :key="member.player_id" class="poster-avatar"><PlayerAvatar :src="member.avatar" :name="member.name" /></span>
               <b>{{ slot.position }}</b>
@@ -343,6 +343,7 @@ const categoryNotes = {
   specialist: '技能点没乱加，只是加得很有方向。',
   chemistry: '有些组合互相抬高上限，有些组合只抬高血压。',
   side: '这两项必须等逐回合阵营数据，先把位置留在星图里。',
+  manual: '有些名场面不该只交给公式，评审把理由一起写在这里。',
 }
 
 const groups = computed(() => groupHonours(payload.value?.categories, payload.value?.awards))
@@ -362,9 +363,20 @@ function awardCode(award) {
 }
 
 function awardStatusLabel(award) {
+  if (award.is_manual) return `获奖 ${award.entries.length} 人`
   if (award.status === 'ready') return 'TOP 3'
   if (award.status === 'data_required') return '待补数据'
   return '待开奖'
+}
+
+function awardSlots(award) {
+  if (award?.is_manual) {
+    return (award.entries || []).map((entry, index) => ({
+      position: Number(entry.position) || index + 1,
+      entry,
+    }))
+  }
+  return podiumSlots(award?.entries || [])
 }
 
 function syncAwardHash(award) {

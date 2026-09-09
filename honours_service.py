@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import math
+import json
 import statistics
+import threading
 from collections import defaultdict
 from datetime import datetime
 from itertools import combinations
@@ -13,7 +15,8 @@ from baokemeng_service import draft_pick_summaries
 from champion_service import (_player_ids_by_team, _team_aliases_from_players,
                               opening_round_loser_teams)
 from community_rating_service import community_rating_summaries
-from database import CupDayChampion, Match, MatchPlayer, Player, Season
+from database import (CupDayChampion, ManualHonourAward, Match, MatchPlayer,
+                      Player, Season, SeasonHonourSnapshot, SeasonRoster)
 
 
 CATEGORIES = (
@@ -26,6 +29,13 @@ CATEGORIES = (
     ('chemistry', '搭档化学'),
     ('side', '阵营天赋'),
 )
+
+MANUAL_CATEGORY = ('manual', '评审特别奖')
+_snapshot_lock = threading.RLock()
+
+
+class HonourValidationError(ValueError):
+    pass
 
 
 def _number(value: object) -> float:
@@ -318,7 +328,7 @@ def _planned_side_award(key: str, title: str, description: str) -> dict[str, Any
     }
 
 
-def build_season_honours(cup: str) -> dict[str, Any]:
+def _calculate_season_honours(cup: str) -> dict[str, Any]:
     season = Season.get_by_cup(cup) or {}
     cup_alias = season.get('cup_alias') or season.get('name') or season.get('cup_name') or cup
     account_map = Player.account_map()
@@ -516,14 +526,6 @@ def build_season_honours(cup: str) -> dict[str, Any]:
                description='冠军路线的一轮游次数最多。', method='统计每日冠军路线首轮 BO3 失利次数。',
                players=players, metric='opening_loss_count', eligible=positive('opening_loss_count'),
                display=count_display('opening_loss_count'), evidence=lambda p: f"首轮落败 {int(p['opening_loss_count'])} 次"),
-        _award(key='map-workhorse', category='schedule', title='地图劳模',
-               description='别人打比赛，他在赛程表上常驻。', method='按赛季参赛地图总数排名。',
-               players=players, metric='match_count', eligible=general,
-               display=count_display('match_count', '张地图'), evidence=lambda p: f"覆盖 {int(p['day_count'])} 个比赛日"),
-        _award(key='attendance', category='schedule', title='全勤打卡王',
-               description='比赛日历翻到哪一页，都有他的记录。', method='按有出场记录的不同比赛日数排名。',
-               players=players, metric='day_count', eligible=positive('day_count'),
-               display=count_display('day_count', '个比赛日'), evidence=lambda p: f"共打 {int(p['match_count'])} 张地图"),
         _award(key='hottest-aim', category='form', title='今年枪最硬',
                description='和自己的过去相比，这赛季提升最大。', method='当前赛季 PWR 减去此前所有比赛的加权平均 PWR。',
                players=players, metric='history_gain', eligible=lambda p: p.get('history_gain') is not None,
@@ -611,3 +613,214 @@ def build_season_honours(cup: str) -> dict[str, Any]:
         'categories': [{'key': key, 'label': label} for key, label in CATEGORIES],
         'awards': awards,
     }
+
+
+def _decode_json(value: str, fallback):
+    try:
+        return json.loads(value)
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _player_directory(cup: str | None = None) -> list[dict[str, str]]:
+    """Return canonical player options, preferring players in the season."""
+    account_map = Player.account_map()
+    participant_ids = set(SeasonRoster.get_player_ids(cup)) if cup else set()
+    fallback = {}
+    if cup:
+        for row in MatchPlayer.filter_records(cup_name=cup):
+            raw_id = str(row.get('player_id') or '')
+            player_id = account_map.get(raw_id, raw_id)
+            if player_id:
+                participant_ids.add(player_id)
+                fallback.setdefault(player_id, row)
+
+    query = Player.select().where(Player.parent_player_id.is_null(True))
+    if participant_ids:
+        query = query.where(Player.player_id.in_(participant_ids))
+    result = []
+    seen = set()
+    for row in query.dicts():
+        player_id = str(row['player_id'])
+        seen.add(player_id)
+        result.append({
+            'player_id': player_id,
+            'name': _profile_name(row, fallback.get(player_id, {}), player_id),
+            'avatar': row.get('avatar') or (fallback.get(player_id) or {}).get('avatar') or '',
+        })
+    for player_id in sorted(participant_ids - seen):
+        row = fallback.get(player_id, {})
+        result.append({
+            'player_id': player_id,
+            'name': _profile_name({}, row, player_id),
+            'avatar': row.get('avatar') or '',
+        })
+    result.sort(key=lambda item: (item['name'].casefold(), item['player_id']))
+    return result
+
+
+def _manual_awards(cup: str) -> list[dict[str, Any]]:
+    rows = list(ManualHonourAward.select()
+                .where(ManualHonourAward.cup_name == cup)
+                .order_by(ManualHonourAward.created_at, ManualHonourAward.id))
+    if not rows:
+        return []
+    decoded = {row.id: _decode_json(row.recipients_json, []) for row in rows}
+    recipient_ids = {
+        str(recipient.get('player_id') or '')
+        for recipients in decoded.values() for recipient in recipients[:3]
+        if recipient.get('player_id')
+    }
+    directory = {
+        str(player['player_id']): {
+            'player_id': str(player['player_id']),
+            'name': _profile_name(player, {}, str(player['player_id'])),
+            'avatar': player.get('avatar') or '',
+        }
+        for player in (Player.select().where(
+            Player.player_id.in_(recipient_ids), Player.parent_player_id.is_null(True),
+        ).dicts() if recipient_ids else [])
+    }
+    awards = []
+    for row in rows:
+        recipients = decoded[row.id]
+        entries = []
+        admin_recipients = []
+        for position, recipient in enumerate(recipients[:3], start=1):
+            player_id = str(recipient.get('player_id') or '')
+            player = directory.get(player_id) or {
+                'player_id': player_id, 'name': player_id, 'avatar': '',
+            }
+            reason = str(recipient.get('reason') or '').strip()
+            admin_recipients.append({**player, 'reason': reason})
+            entries.append({
+                'position': position,
+                **player,
+                'value': position,
+                'display_value': '评审入选',
+                'evidence': reason,
+                'tied': False,
+            })
+        awards.append({
+            'id': row.id,
+            'key': f'manual-{row.id}',
+            'category': MANUAL_CATEGORY[0],
+            'title': row.title,
+            'description': row.description,
+            'method': '由赛事管理员结合赛事实况评选，获奖理由随名单公开。',
+            'is_manual': True,
+            'status': 'ready',
+            'entries': entries,
+            'recipients': admin_recipients,
+            'created_at': _iso(row.created_at),
+            'updated_at': _iso(row.updated_at),
+        })
+    return awards
+
+
+def _with_manual_awards(payload: dict[str, Any], cup: str) -> dict[str, Any]:
+    manual = _manual_awards(cup)
+    if manual:
+        payload['categories'] = [
+            *payload.get('categories', []),
+            {'key': MANUAL_CATEGORY[0], 'label': MANUAL_CATEGORY[1]},
+        ]
+        payload['awards'] = [*payload.get('awards', []), *manual]
+    payload['available_award_count'] = sum(
+        award.get('status') == 'ready' for award in payload.get('awards', [])
+    )
+    return payload
+
+
+def refresh_season_honours(cup: str, *, include_archived: bool = False) -> dict[str, Any]:
+    """Force one durable automatic snapshot; archived snapshots stay immutable."""
+    season = Season.get_by_cup(cup) or {}
+    existing = SeasonHonourSnapshot.get_or_none(SeasonHonourSnapshot.cup_name == cup)
+    if existing and season.get('status') == 'archived' and not include_archived:
+        return _decode_json(existing.payload_json, {})
+    with _snapshot_lock:
+        payload = _calculate_season_honours(cup)
+        snapshot = existing or SeasonHonourSnapshot(cup_name=cup)
+        snapshot.payload_json = json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
+        snapshot.calculated_at = datetime.now()
+        snapshot.save(force_insert=existing is None)
+        return payload
+
+
+def build_season_honours(cup: str) -> dict[str, Any]:
+    """Read the persisted daily snapshot and cheaply merge curated awards."""
+    snapshot = SeasonHonourSnapshot.get_or_none(SeasonHonourSnapshot.cup_name == cup)
+    payload = _decode_json(snapshot.payload_json, {}) if snapshot else {}
+    if not payload:
+        payload = refresh_season_honours(cup)
+    # JSON round-tripping prevents request-specific manual data mutating a cache object.
+    payload = json.loads(json.dumps(payload, ensure_ascii=False))
+    return _with_manual_awards(payload, cup)
+
+
+def admin_honours_payload(cup: str) -> dict[str, Any]:
+    season = Season.get_by_cup(cup)
+    if not season:
+        raise HonourValidationError('赛季不存在')
+    snapshot = SeasonHonourSnapshot.get_or_none(SeasonHonourSnapshot.cup_name == cup)
+    return {
+        'cup': cup,
+        'cup_alias': season.get('cup_alias') or season.get('name') or cup,
+        'season_status': season.get('status') or 'active',
+        'snapshot_calculated_at': _iso(snapshot.calculated_at) if snapshot else None,
+        'players': _player_directory(cup),
+        'awards': _manual_awards(cup),
+    }
+
+
+def save_manual_honour(cup: str, data: dict[str, Any], award_id: int | None = None) -> dict[str, Any]:
+    if not Season.get_by_cup(cup):
+        raise HonourValidationError('赛季不存在')
+    title = str(data.get('title') or '').strip()
+    description = str(data.get('description') or '').strip()
+    if not title or len(title) > 120:
+        raise HonourValidationError('奖项名称不能为空，且不能超过 120 个字符')
+    if not description or len(description) > 1000:
+        raise HonourValidationError('奖项说明不能为空，且不能超过 1000 个字符')
+    recipients = data.get('recipients')
+    if not isinstance(recipients, list) or not 1 <= len(recipients) <= 3:
+        raise HonourValidationError('请选择 1–3 名获奖选手')
+    valid_players = {item['player_id'] for item in _player_directory(cup)}
+    normalized = []
+    seen = set()
+    for recipient in recipients:
+        if not isinstance(recipient, dict):
+            raise HonourValidationError('获奖选手格式无效')
+        player_id = Player.canonical_player_id(str(recipient.get('player_id') or '').strip())
+        reason = str(recipient.get('reason') or '').strip()
+        if not player_id or player_id not in valid_players:
+            raise HonourValidationError('获奖选手不在该赛季参赛名单中')
+        if player_id in seen:
+            raise HonourValidationError('同一名选手不能重复入选')
+        if not reason or len(reason) > 500:
+            raise HonourValidationError('每名选手都需要填写不超过 500 个字符的获奖理由')
+        seen.add(player_id)
+        normalized.append({'player_id': player_id, 'reason': reason})
+
+    if award_id is None:
+        row = ManualHonourAward.create(
+            cup_name=cup, title=title, description=description,
+            recipients_json=json.dumps(normalized, ensure_ascii=False),
+        )
+    else:
+        row = ManualHonourAward.get_or_none(
+            (ManualHonourAward.id == award_id) & (ManualHonourAward.cup_name == cup)
+        )
+        if row is None:
+            raise HonourValidationError('手动奖项不存在')
+        row.title = title
+        row.description = description
+        row.recipients_json = json.dumps(normalized, ensure_ascii=False)
+        row.save()
+    return next(award for award in _manual_awards(cup) if award['id'] == row.id)
+
+
+def delete_manual_honour(cup: str, award_id: int) -> bool:
+    return bool(ManualHonourAward.delete().where(
+        (ManualHonourAward.id == award_id) & (ManualHonourAward.cup_name == cup)
+    ).execute())

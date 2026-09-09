@@ -1008,7 +1008,8 @@ img.player-monogram { object-fit: cover; }
   .admin-app { grid-template-columns: 1fr; }
   .admin-sidebar { position: static; display: grid; height: auto; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; padding: 10px 16px; overflow: visible; }
   .admin-brand { min-height: 48px; }
-  .admin-menu { display: flex; justify-content: center; gap: 5px; margin: 0; }
+  .admin-menu { display: flex; min-width: 0; justify-content: flex-start; gap: 5px; margin: 0; overflow-x: auto; scrollbar-width: none; }
+  .admin-menu::-webkit-scrollbar { display: none; }
   .admin-menu-label, .admin-menu-label.public-label, .admin-menu a.public-menu-link { display: none; }
   .admin-menu a { min-height: 40px; padding: 8px 12px; }
   .admin-menu a.router-link-active { box-shadow: inset 0 -2px var(--color-accent); }
@@ -1040,7 +1041,7 @@ img.player-monogram { object-fit: cover; }
   .button { min-height: 44px; }
   .admin-sidebar { grid-template-columns: auto 1fr; }
   .admin-brand > span:last-child { display: none; }
-  .admin-menu { justify-content: flex-end; }
+  .admin-menu { justify-content: flex-start; }
   .admin-menu a { font-size: .73rem; }
   .admin-account { display: none; }
   .admin-topbar { align-items: flex-start; flex-direction: column; gap: 16px; padding: 22px 18px; }

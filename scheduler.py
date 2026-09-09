@@ -704,6 +704,18 @@ def create_scheduler():
     )
 
     scheduler.add_job(
+        func=refresh_active_honours,
+        trigger=CronTrigger(hour='3', minute='0'),
+        id='refresh_season_honours',
+        name='赛季荣誉榜每日快照',
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        misfire_grace_time=3600,
+    )
+    logger.info('赛季荣誉榜任务已添加：每天 03:00 刷新进行中赛季，归档赛季不重算')
+
+    scheduler.add_job(
         func=refresh_perfect_ranks,
         trigger=CronTrigger(hour=PERFECT_RANK_REFRESH_HOURS, minute='15'),
         id='refresh_perfect_ranks',
@@ -753,6 +765,26 @@ def create_scheduler():
     logger.info('选手赛季 AI 点评对账任务已添加：每 10 分钟增量检查')
 
     return scheduler
+
+
+def refresh_active_honours():
+    """Refresh active seasons after the previous competition day has closed."""
+    from honours_service import refresh_season_honours
+
+    stats = {'refreshed': 0, 'failed': 0}
+    for season in Season.get_active():
+        cup = season.get('cup_name')
+        if not cup:
+            continue
+        try:
+            refresh_season_honours(cup)
+            invalidate_season(cup, external=False)
+            stats['refreshed'] += 1
+        except Exception as exc:
+            stats['failed'] += 1
+            logger.error(f'刷新赛季荣誉快照失败 cup={cup}: {exc}')
+    logger.info(f'赛季荣誉榜每日快照完成: {stats}')
+    return stats
 
 
 def _active_cup_names(champion_only=False):

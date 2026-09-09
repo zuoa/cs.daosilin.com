@@ -1,4 +1,6 @@
 import unittest
+import json
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from champion_service import opening_round_loser_teams
@@ -8,6 +10,8 @@ from honours_service import (
     _pair_award,
     _pair_records,
     _percentiles,
+    build_season_honours,
+    refresh_season_honours,
 )
 
 
@@ -94,6 +98,32 @@ class HonourCalculationTest(unittest.TestCase):
         self.assertEqual(award['entries'][0]['members'][0]['player_id'], 'a')
         self.assertEqual(award['entries'][1]['name'], 'Alpha × Charlie')
 
+    @patch('honours_service._with_manual_awards', side_effect=lambda payload, _cup: payload)
+    @patch('honours_service._calculate_season_honours')
+    @patch('honours_service.SeasonHonourSnapshot.get_or_none')
+    def test_public_honours_reuses_the_persisted_snapshot(self, get_snapshot, calculate, _merge):
+        get_snapshot.return_value = SimpleNamespace(payload_json=json.dumps({
+            'cup': 'cached-cup', 'awards': [], 'categories': [],
+        }))
+
+        payload = build_season_honours('cached-cup')
+
+        self.assertEqual(payload['cup'], 'cached-cup')
+        calculate.assert_not_called()
+
+    @patch('honours_service._calculate_season_honours')
+    @patch('honours_service.SeasonHonourSnapshot.get_or_none')
+    @patch('honours_service.Season.get_by_cup', return_value={'status': 'archived'})
+    def test_archived_snapshot_is_never_recalculated(self, _season, get_snapshot, calculate):
+        get_snapshot.return_value = SimpleNamespace(payload_json=json.dumps({
+            'cup': 'sealed-cup', 'status': 'final',
+        }))
+
+        payload = refresh_season_honours('sealed-cup')
+
+        self.assertEqual(payload['status'], 'final')
+        calculate.assert_not_called()
+
     @patch('app.build_season_honours')
     def test_public_api_exposes_the_honours_payload(self, build_honours):
         from app import app
@@ -114,7 +144,26 @@ class HonourCalculationTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()['data']['cup'], 'honours-api-test')
-        self.assertIn('stale-while-revalidate', response.headers['Cache-Control'])
+        self.assertIn('must-revalidate', response.headers['Cache-Control'])
+
+    @patch('app.invalidate_season')
+    @patch('app.save_manual_honour')
+    @patch('app.current_admin', return_value='admin')
+    def test_admin_can_create_a_manual_honour(self, _admin, save_honour, invalidate):
+        from app import app
+
+        save_honour.return_value = {'id': 7, 'title': '关键局定心丸'}
+        response = app.test_client().post('/api/admin/honours', json={
+            'cup': 'manual-cup',
+            'title': '关键局定心丸',
+            'description': '关键时刻稳住全队。',
+            'recipients': [{'player_id': 'p1', 'reason': '决赛连续完成残局。'}],
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['data']['id'], 7)
+        save_honour.assert_called_once()
+        invalidate.assert_called_once_with('manual-cup', external=False)
 
 
 if __name__ == '__main__':

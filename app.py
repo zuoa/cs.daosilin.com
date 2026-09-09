@@ -36,7 +36,9 @@ from demo_service import (demo_analysis_enabled, demo_credential_status,
                           set_demo_analysis_enabled)
 from live_service import (LiveRoomError, fetch_live_avatar, get_live_statuses,
                           normalize_live_room, resolve_live_room)
-from honours_service import build_season_honours
+from honours_service import (HonourValidationError, admin_honours_payload,
+                             build_season_honours, delete_manual_honour,
+                             refresh_season_honours, save_manual_honour)
 from feedback_service import (COOKIE_MAX_AGE as FEEDBACK_COOKIE_MAX_AGE,
                               COOKIE_NAME as FEEDBACK_COOKIE_NAME,
                               FeedbackError, feedback_inbox,
@@ -467,14 +469,66 @@ def api_cup(cup):
 
 
 @app.route('/api/v1/cup/<string:cup>/honours')
-@cached_response(timeout=60, scopes=lambda: (
-    season_scope(request.view_args['cup']), 'profiles', 'draft'))
 def api_cup_honours(cup):
     response = success(build_season_honours(cup))
     response.headers['Cache-Control'] = (
-        'public, max-age=15, stale-while-revalidate=45, stale-if-error=300'
+        'public, max-age=0, must-revalidate, stale-if-error=86400'
     )
     return response
+
+
+@app.route('/api/admin/honours')
+def api_admin_honours():
+    if not _admin_authed():
+        return error(403, '无权限访问'), 403
+    cup = (request.args.get('cup') or '').strip()
+    if not cup:
+        return error(400, '参数 cup 不能为空'), 400
+    try:
+        return success(admin_honours_payload(cup))
+    except HonourValidationError as exc:
+        return error(404, str(exc)), 404
+
+
+@app.route('/api/admin/honours', methods=['POST'])
+def api_admin_honours_create():
+    if not _admin_authed():
+        return error(403, '无权限访问'), 403
+    body = request.get_json(silent=True) or {}
+    cup = str(body.get('cup') or '').strip()
+    try:
+        award = save_manual_honour(cup, body)
+    except HonourValidationError as exc:
+        return error(400, str(exc)), 400
+    invalidate_season(cup, external=False)
+    return success(award)
+
+
+@app.route('/api/admin/honours/<int:award_id>', methods=['PATCH'])
+def api_admin_honours_update(award_id):
+    if not _admin_authed():
+        return error(403, '无权限访问'), 403
+    body = request.get_json(silent=True) or {}
+    cup = str(body.get('cup') or '').strip()
+    try:
+        award = save_manual_honour(cup, body, award_id=award_id)
+    except HonourValidationError as exc:
+        return error(400, str(exc)), 400
+    invalidate_season(cup, external=False)
+    return success(award)
+
+
+@app.route('/api/admin/honours/<int:award_id>', methods=['DELETE'])
+def api_admin_honours_delete(award_id):
+    if not _admin_authed():
+        return error(403, '无权限访问'), 403
+    cup = (request.args.get('cup') or '').strip()
+    if not cup:
+        return error(400, '参数 cup 不能为空'), 400
+    if not delete_manual_honour(cup, award_id):
+        return error(404, '手动奖项不存在'), 404
+    invalidate_season(cup, external=False)
+    return success({'message': '奖项已删除'})
 
 
 @app.route('/api/v1/feedback', methods=['POST'])
@@ -1326,12 +1380,19 @@ def api_admin_season_save():
     else:
         Season.create(cup_name=cup, **fields)
     saved_season = Season.get_by_cup(cup)
+    became_archived = fields['status'] == 'archived' and (
+        existing is None or existing.status != 'archived'
+    )
     if fields['status'] != 'active':
         set_auto_crawl_enabled(cup, False)
         set_crawl_status(cup, state='stopped', message='赛季已归档，自动采集已停止')
     elif season_crawl_phase(saved_season) == 'expired':
         set_auto_crawl_enabled(cup, False)
         set_crawl_status(cup, state='expired', message='赛季已截止，自动采集已停止')
+    if became_archived:
+        # Seal one final snapshot at the same moment as the season. Later daily
+        # jobs only iterate active seasons, so this payload remains immutable.
+        refresh_season_honours(cup, include_archived=True)
     invalidate_season(cup, seasons=True)
     return success("赛季已保存")
 

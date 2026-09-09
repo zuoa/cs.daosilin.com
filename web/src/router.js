@@ -8,6 +8,7 @@ const router = createRouter({
     { path: '/admin/login', component: () => import('./views/Login.vue'), meta: { title: '管理登录', noindex: true } },
     { path: '/admin/season', component: () => import('./views/AdminSeason.vue'), meta: { admin: true, title: '杯赛与采集', noindex: true } },
     { path: '/admin/players', component: () => import('./views/AdminPlayers.vue'), meta: { admin: true, title: '玩家库', noindex: true } },
+    { path: '/admin/honours', component: () => import('./views/AdminHonours.vue'), meta: { admin: true, title: '荣誉奖项', noindex: true } },
     { path: '/admin/tasks', component: () => import('./views/AdminTasks.vue'), meta: { admin: true, title: '任务中心', noindex: true } },
     { path: '/admin/feedback', component: () => import('./views/AdminFeedback.vue'), meta: { admin: true, title: '反馈收件箱', noindex: true } },
     { path: '/admin/settings', component: () => import('./views/AdminSettings.vue'), meta: { admin: true, title: 'API 与安全', noindex: true } },
