@@ -85,7 +85,7 @@
 
           <div class="compare-matrix-shell">
             <div class="compare-signal-sweep" aria-hidden="true"></div>
-            <div class="compare-matrix-scroll" tabindex="0" aria-label="PLAYER 数据对比表，可横向和纵向滚动">
+            <div class="compare-matrix-scroll">
               <table class="compare-matrix" :class="`players-${selectedPlayers.length}`">
                 <caption class="sr-only">{{ cupAlias || cup }} {{ day || '赛季总览' }} PLAYER 数据对比</caption>
                 <thead>
