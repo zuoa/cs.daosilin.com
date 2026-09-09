@@ -14,8 +14,8 @@ import {
   podiumSlots,
 } from './honours.js'
 
-test('honours open in the complete overview by default', () => {
-  assert.equal(DEFAULT_HONOURS_VIEW, 'overview')
+test('honours open in the item-by-item carousel by default', () => {
+  assert.equal(DEFAULT_HONOURS_VIEW, 'carousel')
 })
 
 test('podium slots retain semantic first-to-third order and fill gaps', () => {

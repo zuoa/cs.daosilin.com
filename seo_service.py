@@ -13,6 +13,11 @@ from peewee import fn
 from config import SITE_NAME, SITE_URL
 from database import MatchPlayer, Player, Season
 from honours_service import build_season_honours
+from public_data_service import (
+    build_cup_players,
+    player_detail_payload,
+    season_list_payload,
+)
 
 
 @dataclass
@@ -28,7 +33,9 @@ class SeoPage:
 _ADMIN_PATHS = {
     'admin/login',
     'admin/season',
+    'admin/drafts',
     'admin/players',
+    'admin/honours',
     'admin/tasks',
     'admin/feedback',
     'admin/settings',
@@ -63,27 +70,46 @@ def _season_days(cup):
     return [str(day) for day in MatchPlayer.get_cup_day_set(cup) if day]
 
 
-def _season_players(cup, day=None):
-    query = MatchPlayer.select(MatchPlayer.player_id, MatchPlayer.nickname).where(
-        MatchPlayer.cup_name == cup
+def _player_name(player):
+    return str(
+        player.get('alias_name') or player.get('nickname')
+        or player.get('player_id') or ''
     )
-    if day:
-        query = query.where(MatchPlayer.play_day == day)
-    account_map = Player.account_map()
-    profiles = {
-        str(row.player_id): row
-        for row in Player.select().where(Player.parent_player_id.is_null(True))
-    }
-    players = {}
-    for row in query.distinct():
-        player_id = account_map.get(str(row.player_id), str(row.player_id))
-        profile = profiles.get(player_id)
-        if not profile:
+
+
+def _number(value, digits=2):
+    try:
+        return f'{float(value or 0):.{digits}f}'
+    except (TypeError, ValueError):
+        return f'{0:.{digits}f}'
+
+
+def _percent(value, *, ratio=True):
+    try:
+        number = float(value or 0)
+    except (TypeError, ValueError):
+        number = 0
+    if ratio:
+        number *= 100
+    return f'{number:.1f}%'
+
+
+def _title_list(titles):
+    seen = set()
+    items = []
+    for title in titles or []:
+        name = str(title.get('title_name') or '')
+        if not name or name in seen:
             continue
-        players[player_id] = (
-            profile.alias_name or profile.nickname or row.nickname or player_id
+        seen.add(name)
+        description = str(title.get('title_description') or '')
+        items.append(
+            '<li><strong>{name}</strong>{description}</li>'.format(
+                name=escape(name),
+                description=(f'<span>{escape(description)}</span>' if description else ''),
+            )
         )
-    return sorted(players.items(), key=lambda item: item[1].casefold())
+    return ''.join(items)
 
 
 def _breadcrumbs(items):
@@ -103,14 +129,21 @@ def _breadcrumbs(items):
 
 
 def _home_page():
-    seasons = list(Season.select().order_by(Season.start_date.desc()))
-    links = ''.join(
-        '<li><a href="{path}">{name}</a><span>{dates}</span></li>'.format(
-            path=escape(_url_path(row.cup_name, trailing=True), quote=True),
-            name=escape(row.cup_alias or row.name or row.cup_name),
-            dates=escape(f'{_date(row.start_date)} — {_date(row.end_date)}'),
+    seasons = season_list_payload()
+    cards = ''.join(
+        '<li><article><h3><a href="{path}">{name}</a></h3>'
+        '<p>{status} · {dates}</p><dl><dt>比赛</dt><dd>{matches}</dd>'
+        '<dt>比赛日</dt><dd>{days}</dd></dl></article></li>'.format(
+            path=escape(_url_path(season.get('cup_name'), trailing=True), quote=True),
+            name=escape(_display_name(season)),
+            status='进行中' if season.get('status') == 'active' else '已归档',
+            dates=escape(
+                f"{_date(season.get('start_date'))} — {_date(season.get('end_date'))}"
+            ),
+            matches=int(season.get('match_count') or 0),
+            days=int(season.get('day_count') or 0),
         )
-        for row in seasons
+        for season in seasons
     )
     body = f'''<div class="public-site home-page seo-snapshot">
       <main>
@@ -118,7 +151,7 @@ def _home_page():
           <h1>读懂每一局，不止看比分。</h1>
           <p>围绕选手、赛季与比赛日组织的 CS2 赛事数据档案，查看 Rating、K/D、称号与冠军记录。</p>
         </div></section>
-        <section id="seasons" class="season-section"><h2>赛季数据</h2><ul>{links}</ul></section>
+        <section id="seasons" class="season-section"><h2>赛季数据</h2><ul>{cards}</ul></section>
       </main>
     </div>'''
     description = '熊掌 CS Major 提供 CS2 自定义赛事数据、选手 Rating、K/D、比赛记录、称号与冠军统计。'
@@ -144,20 +177,10 @@ def _season_page(season, day=None, community=False):
     days = _season_days(cup)
     if day and day not in days:
         return None
+    players, _cup_days = build_cup_players(cup, day)
     canonical_path = (
         _url_path(cup, 'community') if community
         else _url_path(cup, *([day] if day else []), trailing=True)
-    )
-    players = _season_players(cup, day)
-    player_links = ''.join(
-        '<li><a href="{path}">{name}</a></li>'.format(
-            path=escape(
-                _url_path('player', player_id, cup, *([day] if day else []), trailing=True),
-                quote=True,
-            ),
-            name=escape(player_name),
-        )
-        for player_id, player_name in players
     )
     day_links = ''.join(
         '<li><a href="{path}">{day}</a></li>'.format(
@@ -168,7 +191,54 @@ def _season_page(season, day=None, community=False):
     )
     if community:
         heading = f'{name}从夯到拉排名'
-        summary = f'{name}选手社区票选与加权排名，共 {len(players)} 名选手。'
+        formed = [
+            player for player in players
+            if (player.get('community_rating') or {}).get('status') == 'formed'
+        ]
+        formed.sort(key=lambda player: (
+            -float(player['community_rating'].get('score') or 0),
+            -int(player['community_rating'].get('total_votes') or 0),
+            _player_name(player).casefold(),
+        ))
+        ranked = [(index, player) for index, player in enumerate(formed, start=1)]
+        tier_sections = []
+        for label in ('夯', '顶级', '人上人', 'NPC', '拉完了'):
+            entries = ''.join(
+                '<li value="{rank}"><a href="{path}">{name}</a>'
+                '<span>加权评分 {score} · {votes} 票</span></li>'.format(
+                    rank=rank,
+                    path=escape(_url_path(
+                        'player', player.get('player_id'), cup, trailing=True,
+                    ), quote=True),
+                    name=escape(_player_name(player)),
+                    score=_number(player['community_rating'].get('score')),
+                    votes=int(player['community_rating'].get('total_votes') or 0),
+                )
+                for rank, player in ranked
+                if player['community_rating'].get('label') == label
+            )
+            tier_sections.append(
+                f'<section><h2>{label}</h2><ol>{entries}</ol></section>'
+            )
+        pending = [player for player in players if player not in formed]
+        pending_items = ''.join(
+            '<li><a href="{path}">{name}</a><span>{votes}/{minimum} 票</span></li>'.format(
+                path=escape(_url_path(
+                    'player', player.get('player_id'), cup, trailing=True,
+                ), quote=True),
+                name=escape(_player_name(player)),
+                votes=int((player.get('community_rating') or {}).get('total_votes') or 0),
+                minimum=int((player.get('community_rating') or {}).get('minimum_votes') or 5),
+            )
+            for player in pending
+        )
+        ranking_html = ''.join(tier_sections)
+        if pending_items:
+            ranking_html += f'<section><h2>等待成榜</h2><ul>{pending_items}</ul></section>'
+        summary = (
+            f'{name}选手社区票选与加权排名，共 {len(players)} 名选手，'
+            f'{len(formed)} 名已经成榜。'
+        )
     elif day:
         heading = f'{name} · {day}'
         summary = f'查看 {name} {day} 当日选手 Rating、K/D 与比赛表现，共 {len(players)} 名选手。'
@@ -178,11 +248,45 @@ def _season_page(season, day=None, community=False):
             f'查看 {name} 赛季选手排名、Rating、K/D、比赛记录与冠军统计，'
             f'共 {len(players)} 名选手。'
         )
+    if not community:
+        player_rows = []
+        for rank, player in enumerate(players, start=1):
+            player_path = _url_path(
+                'player', player.get('player_id'), cup,
+                *([day] if day else []), trailing=True,
+            )
+            honours = []
+            if player.get('is_champion'):
+                honours.append('冠军')
+            if player.get('is_runner_up'):
+                honours.append('亚军')
+            titles = _title_list(player.get('titles'))
+            player_rows.append(
+                '<li><article><h3><span>#{rank}</span> '
+                '<a href="{path}">{name}</a>{honours}</h3>'
+                '<dl><dt>Rating</dt><dd>{rating}</dd><dt>K/D</dt><dd>{kd}</dd>'
+                '<dt>胜率</dt><dd>{win_rate}</dd><dt>比赛</dt><dd>{matches}</dd>'
+                '<dt>ADR</dt><dd>{adr}</dd><dt>MVP</dt><dd>{mvp}</dd></dl>'
+                '{titles}</article></li>'.format(
+                    rank=rank,
+                    path=escape(player_path, quote=True),
+                    name=escape(_player_name(player)),
+                    honours=(f'<small>{escape("、".join(honours))}</small>' if honours else ''),
+                    rating=_number(player.get('avg_pw_rating')),
+                    kd=_number(player.get('kd_ratio')),
+                    win_rate=_percent(player.get('win_rate')),
+                    matches=int(player.get('match_count') or 0),
+                    adr=_number(player.get('avg_adpr')),
+                    mvp=int(player.get('total_mvp') or 0),
+                    titles=(f'<h4>数据称号</h4><ul>{titles}</ul>' if titles else ''),
+                )
+            )
+        ranking_html = f'<section><h2>选手榜单</h2><ol>{"".join(player_rows)}</ol></section>'
     body = f'''<div class="public-site season-page seo-snapshot">
       <main>
         <section class="season-hero"><h1>{escape(heading)}</h1><p>{escape(summary)}</p></section>
         <nav aria-label="比赛日"><a href="{escape(_url_path(cup, trailing=True), quote=True)}">赛季总览</a><ul>{day_links}</ul></nav>
-        <section><h2>{'社区票选选手' if community else '选手榜单'}</h2><ul>{player_links}</ul></section>
+        {ranking_html}
       </main>
     </div>'''
     title_suffix = '社区票选排名' if community else (f'{day} 当日数据' if day else '选手排名与战绩')
@@ -248,52 +352,123 @@ def _player_page(player_id, season, day=None):
     days = _season_days(cup)
     if day and day not in days:
         return None
-    canonical_id = Player.canonical_player_id(player_id)
-    profile = Player.get_or_none(Player.player_id == canonical_id)
-    if not profile:
+    payload, error = player_detail_payload(player_id, cup, day)
+    if error or not payload:
         return None
-    account_ids = Player.account_ids(canonical_id)
-    filters = [MatchPlayer.cup_name == cup, MatchPlayer.player_id.in_(account_ids)]
-    if day:
-        filters.append(MatchPlayer.play_day == day)
-    stats = (MatchPlayer
-             .select(
-                 fn.COUNT(MatchPlayer.id).alias('records'),
-                 fn.SUM(MatchPlayer.kill).alias('kills'),
-                 fn.SUM(MatchPlayer.death).alias('deaths'),
-                 fn.SUM(MatchPlayer.assist).alias('assists'),
-                 fn.AVG(MatchPlayer.pw_rating).alias('rating'),
-             )
-             .where(*filters)
-             .dicts()
-             .get())
-    if not stats.get('records'):
-        return None
+    canonical_id = str(payload['canonical_player_id'])
     if canonical_id != str(player_id):
         return SeoPage('', '', _url_path(
             'player', canonical_id, cup, *([day] if day else []), trailing=True,
         ))
-    name = profile.alias_name or profile.nickname or canonical_id
-    season_name = _display_name(season)
+    profile = payload.get('player') or {}
+    stats = payload.get('player_data') or {}
+    name = _player_name({**profile, 'player_id': canonical_id})
+    season_name = payload.get('cup_alias') or _display_name(season)
     canonical_path = _url_path(
         'player', canonical_id, cup, *([day] if day else []), trailing=True,
     )
-    kills = int(stats.get('kills') or 0)
-    deaths = int(stats.get('deaths') or 0)
-    assists = int(stats.get('assists') or 0)
-    rating = float(stats.get('rating') or 0)
-    kd = kills / deaths if deaths else kills
+    kills = int(stats.get('total_kills') or 0)
+    deaths = int(stats.get('total_deaths') or 0)
+    assists = int(stats.get('total_assists') or 0)
+    rating = _number(stats.get('avg_pw_rating'))
+    kd = _number(stats.get('kd_ratio'))
     scope = f'{day} 当日' if day else '赛季'
     description = (
-        f'{name} 在 {season_name} {scope}的 CS2 数据：Rating {rating:.2f}、'
-        f'K/D {kd:.2f}、{kills} 击杀、{deaths} 死亡与 {assists} 助攻。'
+        f'{name} 在 {season_name} {scope}的 CS2 数据：Rating {rating}、'
+        f'K/D {kd}、{kills} 击杀、{deaths} 死亡与 {assists} 助攻。'
+    )
+
+    trophy_items = ''.join(
+        '<li><strong>{trophy}</strong><span>{day} · {team}</span></li>'.format(
+            trophy='冠军' if item.get('trophy') == 'champion' else '亚军',
+            day=escape(str(item.get('day') or '')),
+            team=escape(str(item.get('team_name') or '暂无队名')),
+        )
+        for item in payload.get('trophy_history') or []
+    )
+    title_items = _title_list(payload.get('titles'))
+    map_items = ''.join(
+        '<li><article><h3>{name}</h3><dl><dt>比赛</dt><dd>{matches}</dd>'
+        '<dt>Rating</dt><dd>{rating}</dd><dt>胜率</dt><dd>{win_rate}</dd>'
+        '<dt>K/D</dt><dd>{kd}</dd></dl></article></li>'.format(
+            name=escape(str(item.get('map_name') or item.get('map_name_en') or '未知地图')),
+            matches=int(item.get('match_count') or 0),
+            rating=_number(item.get('avg_rating')),
+            win_rate=_percent(item.get('win_rate'), ratio=False),
+            kd=_number(item.get('kd_ratio')),
+        )
+        for item in (payload.get('map_stats') or [])[:6]
+    )
+    match_items = ''.join(
+        '<li><article><h3>{day} · {map_name}</h3><p>{result}</p>'
+        '<dl><dt>Rating</dt><dd>{rating}</dd><dt>K/D/A</dt>'
+        '<dd>{kills}/{deaths}/{assists}</dd></dl></article></li>'.format(
+            day=escape(str(item.get('play_day') or '')),
+            map_name=escape(str(item.get('map_name') or item.get('map_name_en') or '未知地图')),
+            result='胜利' if item.get('win') else '失利',
+            rating=_number(item.get('pw_rating')),
+            kills=int(item.get('kill') or 0),
+            deaths=int(item.get('death') or 0),
+            assists=int(item.get('assist') or 0),
+        )
+        for item in (payload.get('match_records') or [])[:10]
+    )
+    summary = payload.get('season_summary') or {}
+    summary_html = ''
+    if summary.get('status') == 'completed':
+        points = ''.join(
+            f'<div><dt>{label}</dt><dd>{escape(str(summary.get(key) or ""))}</dd></div>'
+            for key, label in (
+                ('strength', '优势'), ('weakness', '观察项'), ('style', '打法画像'),
+            )
+            if summary.get(key)
+        )
+        summary_html = (
+            '<section><h2>{headline}</h2><p>{overview}</p><dl>{points}</dl></section>'.format(
+                headline=escape(str(summary.get('headline') or '赛季球探报告')),
+                overview=escape(str(summary.get('overview') or '')),
+                points=points,
+            )
+        )
+    ranking_labels = {
+        'avg_pw_rating': 'Rating',
+        'total_kills': '总击杀',
+        'kd_ratio': 'K/D',
+        'win_rate': '胜率',
+        'avg_adpr': 'ADR',
+        'total_mvp': 'MVP',
+    }
+    ranking_items = ''.join(
+        f'<li><span>{label}</span><strong>赛季第 {int(rank)} 名</strong></li>'
+        for field, label in ranking_labels.items()
+        for rank in [(payload.get('player_rankings') or {}).get(field)]
+        if rank
+    )
+    day_links = ''.join(
+        '<li><a href="{path}">{day}</a></li>'.format(
+            path=escape(_url_path('player', canonical_id, cup, value, trailing=True), quote=True),
+            day=escape(value),
+        )
+        for value in payload.get('cup_days') or []
     )
     body = f'''<div class="public-site player-page seo-snapshot">
       <main>
         <nav><a href="{escape(_url_path(cup, *([day] if day else []), trailing=True), quote=True)}">返回 {escape(season_name)} 榜单</a></nav>
         <article><h1>{escape(name)}</h1><p>{escape(description)}</p>
-          <dl><dt>Rating</dt><dd>{rating:.2f}</dd><dt>K/D</dt><dd>{kd:.2f}</dd><dt>击杀</dt><dd>{kills}</dd><dt>死亡</dt><dd>{deaths}</dd><dt>助攻</dt><dd>{assists}</dd></dl>
+          <dl><dt>Rating</dt><dd>{rating}</dd><dt>K/D</dt><dd>{kd}</dd>
+          <dt>胜率</dt><dd>{_percent(stats.get('win_rate'))}</dd>
+          <dt>比赛</dt><dd>{int(stats.get('match_count') or 0)}</dd>
+          <dt>击杀</dt><dd>{kills}</dd><dt>死亡</dt><dd>{deaths}</dd>
+          <dt>助攻</dt><dd>{assists}</dd><dt>ADR</dt><dd>{_number(stats.get('avg_adpr'))}</dd>
+          <dt>MVP</dt><dd>{int(stats.get('total_mvp') or 0)}</dd></dl>
         </article>
+        {f'<section><h2>赛季荣誉</h2><ul>{trophy_items}</ul></section>' if trophy_items else ''}
+        {f'<section><h2>{"当日画像" if day else "赛季画像"}</h2><ul>{title_items}</ul></section>' if title_items else ''}
+        {f'<section><h2>赛季排名</h2><ul>{ranking_items}</ul></section>' if ranking_items else ''}
+        {summary_html}
+        <nav aria-label="选手比赛日"><a href="{escape(_url_path('player', canonical_id, cup, trailing=True), quote=True)}">赛季总览</a><ul>{day_links}</ul></nav>
+        {f'<section><h2>地图表现</h2><ul>{map_items}</ul></section>' if map_items else ''}
+        {f'<section><h2>近期比赛</h2><ol>{match_items}</ol></section>' if match_items else ''}
       </main>
     </div>'''
     title_scope = f'{day} 当日数据' if day else f'{season_name} 赛季数据'

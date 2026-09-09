@@ -1,4 +1,4 @@
-export const DEFAULT_HONOURS_VIEW = 'overview'
+export const DEFAULT_HONOURS_VIEW = 'carousel'
 
 export function podiumSlots(entries = []) {
   const byPosition = new Map(entries.map((entry) => [Number(entry.position), entry]))
