@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { api } from './api'
+import { applyPageTitle, nextDocumentTitle } from './pageTitle'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -37,8 +38,10 @@ router.beforeEach(async (to) => {
   }
 })
 
+let isFirstNavigation = true
 router.afterEach((to) => {
-  document.title = to.meta.title ? `${to.meta.title} · 熊掌CS Major` : '熊掌CS Major'
+  applyPageTitle(nextDocumentTitle(to, document.title, isFirstNavigation))
+  isFirstNavigation = false
   const robots = document.querySelector('meta[name="robots"]')
   if (robots) robots.setAttribute('content', to.meta.noindex ? 'noindex,follow' : 'index,follow')
   const canonical = document.querySelector('link[rel="canonical"]')

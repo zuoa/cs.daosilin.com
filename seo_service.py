@@ -388,6 +388,8 @@ def render_index(index_path, page):
         html, count=1, flags=re.I | re.S,
     )
     html = _set_meta(html, 'description', page.description)
+    html = _set_meta(html, 'twitter:title', page.title)
+    html = _set_meta(html, 'twitter:description', page.description)
     html = _set_meta(html, 'robots', 'index,follow' if page.indexable else 'noindex,follow')
 
     canonical = _absolute(page.canonical_path)

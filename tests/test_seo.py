@@ -28,6 +28,8 @@ class SeoServiceTest(unittest.TestCase):
     def test_render_index_adds_unique_metadata_and_snapshot(self):
         source = '''<!doctype html><html><head>
           <meta name="description" content="old" />
+          <meta name="twitter:title" content="熊掌CS Major" />
+          <meta name="twitter:description" content="old twitter" />
           <meta name="robots" content="index,follow" />
           <title>old</title></head><body><div id="app"></div></body></html>'''
         page = SeoPage(
@@ -44,6 +46,13 @@ class SeoServiceTest(unittest.TestCase):
         finally:
             os.unlink(index_path)
         self.assertIn('<title>选手 A 数据</title>', result)
+        self.assertIn('<meta name="twitter:title" content="选手 A 数据" />', result)
+        self.assertIn(
+            '<meta name="twitter:description" content="选手 A 的 Rating 和 K/D 数据。" />',
+            result,
+        )
+        self.assertEqual(result.count('name="twitter:title"'), 1)
+        self.assertNotIn('<meta name="twitter:title" content="熊掌CS Major"', result)
         self.assertIn('https://cs.daosilin.com/player/a/cup/', result)
         self.assertEqual(result.count('rel="canonical"'), 1)
         self.assertIn('<div id="app"><main><h1>选手 A</h1></main></div>', result)
