@@ -33,7 +33,7 @@ CATEGORIES = (
 )
 
 MANUAL_CATEGORY = ('manual', '评审特别奖')
-HONOURS_SCHEMA_VERSION = 3
+HONOURS_SCHEMA_VERSION = 4
 _snapshot_lock = threading.RLock()
 
 
@@ -392,10 +392,16 @@ def _summarize_side_stats(
         'ct_kast_rounds': 0.0,
         't_kast_rounds': 0.0,
     })
-    value_fields = (
-        'ct_rounds', 't_rounds', 'ct_kills', 't_kills',
-        'ct_damage', 't_damage', 'ct_kast_rounds', 't_kast_rounds',
-    )
+    value_fields = {
+        'ct_rounds': ('ct_rounds', 'rounds_ct'),
+        't_rounds': ('t_rounds', 'rounds_t'),
+        'ct_kills': ('ct_kills',),
+        't_kills': ('t_kills',),
+        'ct_damage': ('ct_damage',),
+        't_damage': ('t_damage',),
+        'ct_kast_rounds': ('ct_kast_rounds',),
+        't_kast_rounds': ('t_kast_rounds',),
+    }
     for row in rows:
         raw_player_id = str(row.get('player_id') or '')
         player_id = account_map.get(raw_player_id, raw_player_id)
@@ -404,8 +410,12 @@ def _summarize_side_stats(
             continue
         stats = totals[player_id]
         stats['match_ids'].add(match_id)
-        for field in value_fields:
-            stats[field] += _number(row.get(field))
+        for field, source_fields in value_fields.items():
+            value = next(
+                (row.get(source) for source in source_fields if row.get(source) is not None),
+                0,
+            )
+            stats[field] += _number(value)
 
     result = {}
     for player_id, stats in totals.items():
@@ -435,8 +445,8 @@ def _side_stats(
              .select(
                  DemoPlayerStats.match_id,
                  DemoPlayerStats.player_id,
-                 DemoPlayerStats.rounds_ct,
-                 DemoPlayerStats.rounds_t,
+                 DemoPlayerStats.rounds_ct.alias('ct_rounds'),
+                 DemoPlayerStats.rounds_t.alias('t_rounds'),
                  DemoPlayerStats.ct_kills,
                  DemoPlayerStats.t_kills,
                  DemoPlayerStats.ct_damage,

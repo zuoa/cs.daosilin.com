@@ -171,7 +171,7 @@ class HonourCalculationTest(unittest.TestCase):
         rows = [
             {
                 'match_id': 'm1', 'player_id': 'a-alt',
-                'ct_rounds': 16, 't_rounds': 14,
+                'rounds_ct': 16, 'rounds_t': 14,
                 'ct_kills': 12, 't_kills': 11,
                 'ct_damage': 1280, 't_damage': 1260,
                 'ct_kast_rounds': 12, 't_kast_rounds': 10,
