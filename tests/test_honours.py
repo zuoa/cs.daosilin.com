@@ -5,11 +5,15 @@ from unittest.mock import patch
 
 from champion_service import opening_round_loser_teams
 from honours_service import (
+    HONOURS_SCHEMA_VERSION,
     _award,
+    _matchup_award,
+    _matchup_records,
     _minimum_matches,
     _pair_award,
     _pair_records,
     _percentiles,
+    _summarize_unused_utility,
     build_season_honours,
     refresh_season_honours,
 )
@@ -98,11 +102,71 @@ class HonourCalculationTest(unittest.TestCase):
         self.assertEqual(award['entries'][0]['members'][0]['player_id'], 'a')
         self.assertEqual(award['entries'][1]['name'], 'Alpha × Charlie')
 
+    def test_matchup_award_ranks_opposing_pairs_by_kill_difference(self):
+        players = {
+            'a': {'player_id': 'a', 'name': 'Alpha', 'avatar': 'a.png'},
+            'b': {'player_id': 'b', 'name': 'Bravo', 'avatar': 'b.png'},
+            'c': {'player_id': 'c', 'name': 'Charlie', 'avatar': 'c.png'},
+        }
+        rows = [
+            {'match_id': 'm1', 'team': 1, 'player_id': 'a-alt',
+             'kill_map': json.dumps({'b': 8, 'c': 9})},
+            {'match_id': 'm1', 'team': 2, 'player_id': 'b',
+             'kill_map': json.dumps({'a-alt': 2, 'c': 4})},
+            {'match_id': 'm1', 'team': 2, 'player_id': 'c',
+             'kill_map': json.dumps({'a-alt': 4, 'b': 2})},
+        ]
+
+        records = _matchup_records(rows, {'a-alt': 'a'}, players)
+        award = _matchup_award(records, players)
+
+        self.assertEqual(records[('a', 'b')], {'a': 8, 'b': 2})
+        self.assertNotIn(('b', 'c'), records)  # Same-team kills are excluded.
+        self.assertEqual(award['entries'][0]['name'], 'Alpha vs Bravo')
+        self.assertEqual(award['entries'][0]['display_value'], '+6 击杀差')
+        self.assertEqual(award['entries'][0]['evidence'], '对位 8:2 · 共 10 次交手')
+        self.assertEqual(award['entries'][1]['name'], 'Alpha vs Charlie')
+        self.assertEqual(award['entries'][1]['display_value'], '+5 击杀差')
+        self.assertEqual(
+            [member['player_id'] for member in award['entries'][0]['members']],
+            ['a', 'b'],
+        )
+
+    def test_matchup_award_requires_six_total_encounters(self):
+        players = {
+            'a': {'player_id': 'a', 'name': 'Alpha', 'avatar': ''},
+            'b': {'player_id': 'b', 'name': 'Bravo', 'avatar': ''},
+        }
+
+        award = _matchup_award({('a', 'b'): {'a': 5}}, players)
+
+        self.assertEqual(award['status'], 'collecting')
+        self.assertEqual(award['entries'], [])
+
+    def test_unused_utility_uses_completed_demo_rows_per_canonical_player(self):
+        players = {
+            'a': {'player_id': 'a', 'name': 'Alpha'},
+            'b': {'player_id': 'b', 'name': 'Bravo'},
+        }
+        rows = [
+            {'match_id': 'm1', 'player_id': 'a-alt', 'unused_utility_value': 500},
+            {'match_id': 'm2', 'player_id': 'a', 'unused_utility_value': 700},
+            {'match_id': 'm1', 'player_id': 'b', 'unused_utility_value': 300},
+            {'match_id': 'm3', 'player_id': 'outsider', 'unused_utility_value': 900},
+        ]
+
+        result = _summarize_unused_utility(rows, {'a-alt': 'a'}, players)
+
+        self.assertEqual(result['a'], {'total': 1200.0, 'matches': 2, 'average': 600.0})
+        self.assertEqual(result['b'], {'total': 300.0, 'matches': 1, 'average': 300.0})
+        self.assertNotIn('outsider', result)
+
     @patch('honours_service._with_manual_awards', side_effect=lambda payload, _cup: payload)
     @patch('honours_service._calculate_season_honours')
     @patch('honours_service.SeasonHonourSnapshot.get_or_none')
     def test_public_honours_reuses_the_persisted_snapshot(self, get_snapshot, calculate, _merge):
         get_snapshot.return_value = SimpleNamespace(payload_json=json.dumps({
+            'schema_version': HONOURS_SCHEMA_VERSION,
             'cup': 'cached-cup', 'awards': [], 'categories': [],
         }))
 
@@ -110,6 +174,25 @@ class HonourCalculationTest(unittest.TestCase):
 
         self.assertEqual(payload['cup'], 'cached-cup')
         calculate.assert_not_called()
+
+    @patch('honours_service._with_manual_awards', side_effect=lambda payload, _cup: payload)
+    @patch('honours_service.refresh_season_honours')
+    @patch('honours_service.SeasonHonourSnapshot.get_or_none')
+    def test_public_honours_refreshes_an_old_snapshot_schema(self, get_snapshot, refresh, _merge):
+        get_snapshot.return_value = SimpleNamespace(payload_json=json.dumps({
+            'cup': 'stale-cup', 'awards': [], 'categories': [],
+        }))
+        refresh.return_value = {
+            'schema_version': HONOURS_SCHEMA_VERSION,
+            'cup': 'stale-cup',
+            'awards': [],
+            'categories': [],
+        }
+
+        payload = build_season_honours('stale-cup')
+
+        self.assertEqual(payload['schema_version'], HONOURS_SCHEMA_VERSION)
+        refresh.assert_called_once_with('stale-cup', include_archived=True)
 
     @patch('honours_service._calculate_season_honours')
     @patch('honours_service.SeasonHonourSnapshot.get_or_none')

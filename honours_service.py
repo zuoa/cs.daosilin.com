@@ -15,8 +15,10 @@ from baokemeng_service import draft_pick_summaries
 from champion_service import (_player_ids_by_team, _team_aliases_from_players,
                               opening_round_loser_teams)
 from community_rating_service import community_rating_summaries
-from database import (CupDayChampion, ManualHonourAward, Match, MatchPlayer,
-                      Player, Season, SeasonHonourSnapshot, SeasonRoster)
+from config import DEMO_METRIC_VERSION
+from database import (CupDayChampion, DemoAnalysis, DemoPlayerStats,
+                      ManualHonourAward, Match, MatchPlayer, Player, Season,
+                      SeasonHonourSnapshot, SeasonRoster)
 
 
 CATEGORIES = (
@@ -31,6 +33,7 @@ CATEGORIES = (
 )
 
 MANUAL_CATEGORY = ('manual', '评审特别奖')
+HONOURS_SCHEMA_VERSION = 2
 _snapshot_lock = threading.RLock()
 
 
@@ -316,6 +319,180 @@ def _pair_award(
     }
 
 
+def _summarize_unused_utility(
+    rows,
+    account_map: dict[str, str],
+    players: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, float]]:
+    totals = defaultdict(lambda: {'total': 0.0, 'match_ids': set()})
+    for row in rows:
+        raw_player_id = str(row.get('player_id') or '')
+        match_id = str(row.get('match_id') or '')
+        player_id = account_map.get(raw_player_id, raw_player_id)
+        if not match_id or player_id not in players:
+            continue
+        totals[player_id]['total'] += _number(row.get('unused_utility_value'))
+        totals[player_id]['match_ids'].add(match_id)
+    result = {}
+    for player_id, stats in totals.items():
+        matches = len(stats['match_ids'])
+        if not matches:
+            continue
+        result[player_id] = {
+            'total': stats['total'],
+            'matches': matches,
+            'average': stats['total'] / matches,
+        }
+    return result
+
+
+def _unused_utility_stats(
+    cup: str,
+    account_map: dict[str, str],
+    players: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, float]]:
+    """Aggregate unused utility only from completed, current-version demos."""
+    if not players:
+        return {}
+    query = (DemoPlayerStats
+             .select(
+                 DemoPlayerStats.match_id,
+                 DemoPlayerStats.player_id,
+                 DemoPlayerStats.unused_utility_value,
+             )
+             .join(MatchPlayer, on=(
+                 (DemoPlayerStats.match_id == MatchPlayer.match_id)
+                 & (DemoPlayerStats.player_id == MatchPlayer.player_id)
+             ))
+             .switch(DemoPlayerStats)
+             .join(DemoAnalysis, on=(DemoAnalysis.match_id == DemoPlayerStats.match_id))
+             .where(
+                 MatchPlayer.cup_name == cup,
+                 DemoAnalysis.status == 'completed',
+                 DemoAnalysis.metric_version == DEMO_METRIC_VERSION,
+             )
+             .dicts())
+    return _summarize_unused_utility(query, account_map, players)
+
+
+def _matchup_records(
+    rows: list[dict[str, Any]],
+    account_map: dict[str, str],
+    players: dict[str, dict[str, Any]],
+) -> dict[tuple[str, str], dict[str, int]]:
+    """Aggregate head-to-head kills for season players who were opponents."""
+    teams = {}
+    for row in rows:
+        match_id = str(row.get('match_id') or '')
+        raw_player_id = str(row.get('player_id') or '')
+        player_id = account_map.get(raw_player_id, raw_player_id)
+        team = str(row.get('team') or '')
+        if match_id and player_id in players and team:
+            teams[(match_id, player_id)] = team
+
+    records = defaultdict(lambda: defaultdict(int))
+    for row in rows:
+        match_id = str(row.get('match_id') or '')
+        raw_attacker_id = str(row.get('player_id') or '')
+        attacker_id = account_map.get(raw_attacker_id, raw_attacker_id)
+        if not match_id or attacker_id not in players:
+            continue
+        try:
+            kill_map = json.loads(row.get('kill_map') or '{}')
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        if not isinstance(kill_map, dict):
+            continue
+        for raw_victim_id, value in kill_map.items():
+            victim_id = account_map.get(str(raw_victim_id), str(raw_victim_id))
+            kills = int(_number(value))
+            if kills <= 0 or victim_id == attacker_id or victim_id not in players:
+                continue
+            attacker_team = teams.get((match_id, attacker_id))
+            victim_team = teams.get((match_id, victim_id))
+            if not attacker_team or not victim_team or attacker_team == victim_team:
+                continue
+            pair = tuple(sorted((attacker_id, victim_id)))
+            records[pair][attacker_id] += kills
+    return {pair: dict(kills) for pair, kills in records.items()}
+
+
+def _matchup_award(
+    records: dict[tuple[str, str], dict[str, int]],
+    players: dict[str, dict[str, Any]],
+    minimum_encounters: int = 6,
+) -> dict[str, Any]:
+    candidates = []
+    for pair, kills in records.items():
+        left_id, right_id = pair
+        left_kills = int(kills.get(left_id) or 0)
+        right_kills = int(kills.get(right_id) or 0)
+        encounters = left_kills + right_kills
+        difference = abs(left_kills - right_kills)
+        if encounters < minimum_encounters or difference <= 0:
+            continue
+        leader_id, victim_id = (
+            (left_id, right_id) if left_kills > right_kills else (right_id, left_id)
+        )
+        candidates.append({
+            'leader_id': leader_id,
+            'victim_id': victim_id,
+            'leader_kills': max(left_kills, right_kills),
+            'victim_kills': min(left_kills, right_kills),
+            'encounters': encounters,
+            'difference': difference,
+        })
+    candidates.sort(key=lambda item: (
+        -item['difference'],
+        -item['leader_kills'],
+        -item['encounters'],
+        str(players[item['leader_id']].get('name') or '').casefold(),
+        str(players[item['victim_id']].get('name') or '').casefold(),
+        item['leader_id'],
+        item['victim_id'],
+    ))
+    value_counts = defaultdict(int)
+    for candidate in candidates:
+        value_counts[candidate['difference']] += 1
+
+    entries = []
+    for position, candidate in enumerate(candidates[:3], start=1):
+        members = [
+            {
+                'player_id': player_id,
+                'name': players[player_id]['name'],
+                'avatar': players[player_id].get('avatar') or '',
+            }
+            for player_id in (candidate['leader_id'], candidate['victim_id'])
+        ]
+        entries.append({
+            'position': position,
+            'player_id': f"{candidate['leader_id']}+{candidate['victim_id']}",
+            'name': f"{members[0]['name']} vs {members[1]['name']}",
+            'avatar': '',
+            'members': members,
+            'value': candidate['difference'],
+            'display_value': f"+{candidate['difference']} 击杀差",
+            'evidence': (
+                f"对位 {candidate['leader_kills']}:{candidate['victim_kills']}"
+                f" · 共 {candidate['encounters']} 次交手"
+            ),
+            'tied': value_counts[candidate['difference']] > 1,
+        })
+    return {
+        'key': 'matchup-massacre',
+        'category': 'match',
+        'title': '对位屠杀榜',
+        'description': '一对一的账本里，有人把差距拉成了鸿沟。',
+        'method': (
+            f'汇总同图不同队选手之间的直接击杀。双方至少 {minimum_encounters} 次交手，'
+            '按领先方净胜击杀数从高到低排名。'
+        ),
+        'status': 'ready' if entries else 'collecting',
+        'entries': entries,
+    }
+
+
 def _planned_side_award(key: str, title: str, description: str) -> dict[str, Any]:
     return {
         'key': key,
@@ -394,6 +571,7 @@ def _calculate_season_honours(cup: str) -> dict[str, Any]:
     history = _history_by_player(cup, player_ids, account_map, _season_start(cup, season))
     draft_stats = draft_pick_summaries(days, player_ids)
     community = community_rating_summaries(cup, player_ids) if player_ids else {}
+    unused_utility = _unused_utility_stats(cup, account_map, players)
 
     losing_rating = defaultdict(lambda: {'sum': 0.0, 'matches': 0})
     for row in raw_rows:
@@ -480,6 +658,11 @@ def _calculate_season_honours(cup: str) -> dict[str, Any]:
         if lost and lost['matches'] >= 3:
             player['losing_pwr'] = lost['sum'] / lost['matches']
             player['losing_pwr_sample'] = lost['matches']
+        utility = unused_utility.get(player_id)
+        if utility:
+            player['unused_utility_average'] = utility['average']
+            player['unused_utility_total'] = utility['total']
+            player['unused_utility_average_sample'] = utility['matches']
         rounds = _number(player.get('total_rounds'))
         kills = _number(player.get('total_kills'))
         matches = _number(player.get('match_count'))
@@ -508,6 +691,11 @@ def _calculate_season_honours(cup: str) -> dict[str, Any]:
         (int(item.get('matches') or 0) for item in pair_records.values()), default=0,
     )
     minimum_pair_maps = max(3, math.ceil(maximum_pair_maps * 0.30)) if maximum_pair_maps else 3
+    minimum_demo_matches = _minimum_matches({
+        player_id: {'match_count': stats['matches']}
+        for player_id, stats in unused_utility.items()
+    })
+    matchup_records = _matchup_records(raw_rows, account_map, players)
 
     awards = [
         _award(key='champion-counter', category='podium', title='金牌柜台',
@@ -562,6 +750,7 @@ def _calculate_season_honours(cup: str) -> dict[str, Any]:
                description='队伍输了，但他的 Rating 没先投降。', method='至少三场败局后，按败局平均 PWR 排名。',
                players=players, metric='losing_pwr', eligible=lambda p: general(p) and p.get('losing_pwr') is not None,
                display=decimal_display('losing_pwr'), evidence=lambda p: f"统计 {int(p['losing_pwr_sample'])} 场败局"),
+        _matchup_award(matchup_records, players),
         _award(key='first-death', category='match', title='白给效率奖',
                description='开局信息拿到了，人也顺便交代了。', method='按首死总数除以总回合数排名。',
                players=players, metric='first_death_rate', eligible=general,
@@ -582,6 +771,18 @@ def _calculate_season_honours(cup: str) -> dict[str, Any]:
                description='买都买了，绝不带回下一回合。', method='按手雷与燃烧总伤害除以总回合数排名。',
                players=players, metric='utility_damage_rate', eligible=general,
                display=decimal_display('utility_damage_rate'), evidence=lambda p: f"道具总伤害 {int(p['total_utility_damage'])}"),
+        _award(key='utility-collector', category='specialist', title='道具收藏家',
+               description='道具买得齐整，回合结束时也保存得很完整。',
+               method=(f'只统计已完成且指标版本有效的 Demo；至少覆盖 {minimum_demo_matches} 场，'
+                       '按未使用道具总价值除以有效 Demo 场次排名。'),
+               players=players, metric='unused_utility_average',
+               eligible=lambda p: (
+                   int(p.get('unused_utility_average_sample') or 0) >= minimum_demo_matches
+                   and _number(p.get('unused_utility_average')) > 0
+               ),
+               display=lambda p: f"${_number(p.get('unused_utility_average')):.2f} / 场",
+               evidence=lambda p: (f"Demo {int(p['unused_utility_average_sample'])} 场"
+                                   f" · 未用总值 ${int(p['unused_utility_total'])}")),
         _pair_award(key='duo-engine', title='双人成行',
                     description='这两个人一组队，胜率就开始往上走。',
                     method=f'统计同队至少 {minimum_pair_maps} 张地图的二人组合，按共同出场胜率从高到低排名。',
@@ -602,6 +803,7 @@ def _calculate_season_honours(cup: str) -> dict[str, Any]:
     ]
 
     return {
+        'schema_version': HONOURS_SCHEMA_VERSION,
         'cup': cup,
         'cup_alias': cup_alias,
         'status': 'final' if _is_final(season) else 'provisional',
@@ -751,8 +953,8 @@ def build_season_honours(cup: str) -> dict[str, Any]:
     """Read the persisted daily snapshot and cheaply merge curated awards."""
     snapshot = SeasonHonourSnapshot.get_or_none(SeasonHonourSnapshot.cup_name == cup)
     payload = _decode_json(snapshot.payload_json, {}) if snapshot else {}
-    if not payload:
-        payload = refresh_season_honours(cup)
+    if not payload or payload.get('schema_version') != HONOURS_SCHEMA_VERSION:
+        payload = refresh_season_honours(cup, include_archived=True)
     # JSON round-tripping prevents request-specific manual data mutating a cache object.
     payload = json.loads(json.dumps(payload, ensure_ascii=False))
     return _with_manual_awards(payload, cup)
