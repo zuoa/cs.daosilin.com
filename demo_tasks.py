@@ -58,7 +58,10 @@ def _state(match_id, status, **values):
         setattr(row, key, value)
     row.save()
     match = Match.get_or_none(Match.match_id == match_id)
-    if match and match.cup_name:
+    # Transitional queue/download/parser states do not change public metrics.
+    # Invalidating the full season for every transition used to turn a crawl
+    # that queued many demos into hundreds of expensive leaderboard rebuilds.
+    if match and match.cup_name and status == 'completed':
         invalidate_season(match.cup_name, external=False)
     return row
 

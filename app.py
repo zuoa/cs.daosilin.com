@@ -104,6 +104,13 @@ def add_search_headers(response):
     return response
 
 
+@app.after_request
+def cache_fingerprinted_assets(response):
+    if request.path.startswith('/assets/') and response.status_code in (200, 304):
+        response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    return response
+
+
 @app.before_request
 def protect_admin():
     path = request.path
@@ -415,8 +422,8 @@ def api_draft():
 
 
 @app.route('/api/v1/cup/<string:cup>')
-@cached_response(timeout=900, scopes=lambda: (
-    season_scope(request.view_args['cup']), 'profiles', 'community-verdict-v2', 'draft'))
+@cached_response(timeout=60, scopes=lambda: (
+    season_scope(request.view_args['cup']), 'profiles', 'draft'))
 def api_cup(cup):
     day = request.args.get('day') or None
     players, cup_days = _build_cup_players(cup, day)
@@ -435,7 +442,7 @@ def api_cup(cup):
             Match.filter_records(cup_name=cup, play_day=day),
             team_aliases,
         )
-    return success({
+    response = success({
         'cup': cup,
         'cup_alias': cup_alias,
         'day': day,
@@ -445,9 +452,14 @@ def api_cup(cup):
         'champion_bracket': champion_bracket,
         'last_crawl_time': Config.get_value("last_crawl_time"),
     })
+    response.headers['Cache-Control'] = (
+        'public, max-age=15, stale-while-revalidate=45, stale-if-error=300'
+    )
+    return response
 
 
 @app.route('/api/v1/live-status')
+@cached_response(timeout=15, scopes=('live-status',))
 def api_live_status():
     player_ids = list(dict.fromkeys(_parse_ids(request.args.get('player_ids'))))
     if not player_ids:
@@ -465,7 +477,9 @@ def api_live_status():
         )
     }
     response = success({'statuses': get_live_statuses(live_rooms)})
-    response.headers['Cache-Control'] = 'no-store'
+    response.headers['Cache-Control'] = (
+        'public, max-age=15, stale-while-revalidate=45, stale-if-error=300'
+    )
     return response
 
 
@@ -516,7 +530,6 @@ def api_player_community_rating(player_id):
         payload = save_daily_rating(
             player_id, cup, hash_voter(app.secret_key, voter_id), score,
         )
-        invalidate_season(cup, external=False)
     else:
         voter_hash = hash_voter(app.secret_key, voter_id) if voter_id else None
         payload = rating_payload(player_id, cup, voter_hash)

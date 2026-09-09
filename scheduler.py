@@ -682,17 +682,18 @@ def create_scheduler():
 
     scheduler = BlockingScheduler(executors=executors)
 
-    # 启用自动采集的赛季每 10 分钟获取一次；赛季截止后会在 crawl_all 中自动停用。
+    # 完整采集通常耗时十几分钟。每半小时错峰执行，避免任务近乎连续运行，
+    # 也避免在整点流量高峰与用户请求同时争抢 CPU/数据库。
     scheduler.add_job(
         func=crawl_all,
-        trigger=CronTrigger(minute='*/10'),
+        trigger=CronTrigger(minute='7,37'),
         id='crawl_job',
         name='赛季自动采集任务',
         replace_existing=True,
         coalesce=True,
         max_instances=1,
     )
-    logger.info("调度器已创建，任务已添加")
+    logger.info("调度器已创建：赛季自动采集每小时 07、37 分执行")
 
     scheduler.add_job(
         func=judge_all_champions,
@@ -711,10 +712,9 @@ def create_scheduler():
         coalesce=True,
         max_instances=1,
         misfire_grace_time=3600,
-        next_run_time=datetime.datetime.now() + datetime.timedelta(seconds=10),
     )
     logger.info(
-        f'完美段位任务已添加：每天 {PERFECT_RANK_REFRESH_HOURS} 点的 15 分执行，启动后立即执行一次'
+        f'完美段位任务已添加：每天 {PERFECT_RANK_REFRESH_HOURS} 点的 15 分执行'
     )
 
     from demo_tasks import cleanup_demo_archives, reconcile_demo_jobs
@@ -726,21 +726,19 @@ def create_scheduler():
         replace_existing=True,
         coalesce=True,
         max_instances=1,
-        next_run_time=datetime.datetime.now() + datetime.timedelta(seconds=30),
     )
     logger.info('Demo 分析对账任务已添加：后台开启后每 5 分钟执行并回填近 30 天')
 
     scheduler.add_job(
         func=cleanup_demo_archives,
-        trigger=CronTrigger(minute='17'),
+        trigger=CronTrigger(hour='4', minute='17'),
         id='demo_archive_cleanup',
         name='Demo 归档保留期清理',
         replace_existing=True,
         coalesce=True,
         max_instances=1,
-        next_run_time=datetime.datetime.now() + datetime.timedelta(seconds=60),
     )
-    logger.info('Demo 归档清理任务已添加：每小时删除超过保留期的文件')
+    logger.info('Demo 归档清理任务已添加：每天 04:17 删除超过保留期的文件')
 
     from player_summary_tasks import reconcile_player_summaries
     scheduler.add_job(
@@ -751,7 +749,6 @@ def create_scheduler():
         replace_existing=True,
         coalesce=True,
         max_instances=1,
-        next_run_time=datetime.datetime.now() + datetime.timedelta(seconds=45),
     )
     logger.info('选手赛季 AI 点评对账任务已添加：每 10 分钟增量检查')
 
@@ -792,7 +789,6 @@ if __name__ == '__main__':
     create_tables()
     # calc_titles('20250923')
     # judge_champion('20250925')
-    crawl_all()
     scheduler = create_scheduler()
     try:
         scheduler.start()

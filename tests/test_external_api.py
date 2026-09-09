@@ -16,6 +16,7 @@ os.environ['EXTERNAL_API_TOKEN'] = 'test-token'
 os.environ['ADMIN_PASSWORD'] = 'test-admin-password'
 
 from app import app  # noqa: E402
+import cache_service  # noqa: E402
 from cache_service import cache, invalidate_season  # noqa: E402
 from auth import EXTERNAL_TOKEN_HASH_KEY, EXTERNAL_TOKEN_HINT_KEY  # noqa: E402
 from database import (Config, CupDayChampion, DraftPlayer, DraftSession,
@@ -299,7 +300,11 @@ class ExternalPlayersApiTest(unittest.TestCase):
         payload = response.get_json()['data']['statuses']
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.headers.get('Cache-Control'), 'no-store')
+        self.assertEqual(
+            response.headers.get('Cache-Control'),
+            'public, max-age=15, stale-while-revalidate=45, stale-if-error=300',
+        )
+        self.assertEqual(response.headers.get('X-Cache'), 'MISS')
         self.assertEqual(payload['p1']['status'], 'live')
         self.assertEqual(payload['p2']['status'], 'offline')
         live_rooms = statuses.call_args.args[0]
@@ -339,11 +344,12 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(rating['label'], '拉完了')
         self.assertEqual(rating['label_method'], 'raw_average')
 
-    def test_community_rating_vote_invalidates_cup_leaderboard_cache(self):
+    def test_community_rating_vote_uses_bounded_cup_cache(self):
         cache.clear()
         path = '/api/v1/cup/season-one'
-        self.assertEqual(self.client.get(path).headers.get('X-Cache'), 'MISS')
-        self.assertEqual(self.client.get(path).headers.get('X-Cache'), 'HIT')
+        original = self.client.get(path)
+        self.assertEqual(original.headers.get('X-Cache'), 'MISS')
+        self.assertEqual(original.get_json()['data']['players'][0]['community_rating']['total_votes'], 0)
 
         response = self.client.post(
             '/api/v1/player/p1/community-rating?cup=season-one',
@@ -351,6 +357,13 @@ class ExternalPlayersApiTest(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
 
+        bounded_stale = self.client.get(path)
+        self.assertEqual(bounded_stale.headers.get('X-Cache'), 'HIT')
+        self.assertEqual(
+            bounded_stale.get_json()['data']['players'][0]['community_rating']['total_votes'], 0,
+        )
+
+        cache.clear()
         refreshed = self.client.get(path)
         self.assertEqual(refreshed.headers.get('X-Cache'), 'MISS')
         rating = refreshed.get_json()['data']['players'][0]['community_rating']
@@ -1185,6 +1198,22 @@ class ExternalPlayersApiTest(unittest.TestCase):
         third = self.client.get(path)
         self.assertEqual(third.status_code, 200)
         self.assertEqual(third.headers.get('X-Cache'), 'MISS')
+
+    def test_public_cup_cache_serves_stale_during_concurrent_refill(self):
+        cache.clear()
+        path = '/api/v1/cup/season-two'
+        populated = self.client.get(path)
+        self.assertEqual(populated.headers.get('X-Cache'), 'MISS')
+
+        invalidate_season('season-two', external=False)
+        with patch.object(
+            cache_service, '_acquire_fill_lock', return_value=(None, True),
+        ):
+            stale = self.client.get(path)
+
+        self.assertEqual(stale.status_code, 200)
+        self.assertEqual(stale.headers.get('X-Cache'), 'STALE')
+        self.assertEqual(stale.get_json(), populated.get_json())
 
     def test_external_auth_is_checked_before_response_cache(self):
         cache.clear()

@@ -20,6 +20,11 @@ _local_versions = {}
 _local_lock = threading.RLock()
 _redis = None
 
+RESPONSE_FILL_LOCK_SECONDS = 30
+RESPONSE_FILL_WAIT_SECONDS = 12
+RESPONSE_FILL_POLL_SECONDS = 0.1
+RESPONSE_STALE_MIN_SECONDS = 3600
+
 
 def init_cache(app) -> None:
     config = {
@@ -65,6 +70,25 @@ def _scope_version(scope: str) -> str:
             return secrets.token_hex(8)
     with _local_lock:
         return _local_versions.get(scope, '0')
+
+
+def _scope_versions(scopes: Iterable[str]) -> tuple[tuple[str, str], ...]:
+    """Resolve all scope versions with one Redis round trip."""
+    normalized = tuple(scopes)
+    if not normalized:
+        return ()
+    client = _redis_client()
+    if client is not None:
+        try:
+            values = client.mget([_version_key(scope) for scope in normalized])
+            return tuple(
+                (scope, value or '0') for scope, value in zip(normalized, values)
+            )
+        except Exception as exc:
+            logger.warning(f'Redis 版本批量读取失败，跳过响应缓存: {exc}')
+            return tuple((scope, secrets.token_hex(8)) for scope in normalized)
+    with _local_lock:
+        return tuple((scope, _local_versions.get(scope, '0')) for scope in normalized)
 
 
 def invalidate_cache(*scopes: str) -> None:
@@ -116,15 +140,31 @@ def _resolved_scopes(scope_resolver) -> tuple[str, ...]:
     return tuple(str(scope) for scope in (scopes or ()) if scope)
 
 
-def _response_key(scopes: Iterable[str]) -> str:
+def _response_keys(scopes: Iterable[str]) -> tuple[str, str]:
+    scopes = tuple(scopes)
     query = sorted((key, value) for key, values in request.args.lists() for value in values)
-    identity = json.dumps({
+    base_identity = {
         'method': request.method,
         'path': request.path,
         'query': query,
-        'versions': [(scope, _scope_version(scope)) for scope in scopes],
+        'scopes': scopes,
+    }
+    identity = json.dumps({
+        **base_identity,
+        'versions': _scope_versions(scopes),
     }, ensure_ascii=False, separators=(',', ':'), sort_keys=True)
-    return 'api-response:' + hashlib.sha256(identity.encode('utf-8')).hexdigest()
+    stale_identity = json.dumps(
+        base_identity, ensure_ascii=False, separators=(',', ':'), sort_keys=True,
+    )
+    return (
+        'api-response:' + hashlib.sha256(identity.encode('utf-8')).hexdigest(),
+        'api-response-stale:' + hashlib.sha256(stale_identity.encode('utf-8')).hexdigest(),
+    )
+
+
+def _response_key(scopes: Iterable[str]) -> str:
+    """Compatibility helper for callers that only need the current key."""
+    return _response_keys(scopes)[0]
 
 
 def _safe_get(key):
@@ -142,12 +182,12 @@ def _safe_set(key, value, timeout):
         logger.warning(f'Redis 响应缓存写入失败: {exc}')
 
 
-def _cached_flask_response(stored, started):
+def _cached_flask_response(stored, started, cache_state='HIT'):
     body, status, headers = stored
     response = make_response(body, status)
     for name, value in headers:
         response.headers[name] = value
-    response.headers['X-Cache'] = 'HIT'
+    response.headers['X-Cache'] = cache_state
     response.headers['Server-Timing'] = (
         f'cache;dur={(time.perf_counter() - started) * 1000:.2f}'
     )
@@ -160,7 +200,9 @@ def _acquire_fill_lock(key):
         return None, False
     token = secrets.token_hex(12)
     try:
-        acquired = client.set(f'cs:fill-lock:{key}', token, nx=True, ex=10)
+        acquired = client.set(
+            f'cs:fill-lock:{key}', token, nx=True, ex=RESPONSE_FILL_LOCK_SECONDS,
+        )
         return (token if acquired else None), not bool(acquired)
     except Exception:
         return None, False
@@ -193,7 +235,7 @@ def cached_response(timeout: int = 900, scopes=()):
         def wrapper(*args, **kwargs):
             if request.method != 'GET':
                 return func(*args, **kwargs)
-            key = _response_key(_resolved_scopes(scopes))
+            key, stale_key = _response_keys(_resolved_scopes(scopes))
             started = time.perf_counter()
             stored = _safe_get(key)
             if stored is not None:
@@ -201,13 +243,21 @@ def cached_response(timeout: int = 900, scopes=()):
 
             lock_token, contended = _acquire_fill_lock(key)
             if contended:
-                # Let the winning worker fill the key; bound the wait so a dead
-                # worker or slow database never stalls the request indefinitely.
-                for _ in range(5):
-                    time.sleep(0.03)
+                # A prior version is preferable to making every web worker
+                # rebuild an expensive payload after one logical invalidation.
+                stale = _safe_get(stale_key)
+                if stale is not None:
+                    return _cached_flask_response(stale, started, 'STALE')
+
+                # A truly cold key has no stale value. Let the winning worker
+                # fill it instead of turning a short burst into a cache stampede.
+                deadline = time.monotonic() + RESPONSE_FILL_WAIT_SECONDS
+                while time.monotonic() < deadline:
+                    time.sleep(RESPONSE_FILL_POLL_SECONDS)
                     stored = _safe_get(key)
                     if stored is not None:
                         return _cached_flask_response(stored, started)
+                lock_token, contended = _acquire_fill_lock(key)
             try:
                 response = make_response(func(*args, **kwargs))
                 response.headers['X-Cache'] = 'MISS'
@@ -219,7 +269,15 @@ def cached_response(timeout: int = 900, scopes=()):
                         (name, value) for name, value in response.headers.items()
                         if name.lower() in ('content-type', 'cache-control', 'www-authenticate')
                     ]
-                    _safe_set(key, (response.get_data(), response.status_code, preserved), timeout)
+                    stored_response = (
+                        response.get_data(), response.status_code, preserved,
+                    )
+                    _safe_set(key, stored_response, timeout)
+                    _safe_set(
+                        stale_key,
+                        stored_response,
+                        max(RESPONSE_STALE_MIN_SECONDS, timeout * 4),
+                    )
                 return response
             finally:
                 _release_fill_lock(key, lock_token)
