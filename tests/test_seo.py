@@ -7,6 +7,17 @@ from seo_service import SeoPage, build_page, render_index, robots_text
 
 
 class SeoServiceTest(unittest.TestCase):
+    def test_homepage_declares_stable_favicon_urls(self):
+        index_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), 'web', 'index.html',
+        )
+        with open(index_path, encoding='utf-8') as index_file:
+            source = index_file.read()
+
+        self.assertIn('rel="icon" href="/favicon.ico"', source)
+        self.assertIn('href="/favicon-96x96.png"', source)
+        self.assertIn('rel="apple-touch-icon"', source)
+
     def test_robots_points_to_real_sitemap_and_blocks_api_routes(self):
         body = robots_text()
         self.assertIn('Sitemap: https://cs.daosilin.com/sitemap.xml', body)

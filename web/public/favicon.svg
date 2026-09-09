@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="熊掌 CS Major">
+  <rect width="512" height="512" rx="112" fill="#16232c"/>
+  <g fill="none" stroke="#58c99d" stroke-linecap="round">
+    <circle cx="256" cy="256" r="108" stroke-width="36"/>
+    <path d="M256 68v72M256 372v72M68 256h72M372 256h72" stroke-width="32"/>
+  </g>
+  <circle cx="256" cy="256" r="38" fill="#eef9f5"/>
+</svg>
