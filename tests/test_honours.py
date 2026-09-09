@@ -6,6 +6,7 @@ from unittest.mock import patch
 from champion_service import opening_round_loser_teams
 from honours_service import (
     HONOURS_SCHEMA_VERSION,
+    _apply_draft_contrast,
     _award,
     _matchup_award,
     _matchup_records,
@@ -46,6 +47,32 @@ class HonourCalculationTest(unittest.TestCase):
         self.assertEqual(_minimum_matches({'a': {'match_count': 3}}), 1)
         self.assertEqual(_minimum_matches({'a': {'match_count': 10}}), 3)
         self.assertEqual(_minimum_matches({'a': {'match_count': 21}}), 7)
+
+    def test_draft_contrast_marks_early_picks_with_low_pwr_as_popular(self):
+        player = {}
+
+        _apply_draft_contrast(player, {
+            'pick_count': 3,
+            'average_pool_position': 0.15,
+            'average_overall_pick': 2.0,
+        }, pwr_percentile=0.20, pwr_rank=9)
+
+        self.assertAlmostEqual(player['draft_popularity_gap'], 0.65)
+        self.assertEqual(player['draft_popularity_gap_sample'], 3)
+        self.assertEqual(player['draft_average_pick'], 2.0)
+        self.assertEqual(player['pwr_rank'], 9)
+        self.assertNotIn('draft_outperformance', player)
+
+    def test_draft_contrast_requires_two_picks(self):
+        player = {}
+
+        _apply_draft_contrast(player, {
+            'pick_count': 1,
+            'average_pool_position': 0.10,
+            'average_overall_pick': 1.0,
+        }, pwr_percentile=0.10, pwr_rank=10)
+
+        self.assertEqual(player, {})
 
     def test_award_is_deterministic_and_marks_tied_values(self):
         players = {

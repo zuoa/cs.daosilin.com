@@ -33,7 +33,7 @@ CATEGORIES = (
 )
 
 MANUAL_CATEGORY = ('manual', '评审特别奖')
-HONOURS_SCHEMA_VERSION = 4
+HONOURS_SCHEMA_VERSION = 5
 _snapshot_lock = threading.RLock()
 
 
@@ -77,6 +77,33 @@ def _minimum_matches(players: dict[str, dict[str, Any]]) -> int:
     if maximum <= 3:
         return 1
     return max(3, math.ceil(maximum * 0.30))
+
+
+def _apply_draft_contrast(
+    player: dict[str, Any],
+    draft: dict[str, Any],
+    pwr_percentile: float,
+    pwr_rank: int,
+) -> None:
+    """Attach opposite draft-vs-performance gaps when the sample is usable."""
+    if (
+        int(draft.get('pick_count') or 0) < 2
+        or draft.get('average_pool_position') is None
+        or draft.get('average_overall_pick') is None
+    ):
+        return
+
+    priority = 1 - _number(draft['average_pool_position'])
+    outperformance = pwr_percentile - priority
+    popularity_gap = priority - pwr_percentile
+    player['draft_average_pick'] = draft['average_overall_pick']
+    player['pwr_rank'] = pwr_rank
+    if outperformance > 0:
+        player['draft_outperformance'] = outperformance
+        player['draft_outperformance_sample'] = draft['pick_count']
+    if popularity_gap > 0:
+        player['draft_popularity_gap'] = popularity_gap
+        player['draft_popularity_gap_sample'] = draft['pick_count']
 
 
 def _season_start(cup: str, season: dict[str, Any]) -> datetime | None:
@@ -787,14 +814,10 @@ def _calculate_season_honours(cup: str) -> dict[str, Any]:
             player['pwr_percentile'] = pwr_percentiles[player_id]
             player['community_percentile'] = community_percentiles[player_id]
         draft = draft_stats.get(player_id) or {}
-        if int(draft.get('pick_count') or 0) >= 2 and player_id in pwr_percentiles:
-            priority = 1 - _number(draft.get('average_pool_position'))
-            outperformance = pwr_percentiles[player_id] - priority
-            if outperformance > 0:
-                player['draft_outperformance'] = outperformance
-                player['draft_outperformance_sample'] = draft['pick_count']
-                player['draft_average_pick'] = draft.get('average_overall_pick')
-                player['pwr_rank'] = pwr_ranks.get(player_id)
+        if player_id in pwr_percentiles:
+            _apply_draft_contrast(
+                player, draft, pwr_percentiles[player_id], pwr_ranks[player_id],
+            )
         lost = losing_rating.get(player_id)
         if lost and lost['matches'] >= 3:
             player['losing_pwr'] = lost['sum'] / lost['matches']
@@ -887,6 +910,13 @@ def _calculate_season_honours(cup: str) -> dict[str, Any]:
                description='选得靠后，打出来却一点不靠后。', method='用 PWR 百分位减去选人优先级百分位。',
                players=players, metric='draft_outperformance', eligible=lambda p: p.get('draft_outperformance') is not None,
                display=percentile_display('draft_outperformance'), evidence=lambda p: f"PWR 第 {p['pwr_rank']} · 平均全场第 {p['draft_average_pick']:.1f} 顺位"),
+        _award(key='popular-pick', category='contrast', title='网红马',
+               description='数据排名靠后，选人时却总有人早早出手。',
+               method='至少有 2 次非队长选人记录，用选人优先级百分位减去赛季 PWR 百分位。',
+               players=players, metric='draft_popularity_gap',
+               eligible=lambda p: p.get('draft_popularity_gap') is not None,
+               display=percentile_display('draft_popularity_gap'),
+               evidence=lambda p: f"PWR 第 {p['pwr_rank']} · 平均全场第 {p['draft_average_pick']:.1f} 顺位"),
         _award(key='losing-svp', category='match', title='败方 SVP 常驻户',
                description='队伍输了，但他的 Rating 没先投降。', method='至少三场败局后，按败局平均 PWR 排名。',
                players=players, metric='losing_pwr', eligible=lambda p: general(p) and p.get('losing_pwr') is not None,
