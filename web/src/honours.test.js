@@ -40,13 +40,14 @@ test('share paths, anchors and filenames are safe and stable', () => {
   assert.equal(honourFilename('', ''), 'season-honour.png')
 })
 
-test('poster export keeps avatar proxy query strings in the image cache key', () => {
+test('poster export reuses cached proxy avatars and keeps their query strings distinct', () => {
   const options = honourPosterOptions()
 
   assert.equal(options.width, 768)
   assert.equal(options.height, 1024)
   assert.equal(options.includeQueryParams, true)
-  assert.equal(options.cacheBust, true)
+  assert.equal(options.cacheBust, false)
+  assert.match(options.imagePlaceholder, /^data:image\//)
 })
 
 test('status copy distinguishes provisional and final boards', () => {

@@ -37,10 +37,16 @@ export function honourPosterOptions() {
     width: 768,
     height: 1024,
     pixelRatio: 1,
-    cacheBust: true,
+    // Reuse the URL that PlayerAvatar has already loaded. Appending a timestamp
+    // makes wsrv.nl bypass its cached copy and occasionally fail while refetching
+    // an otherwise visible upstream avatar.
+    cacheBust: false,
     // Player avatars share the wsrv.nl pathname and differ by query string.
     // html-to-image otherwise collapses them into one cached resource.
     includeQueryParams: true,
+    // A single unavailable avatar should not prevent the rest of the card from
+    // being exported.
+    imagePlaceholder: 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=',
   }
 }
 
