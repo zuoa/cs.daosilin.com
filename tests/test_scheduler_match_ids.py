@@ -1,10 +1,12 @@
 import unittest
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import ANY, patch
 
 from database import MatchPlayer as DatabaseMatchPlayer
 from scheduler import (_official_cup_matches, _store_match, canonical_match_id,
-                       create_scheduler, refresh_perfect_ranks)
+                       create_scheduler, reconcile_nightly_player_summaries,
+                       refresh_perfect_ranks)
 
 
 class MatchIdNormalizationTest(unittest.TestCase):
@@ -19,6 +21,52 @@ class MatchIdNormalizationTest(unittest.TestCase):
         job = task_scheduler.get_job('refresh_live_statuses')
 
         self.assertEqual(str(job.trigger), "cron[minute='*/5']")
+
+    def test_player_summaries_wait_nightly_for_demo_completion(self):
+        task_scheduler = create_scheduler()
+        job = task_scheduler.get_job('player_summary_reconcile')
+
+        self.assertEqual(str(job.trigger), "cron[hour='4-7', minute='*/10']")
+
+    @patch('demo_tasks.demo_analysis_readiness')
+    @patch('scheduler.Config')
+    def test_nightly_player_summaries_do_not_run_before_demos_finish(
+            self, config, readiness):
+        config.get_value.return_value = None
+        readiness.return_value = {
+            'ready': False, 'disabled': False, 'eligible': 3, 'pending': 1,
+        }
+
+        with patch('player_summary_tasks.reconcile_player_summaries') as reconcile:
+            result = reconcile_nightly_player_summaries()
+
+        self.assertTrue(result['waiting_for_demo'])
+        reconcile.assert_not_called()
+        config.set_value.assert_not_called()
+
+    @patch('demo_tasks.demo_analysis_readiness')
+    @patch('scheduler.Config')
+    def test_nightly_player_summaries_run_once_after_demos_finish(
+            self, config, readiness):
+        config.get_value.return_value = None
+        readiness.return_value = {
+            'ready': True, 'disabled': False, 'eligible': 3, 'pending': 0,
+        }
+        summary_result = {'eligible': 4, 'scheduled': 2, 'skipped': 2}
+
+        with patch(
+            'player_summary_tasks.reconcile_player_summaries',
+            return_value=summary_result,
+        ) as reconcile:
+            result = reconcile_nightly_player_summaries(
+                now=datetime(2026, 9, 10, 4, 20),
+            )
+
+        self.assertEqual(result['scheduled'], 2)
+        reconcile.assert_called_once_with()
+        config.set_value.assert_called_once_with(
+            'player_summary_nightly_date', '2026-09-10',
+        )
 
     def test_numeric_and_prefixed_ids_share_one_identity(self):
         self.assertEqual(canonical_match_id(9223339745715475470), 'PVP@9223339745715475470')

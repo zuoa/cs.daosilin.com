@@ -157,6 +157,46 @@ def reconcile_demo_jobs(days=None):
     return {'eligible': matches.count(), 'scheduled': scheduled, 'disabled': False}
 
 
+def demo_analysis_readiness(days=None):
+    """Report whether the nightly Demo batch has reached terminal states."""
+    if not demo_analysis_enabled():
+        return {
+            'ready': False,
+            'disabled': True,
+            'eligible': 0,
+            'pending': 0,
+        }
+    cutoff = datetime.now() - timedelta(days=days or DEMO_BACKFILL_DAYS)
+    match_ids = [
+        row.match_id for row in
+        Match.select(Match.match_id).where(Match.end_time >= cutoff)
+    ]
+    if not match_ids:
+        return {
+            'ready': True,
+            'disabled': False,
+            'eligible': 0,
+            'pending': 0,
+        }
+    analyses = {
+        row.match_id: row for row in
+        DemoAnalysis.select().where(DemoAnalysis.match_id.in_(match_ids))
+    }
+    terminal = {'completed', 'unavailable', 'failed'}
+    pending = sum(
+        1 for match_id in match_ids
+        if match_id not in analyses
+        or analyses[match_id].metric_version != DEMO_METRIC_VERSION
+        or analyses[match_id].status not in terminal
+    )
+    return {
+        'ready': pending == 0,
+        'disabled': False,
+        'eligible': len(match_ids),
+        'pending': pending,
+    }
+
+
 def _stored_archive_path(raw_path, storage_root):
     """Return a storage-contained archive path, rejecting unsafe references."""
     if not raw_path:

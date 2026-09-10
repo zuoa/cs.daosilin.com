@@ -27,6 +27,7 @@ from wm import WMAPI
 
 
 CRAWL_HEARTBEAT_TIMEOUT = datetime.timedelta(minutes=3)
+PLAYER_SUMMARY_NIGHTLY_DATE_KEY = 'player_summary_nightly_date'
 
 
 def refresh_all_live_statuses():
@@ -395,18 +396,38 @@ def expire_auto_crawl(season):
     )
 
 
-def _schedule_player_summaries(cup_name):
-    """Best-effort enrichment; an LLM outage must never fail season crawling."""
+def reconcile_nightly_player_summaries(now=None):
+    """Queue at most one daily summary batch after all recent Demos finish."""
+    now = now or datetime.datetime.now()
+    run_date = now.strftime('%Y-%m-%d')
+    if Config.get_value(PLAYER_SUMMARY_NIGHTLY_DATE_KEY) == run_date:
+        return {'already_ran': True, 'run_date': run_date}
+
+    from demo_tasks import demo_analysis_readiness
+    readiness = demo_analysis_readiness()
+    if not readiness.get('ready'):
+        logger.info(
+            f'AI 点评等待 Demo 分析完成: pending={readiness.get("pending", 0)} '
+            f'eligible={readiness.get("eligible", 0)} '
+            f'disabled={bool(readiness.get("disabled"))}'
+        )
+        return {'waiting_for_demo': True, **readiness}
+
     try:
         from player_summary_tasks import reconcile_player_summaries
-        result = reconcile_player_summaries(cup_name=cup_name)
+        result = reconcile_player_summaries()
+        if result.get('blocked_configuration'):
+            return result
+        Config.set_value(PLAYER_SUMMARY_NIGHTLY_DATE_KEY, run_date)
         logger.info(
-            f'AI 点评对账完成 cup={cup_name} eligible={result.get("eligible", 0)} '
-            f'scheduled={result.get("scheduled", 0)}'
+            f'夜间 AI 点评对账完成 date={run_date} '
+            f'eligible={result.get("eligible", 0)} '
+            f'scheduled={result.get("scheduled", 0)} '
+            f'skipped={result.get("skipped", 0)}'
         )
-        return result
+        return {'run_date': run_date, **result}
     except Exception as exc:
-        logger.error(f'AI 点评调度失败 cup={cup_name}: {exc}')
+        logger.error(f'夜间 AI 点评调度失败 date={run_date}: {exc}')
         return {'eligible': 0, 'scheduled': 0, 'error': str(exc)}
 
 
@@ -448,7 +469,6 @@ def crawl_season_with_status(cup_name, manual=False):
             )
             Config.set_value("last_crawl_time", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
             invalidate_season(cup_name, seasons=True)
-            _schedule_player_summaries(cup_name)
             return stats
         keep_scheduled = is_auto_crawl_enabled(cup_name) and not manual
         set_crawl_status(
@@ -465,7 +485,6 @@ def crawl_season_with_status(cup_name, manual=False):
         )
         Config.set_value("last_crawl_time", datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
         invalidate_season(cup_name, seasons=True)
-        _schedule_player_summaries(cup_name)
         return stats
     except Exception as e:
         set_crawl_status(
@@ -778,17 +797,16 @@ def create_scheduler():
     )
     logger.info('Demo 归档清理任务已添加：每天 04:17 删除超过保留期的文件')
 
-    from player_summary_tasks import reconcile_player_summaries
     scheduler.add_job(
-        func=reconcile_player_summaries,
-        trigger=CronTrigger(minute='3,13,23,33,43,53'),
+        func=reconcile_nightly_player_summaries,
+        trigger=CronTrigger(hour='4-7', minute='*/10'),
         id='player_summary_reconcile',
-        name='选手赛季 AI 点评增量对账',
+        name='选手赛季 AI 点评夜间对账',
         replace_existing=True,
         coalesce=True,
         max_instances=1,
     )
-    logger.info('选手赛季 AI 点评对账任务已添加：每 10 分钟增量检查')
+    logger.info('选手赛季 AI 点评任务已添加：每日 04:00-07:50 等待 Demo 完成后执行一次')
 
     return scheduler
 
