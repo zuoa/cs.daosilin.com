@@ -1375,7 +1375,7 @@ class DemoAnalysis(BaseModel, CRUDMixin):
     raw_result_path = TextField(null=True)
     parser_name = CharField(max_length=64, null=True)
     parser_version = CharField(max_length=128, null=True)
-    metric_version = CharField(max_length=32, default='v2')
+    metric_version = CharField(max_length=32, default='v1')
     queued_at = DateTimeField(null=True)
     started_at = DateTimeField(null=True)
     finished_at = DateTimeField(null=True)

@@ -75,7 +75,14 @@ DEMO_STORAGE_PATH = os.getenv(
 DEMO_MAX_BYTES = int(os.getenv('DEMO_MAX_BYTES', str(1024 * 1024 * 1024)))
 DEMO_ANALYZER_PATH = os.getenv('DEMO_ANALYZER_PATH', '/usr/local/bin/cs-demo-analyzer')
 DEMO_ANALYZER_TIMEOUT = int(os.getenv('DEMO_ANALYZER_TIMEOUT', '840'))
-DEMO_METRIC_VERSION = os.getenv('DEMO_METRIC_VERSION', 'v2').strip() or 'v2'
+DEMO_METRIC_VERSION = os.getenv('DEMO_METRIC_VERSION', 'v1').strip() or 'v1'
+DEMO_TEAM_DAMAGE_PARSER_VERSION = (
+    '88cb54ea0267fc8f4a8ae8d03987b50aec2a0653+team-damage-v1'
+)
+# V2 only added an independent friendly-fire field, so existing V1 rows remain
+# valid for every earlier metric even when a V2 retry can no longer download
+# the original Demo.
+DEMO_READABLE_METRIC_VERSIONS = tuple(dict.fromkeys(('v1', 'v2', DEMO_METRIC_VERSION)))
 DEMO_BACKFILL_DAYS = int(os.getenv('DEMO_BACKFILL_DAYS', '30'))
 DEMO_RETENTION_DAYS = max(1, int(os.getenv('DEMO_RETENTION_DAYS', '3')))
 

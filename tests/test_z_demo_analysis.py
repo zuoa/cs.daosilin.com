@@ -390,6 +390,21 @@ class DemoAnalysisTest(unittest.TestCase):
         self.assertEqual(demo['avg_team_damage_per_match'], 36)
         self.assertEqual(result['demo_coverage'], {'completed': 2, 'total': 2, 'ratio': 1.0})
 
+    def test_persisted_v2_rows_remain_readable_without_the_original_demo(self):
+        steam_id = '76561198000000001'
+        Player.create(player_id='legacy-player', nickname='Player', steam_id=steam_id)
+        create_platform_row('m-legacy-v2', 'legacy-player')
+        DemoAnalysis.create(
+            match_id='m-legacy-v2', status='unavailable', metric_version='v2',
+            parser_version='old-parser',
+        )
+        persist_analysis('m-legacy-v2', parsed_payload(steam_id))
+
+        result = attach_demo_stats({'match_count': 1}, 'demo-cup', 'legacy-player')
+
+        self.assertEqual(result['demo_data']['total_damage'], 1000)
+        self.assertEqual(result['demo_coverage'], {'completed': 1, 'total': 1, 'ratio': 1.0})
+
     def test_round_swing_percent_is_weighted_by_demo_rounds(self):
         steam_id = '76561198000000001'
         Player.create(player_id='swing-player', nickname='Player', steam_id=steam_id)

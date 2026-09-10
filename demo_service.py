@@ -5,13 +5,15 @@ from datetime import datetime
 from cryptography.fernet import Fernet, InvalidToken
 
 from config import (DEMO_CREDENTIAL_ENCRYPTION_KEY, DEMO_METRIC_VERSION,
+                    DEMO_READABLE_METRIC_VERSIONS,
+                    DEMO_TEAM_DAMAGE_PARSER_VERSION,
                     WMPVP_ACCESS_TOKEN, WMPVP_STEAM_ID)
 from database import (Config, DemoAnalysis, DemoCredential, DemoPlayerStats,
                       MatchPlayer, Player, fn)
 
 
 PARSER_NAME = 'cs2-analyser-tool'
-PARSER_VERSION = '88cb54ea0267fc8f4a8ae8d03987b50aec2a0653+team-damage-v1'
+PARSER_VERSION = DEMO_TEAM_DAMAGE_PARSER_VERSION
 
 
 def demo_analysis_enabled():
@@ -214,8 +216,7 @@ def get_demo_player_stats(cup_name, player_id: str, play_day: str = None):
              ))
              .join(DemoAnalysis, on=(DemoAnalysis.match_id == DemoPlayerStats.match_id))
              .where(DemoPlayerStats.player_id.in_(account_ids),
-                    DemoAnalysis.status == 'completed',
-                    DemoAnalysis.metric_version == DEMO_METRIC_VERSION))
+                    DemoAnalysis.metric_version.in_(DEMO_READABLE_METRIC_VERSIONS)))
     platform = MatchPlayer.select(fn.COUNT(fn.DISTINCT(MatchPlayer.match_id))).where(
         MatchPlayer.player_id.in_(account_ids))
     cup_names = cup_name if isinstance(cup_name, (list, tuple, set)) else None
@@ -506,13 +507,12 @@ def attach_demo_stats_many(platform_by_player, cup_name, play_day=None,
     result = {}
     for player_id, platform_data in platform_by_player.items():
         scoped_ids = matches_by_player.get(player_id, set())
-        current_completed = any(
+        has_readable_analysis = any(
             analyses.get(match_id)
-            and analyses[match_id].status == 'completed'
-            and analyses[match_id].metric_version == DEMO_METRIC_VERSION
+            and analyses[match_id].metric_version in DEMO_READABLE_METRIC_VERSIONS
             for match_id in scoped_ids
         )
-        if current_completed:
+        if has_readable_analysis:
             # Completed-demo arithmetic is intentionally kept in the canonical
             # single-player implementation until it too can be expressed as SQL.
             result[player_id] = attach_demo_stats(

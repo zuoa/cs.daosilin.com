@@ -15,7 +15,8 @@ from baokemeng_service import draft_pick_summaries
 from champion_service import (_player_ids_by_team, _team_aliases_from_players,
                               opening_round_loser_teams)
 from community_rating_service import community_rating_summaries
-from config import DEMO_METRIC_VERSION
+from config import (DEMO_READABLE_METRIC_VERSIONS,
+                    DEMO_TEAM_DAMAGE_PARSER_VERSION)
 from database import (CupDayChampion, DemoAnalysis, DemoPlayerStats,
                       ManualHonourAward, Match, MatchPlayer, Player, Season,
                       SeasonHonourSnapshot, SeasonRoster)
@@ -33,7 +34,7 @@ CATEGORIES = (
 )
 
 MANUAL_CATEGORY = ('manual', '评审特别奖')
-HONOURS_SCHEMA_VERSION = 6
+HONOURS_SCHEMA_VERSION = 7
 _snapshot_lock = threading.RLock()
 
 
@@ -378,7 +379,7 @@ def _unused_utility_stats(
     account_map: dict[str, str],
     players: dict[str, dict[str, Any]],
 ) -> dict[str, dict[str, float]]:
-    """Aggregate unused utility only from completed, current-version demos."""
+    """Aggregate unused utility from the last persisted compatible Demo rows."""
     if not players:
         return {}
     query = (DemoPlayerStats
@@ -395,8 +396,7 @@ def _unused_utility_stats(
              .join(DemoAnalysis, on=(DemoAnalysis.match_id == DemoPlayerStats.match_id))
              .where(
                  MatchPlayer.cup_name == cup,
-                 DemoAnalysis.status == 'completed',
-                 DemoAnalysis.metric_version == DEMO_METRIC_VERSION,
+                 DemoAnalysis.metric_version.in_(DEMO_READABLE_METRIC_VERSIONS),
              )
              .dicts())
     return _summarize_unused_utility(query, account_map, players)
@@ -433,7 +433,7 @@ def _team_damage_stats(
     account_map: dict[str, str],
     players: dict[str, dict[str, Any]],
 ) -> dict[str, dict[str, float]]:
-    """Aggregate friendly-fire damage only from completed, current demos."""
+    """Aggregate friendly fire only from results produced by the patched parser."""
     if not players:
         return {}
     query = (DemoPlayerStats
@@ -451,7 +451,8 @@ def _team_damage_stats(
              .where(
                  MatchPlayer.cup_name == cup,
                  DemoAnalysis.status == 'completed',
-                 DemoAnalysis.metric_version == DEMO_METRIC_VERSION,
+                 DemoAnalysis.metric_version.in_(DEMO_READABLE_METRIC_VERSIONS),
+                 DemoAnalysis.parser_version == DEMO_TEAM_DAMAGE_PARSER_VERSION,
              )
              .dicts())
     return _summarize_team_damage(query, account_map, players)
@@ -463,7 +464,7 @@ def _team_damage_award(
     return _award(
         key='team-damage', category='match', title='爱护队友奖',
         description='对队友的关照落实到了每一点伤害。',
-        method=(f'只统计已完成且指标版本有效的 Demo；至少覆盖 {minimum_matches} 场，'
+        method=(f'只统计由新版解析器完成的 Demo；至少覆盖 {minimum_matches} 场，'
                 '按伤害队友总量除以有效 Demo 场次排名。'),
         players=players, metric='team_damage_average',
         eligible=lambda player: (
@@ -539,7 +540,7 @@ def _side_stats(
     account_map: dict[str, str],
     players: dict[str, dict[str, Any]],
 ) -> dict[str, dict[str, float]]:
-    """Read side metrics only from completed, current-version demos."""
+    """Read side metrics from the last persisted compatible Demo rows."""
     if not players:
         return {}
     query = (DemoPlayerStats
@@ -563,8 +564,7 @@ def _side_stats(
              .join(DemoAnalysis, on=(DemoAnalysis.match_id == DemoPlayerStats.match_id))
              .where(
                  MatchPlayer.cup_name == cup,
-                 DemoAnalysis.status == 'completed',
-                 DemoAnalysis.metric_version == DEMO_METRIC_VERSION,
+                 DemoAnalysis.metric_version.in_(DEMO_READABLE_METRIC_VERSIONS),
              )
              .dicts())
     return _summarize_side_stats(query, account_map, players)
