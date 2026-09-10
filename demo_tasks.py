@@ -91,7 +91,11 @@ def schedule_demo_analysis(match_id: str, force=False):
     )
     if not demo_analysis_enabled():
         return row
-    if row.status == 'completed' and row.metric_version == DEMO_METRIC_VERSION and not force:
+    # Automatic callers must leave terminal results alone.  In particular,
+    # unavailable/failed matches may still appear in every subsequent crawl;
+    # only an explicit manual retry should enqueue them again.
+    if (not force and row.metric_version == DEMO_METRIC_VERSION and
+            row.status in ('completed', 'unavailable', 'failed')):
         return row
     if not has_demo_credential():
         return _state(match_id, 'blocked_credentials', error_code='credentials_missing',
@@ -389,15 +393,6 @@ def _analyse(demo_path: Path):
         raise ValueError('Demo parser 返回了无效 JSON') from exc
 
 
-def _compress_file(source: Path, destination: Path):
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_suffix(destination.suffix + '.tmp')
-    compressor = zstandard.ZstdCompressor(level=10)
-    with source.open('rb') as src, temporary.open('wb') as dst:
-        compressor.copy_stream(src, dst)
-    os.replace(temporary, destination)
-
-
 def _compress_json(payload: dict, destination: Path):
     destination.parent.mkdir(parents=True, exist_ok=True)
     encoded = json.dumps(payload, ensure_ascii=False, separators=(',', ':')).encode()
@@ -447,12 +442,10 @@ def run_demo_analysis(match_id: str):
                 raise ValueError(f'Demo 地图 {parsed_map} 与比赛 {expected_map} 不一致')
             player_count = persist_analysis(match_id, payload)
             content_dir = storage / sha256[:2] / sha256
-            demo_archive = content_dir / 'match.dem.zst'
             result_archive = content_dir / f'analysis-{DEMO_METRIC_VERSION}.json.zst'
-            _compress_file(demo_path, demo_archive)
             _compress_json(payload, result_archive)
         _state(match_id, 'completed', demo_sha256=sha256, demo_size=size,
-               archive_path=str(demo_archive), raw_result_path=str(result_archive),
+               archive_path=None, raw_result_path=str(result_archive),
                parser_name=PARSER_NAME, parser_version=PARSER_VERSION,
                finished_at=datetime.now(), heartbeat_at=datetime.now(), next_retry_at=None)
         credential_row = DemoCredential.get_or_none(DemoCredential.source == 'pwa')

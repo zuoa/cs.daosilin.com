@@ -218,14 +218,8 @@ def _store_match(match_data, assigned_cup_name=None, play_day=None, match_id=Non
             Player.create(**player_model)
             logger.info(f"玩家 {player_id} 已保存（非库内）")
 
-    try:
-        from demo_service import demo_analysis_enabled
-        if demo_analysis_enabled():
-            from demo_tasks import schedule_demo_analysis
-            schedule_demo_analysis(match_id)
-    except Exception as exc:
-        # Demo is a second-stage enrichment and must never block the crawl.
-        logger.error(f'Demo 任务入队失败 match={match_id}: {exc}')
+    # Demo analysis is intentionally decoupled from match ingestion.  The
+    # nightly 03:30 reconciliation batch discovers and queues recent matches.
     return match_id
 
 
@@ -732,14 +726,14 @@ def create_scheduler():
     from demo_tasks import cleanup_demo_archives, reconcile_demo_jobs
     scheduler.add_job(
         func=reconcile_demo_jobs,
-        trigger=CronTrigger(minute='*/5'),
+        trigger=CronTrigger(hour='3', minute='30'),
         id='demo_analysis_reconcile',
-        name='Demo 分析任务对账与近 30 天回填',
+        name='Demo 分析夜间对账与近 30 天回填',
         replace_existing=True,
         coalesce=True,
         max_instances=1,
     )
-    logger.info('Demo 分析对账任务已添加：后台开启后每 5 分钟执行并回填近 30 天')
+    logger.info('Demo 分析对账任务已添加：后台开启后每天 03:30 执行并回填近 30 天')
 
     scheduler.add_job(
         func=cleanup_demo_archives,

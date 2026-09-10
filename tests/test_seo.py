@@ -14,9 +14,22 @@ class SeoServiceTest(unittest.TestCase):
         with open(index_path, encoding='utf-8') as index_file:
             source = index_file.read()
 
-        self.assertIn('rel="icon" href="/favicon.ico"', source)
-        self.assertIn('href="/favicon-96x96.png"', source)
-        self.assertIn('rel="apple-touch-icon"', source)
+        png = source.find('href="https://cs.daosilin.com/favicon-96x96.png"')
+        ico = source.find('href="https://cs.daosilin.com/favicon.ico"')
+        svg = source.find('href="https://cs.daosilin.com/favicon.svg"')
+        self.assertIn(
+            'rel="icon" href="https://cs.daosilin.com/favicon-96x96.png" type="image/png" sizes="96x96"',
+            source,
+        )
+        self.assertIn(
+            'rel="icon" href="https://cs.daosilin.com/favicon.ico" type="image/x-icon" sizes="48x48"',
+            source,
+        )
+        self.assertIn('rel="shortcut icon" href="https://cs.daosilin.com/favicon.ico"', source)
+        self.assertIn('rel="apple-touch-icon" href="https://cs.daosilin.com/apple-touch-icon.png"', source)
+        self.assertGreater(png, -1)
+        self.assertGreater(ico, png)
+        self.assertGreater(svg, ico)
 
     def test_robots_points_to_real_sitemap_and_blocks_api_routes(self):
         body = robots_text()

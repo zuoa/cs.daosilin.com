@@ -21,7 +21,7 @@ from demo_service import (attach_demo_stats, demo_analysis_enabled,
                           save_demo_credential, set_demo_analysis_enabled)
 from demo_tasks import (_demo_job_id, _extract_demo, _safe_error,
                         cleanup_demo_archives,
-                        schedule_demo_analysis)
+                        run_demo_analysis, schedule_demo_analysis)
 from rq.job import validate_job_id
 
 
@@ -226,6 +226,55 @@ class DemoAnalysisTest(unittest.TestCase):
         existing.delete.assert_not_called()
         queue.enqueue.assert_not_called()
         self.assertEqual(row.status, 'pending')
+
+    def test_automatic_scheduling_does_not_repeat_terminal_failures(self):
+        set_demo_analysis_enabled(True)
+        queue = MagicMock()
+
+        for status in ('unavailable', 'failed'):
+            with self.subTest(status=status):
+                DemoAnalysis.delete().execute()
+                DemoAnalysis.create(
+                    match_id=f'PVP@terminal-{status}', status=status,
+                    metric_version=DEMO_METRIC_VERSION,
+                )
+                with patch('demo_tasks.has_demo_credential', return_value=True), \
+                        patch('demo_tasks._queue', return_value=queue):
+                    row = schedule_demo_analysis(f'PVP@terminal-{status}')
+                self.assertEqual(row.status, status)
+
+        queue.fetch_job.assert_not_called()
+        queue.enqueue.assert_not_called()
+
+    def test_completed_analysis_does_not_archive_downloaded_demo(self):
+        set_demo_analysis_enabled(True)
+        storage = Path(self.temp_dir) / 'delete-demo-after-analysis'
+        shutil.rmtree(storage, ignore_errors=True)
+        DemoAnalysis.create(
+            match_id='PVP@delete-after-parse', status='queued',
+            metric_version=DEMO_METRIC_VERSION,
+        )
+
+        def fake_download(_match_id, _credential, temp_dir):
+            demo_path = temp_dir / 'match.dem'
+            demo_path.write_bytes(b'PBDEMS2\x00payload')
+            return demo_path
+
+        with patch('demo_tasks.DEMO_STORAGE_PATH', str(storage)), \
+                patch('demo_tasks.load_demo_credential', return_value={
+                    'steam_id': '76561198000000001', 'access_token': 'token',
+                }), \
+                patch('demo_tasks._download_demo', side_effect=fake_download), \
+                patch('demo_tasks._analyse', return_value={'players': {}}), \
+                patch('demo_tasks.persist_analysis', return_value=10):
+            result = run_demo_analysis('PVP@delete-after-parse')
+
+        row = DemoAnalysis.get(DemoAnalysis.match_id == 'PVP@delete-after-parse')
+        self.assertEqual(result['status'], 'completed')
+        self.assertIsNone(row.archive_path)
+        self.assertTrue(Path(row.raw_result_path).is_file())
+        self.assertEqual(list(storage.rglob('*.dem')), [])
+        self.assertEqual(list(storage.rglob('*.dem.zst')), [])
 
     def test_sensitive_query_values_are_redacted_from_errors(self):
         token = 'secret-token-value'

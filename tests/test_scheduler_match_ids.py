@@ -4,10 +4,16 @@ from unittest.mock import ANY, patch
 
 from database import MatchPlayer as DatabaseMatchPlayer
 from scheduler import (_official_cup_matches, _store_match, canonical_match_id,
-                       refresh_perfect_ranks)
+                       create_scheduler, refresh_perfect_ranks)
 
 
 class MatchIdNormalizationTest(unittest.TestCase):
+    def test_demo_reconciliation_runs_daily_at_0330(self):
+        task_scheduler = create_scheduler()
+        job = task_scheduler.get_job('demo_analysis_reconcile')
+
+        self.assertEqual(str(job.trigger), "cron[hour='3', minute='30']")
+
     def test_numeric_and_prefixed_ids_share_one_identity(self):
         self.assertEqual(canonical_match_id(9223339745715475470), 'PVP@9223339745715475470')
         self.assertEqual(canonical_match_id('9223339745715475470'), 'PVP@9223339745715475470')
@@ -52,13 +58,16 @@ class MatchIdNormalizationTest(unittest.TestCase):
             'players': [],
         }
 
-        stored_id = _store_match(
-            match_data,
-            assigned_cup_name='cs-practice-20260827',
-            match_id='PVP@9223339745715475470',
-        )
+        with patch('demo_service.demo_analysis_enabled', return_value=True), \
+                patch('demo_tasks.schedule_demo_analysis') as schedule_demo:
+            stored_id = _store_match(
+                match_data,
+                assigned_cup_name='cs-practice-20260827',
+                match_id='PVP@9223339745715475470',
+            )
 
         self.assertEqual(stored_id, 'PVP@9223339745715475470')
+        schedule_demo.assert_not_called()
         self.assertEqual(
             match_model.create.call_args.kwargs['match_id'],
             'PVP@9223339745715475470',

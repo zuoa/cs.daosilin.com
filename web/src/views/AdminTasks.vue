@@ -9,7 +9,7 @@
     <div v-else-if="activeTab === 'demo'" id="demo-panel" class="task-tab-panel" role="tabpanel" aria-labelledby="demo-tab">
       <section class="panel token-panel" aria-labelledby="demo-title">
         <div class="panel-header">
-          <div><h2 id="demo-title">Demo Analysis</h2><p>独立 Worker · 新比赛与近 30 天自动回填</p></div>
+          <div><h2 id="demo-title">Demo Analysis</h2><p>独立 Worker · 每天 03:30 处理新比赛与近 30 天回填</p></div>
           <div class="demo-header-actions">
             <span class="status-badge" :class="demo.configured && demo.enabled ? 'success' : 'neutral'"><span class="status-dot"></span>{{ demo.enabled ? (demo.configured ? '运行中' : '待配置') : '功能未启用' }}</span>
             <button class="button small" :class="demo.enabled ? 'danger-ghost' : 'primary'" type="button" :disabled="Boolean(demoBusy) || (!demo.enabled && !demo.configured)" @click="demoAction(demo.enabled ? 'disable' : 'enable')"><span v-if="['enable', 'disable'].includes(demoBusy)" class="button-spinner"></span><AppIcon v-else :name="demo.enabled ? 'archive' : 'play'" />{{ demo.enabled ? '关闭分析' : '开启分析' }}</button>

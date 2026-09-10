@@ -1833,13 +1833,7 @@ def api_admin_demo_settings():
     action = str(data.get('action') or 'save').strip().lower()
     if action == 'enable':
         set_demo_analysis_enabled(True)
-        try:
-            from demo_tasks import reconcile_demo_jobs
-            result = reconcile_demo_jobs()
-        except Exception as exc:
-            logger.error(f'Demo 分析开启后入队失败: {exc}')
-            result = {'scheduled': 0}
-        return _demo_admin_status({'message': f'Demo 分析已开启，已调度 {result.get("scheduled", 0)} 场'})
+        return _demo_admin_status({'message': 'Demo 分析已开启，将在每天 03:30 自动处理'})
     if action == 'disable':
         set_demo_analysis_enabled(False)
         return _demo_admin_status({'message': 'Demo 分析已关闭；平台数据采集继续运行'})
@@ -1848,13 +1842,7 @@ def api_admin_demo_settings():
             save_demo_credential(data.get('steam_id'), data.get('access_token'))
         except ValueError as exc:
             return error(400, str(exc)), 400
-        try:
-            from demo_tasks import reconcile_demo_jobs
-            result = reconcile_demo_jobs()
-        except Exception as exc:
-            logger.error(f'Demo 凭证保存后入队失败: {exc}')
-            result = {'scheduled': 0}
-        return _demo_admin_status({'message': f'Demo 凭证已加密保存，已调度 {result.get("scheduled", 0)} 场'})
+        return _demo_admin_status({'message': 'Demo 凭证已加密保存，将在每天 03:30 自动处理'})
     if action == 'revoke':
         revoke_demo_credential()
         return _demo_admin_status({'message': 'Demo 覆盖凭证已删除，已恢复使用默认 WMPVP 采集凭证'})
