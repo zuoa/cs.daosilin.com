@@ -12,6 +12,7 @@ const icons = {
   check: [['path', { d: 'm5 12 4 4L19 6' }]],
   chevronDown: [['path', { d: 'm6 9 6 6 6-6' }]],
   chevronRight: [['path', { d: 'm9 18 6-6-6-6' }]],
+  clock: [['circle', { cx: '12', cy: '12', r: '9' }], ['path', { d: 'M12 7v5l3 2' }]],
   database: [['ellipse', { cx: '12', cy: '5', rx: '8', ry: '3' }], ['path', { d: 'M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5' }], ['path', { d: 'M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7' }]],
   copy: [['rect', { x: '8', y: '8', width: '12', height: '12', rx: '2' }], ['path', { d: 'M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2' }]],
   crown: [['path', { d: 'm3 7 4 4 5-7 5 7 4-4-2 12H5Z' }], ['path', { d: 'M5 19h14' }]],

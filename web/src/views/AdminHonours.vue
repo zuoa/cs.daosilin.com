@@ -24,6 +24,31 @@
       </div>
     </section>
 
+    <section v-if="cup" class="panel lineup-control" aria-labelledby="lineup-control-title">
+      <div class="lineup-control-copy">
+        <span class="lineup-control-mark">5+5</span>
+        <div>
+          <p class="lineup-kicker">DEEPSEEK SELECTION ROOM</p>
+          <h2 id="lineup-control-title">赛季最佳阵容</h2>
+          <p>冻结当前数据，完成 {{ latestLineupRun?.ballot_target || 21 }} 轮分层评审。每阵 1 名主狙与 4 名步枪手，并覆盖突破、支援和残局。</p>
+        </div>
+      </div>
+      <dl class="lineup-control-stats">
+        <div><dt>参选门槛</dt><dd>至少 3 场 · 半数出勤</dd></div>
+        <div><dt>最近运行</dt><dd>{{ lineupStatusLabel }}</dd></div>
+        <div><dt>有效票</dt><dd>{{ latestLineupRun?.valid_ballots || 0 }} / {{ latestLineupRun?.ballot_target || 21 }}</dd></div>
+      </dl>
+      <div class="lineup-control-action">
+        <button class="button primary" type="button" :disabled="lineupRunning || lineupGenerating" @click="generateLineups">
+          <span v-if="lineupRunning || lineupGenerating" class="button-spinner"></span>
+          <AppIcon v-else name="users" />
+          {{ lineupRunning ? '评选进行中' : lineupGenerating ? '正在排队' : lineupCurrent ? '检查最新数据' : '生成最佳阵容' }}
+        </button>
+        <small v-if="latestLineupRun?.error_message" class="lineup-run-error">{{ latestLineupRun.error_message }}</small>
+        <small v-else>相同数据不会重复消耗调用；归档赛季会自动定稿。</small>
+      </div>
+    </section>
+
     <div v-if="loading" class="panel loading-state"><span class="loader"></span><p>读取奖项与参赛选手…</p></div>
     <div v-else-if="!cup" class="panel empty-state">
       <span><AppIcon name="trophy" :size="24" /></span><h3>先选择一个赛季</h3><p>选择后可以创建、编辑和删除该赛季的手动奖项。</p>
@@ -93,7 +118,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api'
 import AdminLayout from '../components/AdminLayout.vue'
@@ -106,6 +131,8 @@ const cup = ref('')
 const players = ref([])
 const awards = ref([])
 const snapshotAt = ref('')
+const lineups = ref({ current: null, history: [] })
+const lineupGenerating = ref(false)
 const loading = ref(true)
 const saving = ref(false)
 const editingId = ref(null)
@@ -115,6 +142,16 @@ const messageType = ref('success')
 const blankRecipients = () => Array.from({ length: 3 }, () => ({ player_id: '', reason: '' }))
 const form = reactive({ title: '', description: '', recipients: blankRecipients() })
 const snapshotLabel = computed(() => snapshotAt.value ? formatDate(snapshotAt.value) : '首次访问时生成')
+const latestLineupRun = computed(() => lineups.value.history?.[0] || null)
+const lineupCurrent = computed(() => lineups.value.current || null)
+const lineupRunning = computed(() => ['pending', 'queued', 'generating'].includes(latestLineupRun.value?.status))
+const lineupStatusLabel = computed(() => {
+  const run = latestLineupRun.value
+  if (!run) return '尚未运行'
+  if (run.status === 'completed') return run.is_final ? '最终阵容' : '临时阵容'
+  return ({ pending: '等待排队', queued: '已进入队列', generating: '21 轮评选中', failed: '运行失败', insufficient_data: '数据不足', blocked_configuration: '配置未完成', superseded: '数据已更新' })[run.status] || run.status
+})
+let lineupPoll = null
 
 function displaySeason(season) { return season.cup_alias || season.name || season.cup_name }
 function formatDate(value) {
@@ -134,7 +171,7 @@ function resetForm() {
   message.value = ''
 }
 async function loadHonours() {
-  if (!cup.value) { players.value = []; awards.value = []; snapshotAt.value = ''; loading.value = false; return }
+  if (!cup.value) { players.value = []; awards.value = []; snapshotAt.value = ''; lineups.value = { current: null, history: [] }; loading.value = false; return }
   loading.value = true
   message.value = ''
   try {
@@ -142,12 +179,44 @@ async function loadHonours() {
     players.value = data.players || []
     awards.value = data.awards || []
     snapshotAt.value = data.snapshot_calculated_at || ''
+    lineups.value = data.all_star_lineups || { current: null, history: [] }
   } catch (error) { show(error.message, 'error') } finally { loading.value = false }
+}
+async function refreshLineupStatus() {
+  if (!cup.value) return
+  try {
+    const data = await api.get(`/api/admin/honours?cup=${encodeURIComponent(cup.value)}`)
+    lineups.value = data.all_star_lineups || { current: null, history: [] }
+    if (!lineupRunning.value) window.clearInterval(lineupPoll)
+  } catch (error) {
+    window.clearInterval(lineupPoll)
+    show(error.message, 'error')
+  }
+}
+function startLineupPolling() {
+  window.clearInterval(lineupPoll)
+  if (lineupRunning.value) lineupPoll = window.setInterval(refreshLineupStatus, 3000)
+}
+async function generateLineups() {
+  lineupGenerating.value = true
+  try {
+    const result = await api.post('/api/admin/honours/lineups', { cup: cup.value })
+    await refreshLineupStatus()
+    if (result.status === 'insufficient_data' || result.status === 'blocked_configuration') {
+      show(result.message || '当前数据还不能完成评选。', 'error')
+    } else if (result.queued) {
+      show('评选已进入队列，页面会自动更新进度。')
+    } else {
+      show(result.is_final ? '当前数据已确认并封存为最终阵容。' : '当前数据已有评选结果，无需重复运行。')
+    }
+    startLineupPolling()
+  } catch (error) { show(error.message, 'error') } finally { lineupGenerating.value = false }
 }
 async function changeSeason() {
   resetForm()
   await router.replace({ path: '/admin/honours', query: cup.value ? { cup: cup.value } : {} })
   await loadHonours()
+  startLineupPolling()
 }
 function editAward(award) {
   editingId.value = award.id
@@ -192,8 +261,10 @@ onMounted(async () => {
     const requested = typeof route.query.cup === 'string' ? route.query.cup : ''
     cup.value = seasons.value.some((season) => season.cup_name === requested) ? requested : (seasons.value[0]?.cup_name || '')
     await loadHonours()
+    startLineupPolling()
   } catch (error) { show(error.message, 'error'); loading.value = false }
 })
+onBeforeUnmount(() => window.clearInterval(lineupPoll))
 </script>
 
 <style scoped>
@@ -206,6 +277,19 @@ onMounted(async () => {
 .honour-season-select > span, .honour-snapshot > span { color: var(--ink-500); font-size: var(--text-xs); font-weight: 700; }
 .honour-snapshot { display: grid; gap: var(--space-3xs); border-left: 1px solid var(--line); padding-left: var(--space-lg); }
 .honour-snapshot strong { font-size: var(--text-sm); }
+.lineup-control { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(260px, .8fr) minmax(190px, auto); gap: var(--space-lg); align-items: center; margin-bottom: var(--space-lg); overflow: hidden; padding: var(--space-lg); background: linear-gradient(118deg, var(--ink-950) 0 42%, #18261f 100%); color: white; }
+.lineup-control-copy { display: flex; align-items: center; gap: var(--space-md); }
+.lineup-control-copy h2 { color: white; font-family: var(--font-display); font-size: var(--text-xl); }
+.lineup-control-copy > div > p:last-child { max-width: 62ch; margin-top: var(--space-xs); color: rgba(255,255,255,.68); font-size: var(--text-xs); line-height: 1.6; }
+.lineup-control-mark { display: grid; width: 62px; height: 62px; flex: 0 0 auto; place-items: center; border: 1px solid rgba(215,255,86,.45); border-radius: 50%; box-shadow: inset 0 0 0 7px rgba(215,255,86,.05); color: var(--signal); font-family: var(--font-outlier); font-size: var(--text-lg); font-weight: 900; }
+.lineup-kicker { color: var(--signal); font-family: var(--font-outlier); font-size: .62rem; font-weight: 800; letter-spacing: .13em; }
+.lineup-control-stats { display: grid; gap: var(--space-xs); border-left: 1px solid rgba(255,255,255,.15); padding-left: var(--space-lg); }
+.lineup-control-stats div { display: flex; justify-content: space-between; gap: var(--space-sm); }
+.lineup-control-stats dt { color: rgba(255,255,255,.52); font-size: var(--text-xs); }
+.lineup-control-stats dd { color: white; font-size: var(--text-xs); font-weight: 800; text-align: right; }
+.lineup-control-action { display: grid; gap: var(--space-xs); }
+.lineup-control-action small { max-width: 30ch; color: rgba(255,255,255,.55); font-size: .68rem; line-height: 1.45; }
+.lineup-control-action .lineup-run-error { color: #ffb9a8; }
 .honour-admin-grid { display: grid; grid-template-columns: minmax(420px, .82fr) minmax(0, 1.18fr); gap: var(--space-lg); align-items: start; }
 .honour-composer { position: sticky; top: var(--space-md); }
 .honour-form { display: grid; gap: var(--space-md); padding: var(--space-lg); }
@@ -230,6 +314,6 @@ onMounted(async () => {
 .curated-award li div { display: grid; gap: var(--space-3xs); }
 .curated-award li small { color: var(--ink-500); font-size: var(--text-xs); line-height: 1.5; }
 .icon-button.danger { color: var(--danger); }
-@media (max-width: 68rem) { .honour-season-bar { grid-template-columns: 1fr 1fr; } .honour-season-bar > div:first-child { grid-column: 1 / -1; } .honour-admin-grid { grid-template-columns: 1fr; } .honour-composer { position: static; } }
-@media (max-width: 45rem) { .honour-season-bar { grid-template-columns: 1fr; padding: var(--space-sm); } .honour-season-bar > div:first-child { grid-column: auto; } .honour-snapshot { border-top: 1px solid var(--line); border-left: 0; padding-top: var(--space-sm); padding-left: 0; } .recipient-row { grid-template-columns: 32px minmax(0, 1fr); } .reason-field { grid-column: 2; } .recipient-position { margin-top: 25px; } .honour-form, .curated-award { padding: var(--space-sm); } }
+@media (max-width: 68rem) { .honour-season-bar { grid-template-columns: 1fr 1fr; } .honour-season-bar > div:first-child { grid-column: 1 / -1; } .lineup-control { grid-template-columns: 1fr 1fr; } .lineup-control-copy { grid-column: 1 / -1; } .honour-admin-grid { grid-template-columns: 1fr; } .honour-composer { position: static; } }
+@media (max-width: 45rem) { .honour-season-bar, .lineup-control { grid-template-columns: 1fr; padding: var(--space-sm); } .honour-season-bar > div:first-child, .lineup-control-copy { grid-column: auto; } .honour-snapshot, .lineup-control-stats { border-top: 1px solid var(--line); border-left: 0; padding-top: var(--space-sm); padding-left: 0; } .lineup-control-copy { align-items: flex-start; } .lineup-control-mark { width: 52px; height: 52px; } .recipient-row { grid-template-columns: 32px minmax(0, 1fr); } .reason-field { grid-column: 2; } .recipient-position { margin-top: 25px; } .honour-form, .curated-award { padding: var(--space-sm); } }
 </style>

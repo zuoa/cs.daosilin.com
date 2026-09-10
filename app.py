@@ -263,6 +263,32 @@ def api_admin_honours_create():
     return success(award)
 
 
+@app.route('/api/admin/honours/lineups', methods=['POST'])
+def api_admin_lineups_generate():
+    if not _admin_authed():
+        return error(403, '无权限访问'), 403
+    body = request.get_json(silent=True) or {}
+    cup = str(body.get('cup') or '').strip()
+    if not cup:
+        return error(400, '参数 cup 不能为空'), 400
+    from season_lineup_service import LineupValidationError
+    from season_lineup_tasks import schedule_season_lineup
+    try:
+        row, queued = schedule_season_lineup(cup)
+    except LineupValidationError as exc:
+        return error(400, str(exc)), 400
+    status_code = 202 if queued else 200
+    return success({
+        'id': row.id,
+        'status': row.status,
+        'queued': queued,
+        'is_final': bool(row.is_final),
+        'valid_ballots': int(row.valid_ballots or 0),
+        'message': row.error_message if row.status in (
+            'insufficient_data', 'blocked_configuration', 'failed') else None,
+    }), status_code
+
+
 @app.route('/api/admin/honours/<int:award_id>', methods=['PATCH'])
 def api_admin_honours_update(award_id):
     if not _admin_authed():
@@ -1152,6 +1178,13 @@ def api_admin_season_save():
         # Seal one final snapshot at the same moment as the season. Later daily
         # jobs only iterate active seasons, so this payload remains immutable.
         refresh_season_honours(cup, include_archived=True)
+        # The 21-call final review runs off-request. If the latest successful
+        # review already matches the frozen data it is promoted immediately.
+        try:
+            from season_lineup_tasks import schedule_season_lineup
+            schedule_season_lineup(cup, final=True)
+        except Exception as exc:
+            logger.error(f'赛季阵容自动定稿排队失败 cup={cup}: {exc}')
     invalidate_season(cup, seasons=True)
     return success("赛季已保存")
 

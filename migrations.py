@@ -6,7 +6,7 @@ from config import ADMIN_PASSWORD, ADMIN_USERNAME
 from database import (AdminUser, DemoAnalysis, DemoCredential, DemoPlayerStats,
                       DraftPlayer, DraftSession, DraftTeam, PlayerCommunityRating,
                       FeedbackSubmission, PlayerPerfectRankHistory, PlayerSeasonSummary,
-                      ManualHonourAward, SeasonHonourSnapshot,
+                      ManualHonourAward, SeasonHonourSnapshot, SeasonLineupRun,
                       SchemaMigration, _add_column, _column_exists, _table_exists,
                       backfill_current_perfect_rank_history, db, is_postgres)
 
@@ -229,6 +229,11 @@ def _m022_season_honours():
     logger.info('赛季荣誉快照与手动奖项表已创建')
 
 
+def _m023_season_lineups():
+    db.create_tables([SeasonLineupRun], safe=True)
+    logger.info('赛季最佳阵容多轮评选表已创建')
+
+
 MIGRATIONS = [
     ('001_player_in_library', _m001_player_in_library),
     ('002_season_hit_ratio', _m002_season_hit_ratio),
@@ -252,6 +257,7 @@ MIGRATIONS = [
     ('020_season_champion_bracket', _m020_season_champion_bracket),
     ('021_feedback_submission', _m021_feedback_submission),
     ('022_season_honours', _m022_season_honours),
+    ('023_season_lineups', _m023_season_lineups),
 ]
 
 

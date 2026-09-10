@@ -29,6 +29,41 @@
         </dl>
       </section>
 
+      <section v-if="lineup" class="all-star-board" aria-labelledby="all-star-title">
+        <header class="all-star-heading">
+          <div>
+            <p class="section-kicker">{{ lineup.is_final ? 'FINAL ROSTERS' : 'LIVE SELECTION' }} · DEEPSEEK JURY</p>
+            <h2 id="all-star-title">赛季最佳阵容</h2>
+            <p>不是把 Rating 从高到低抄两遍。{{ lineup.target_ballots || 21 }} 轮评审把个人表现与赢球成果各算一半，再拼成两套角色完整的五人组。</p>
+          </div>
+          <dl v-if="lineup.status === 'completed'" class="all-star-meta">
+            <div><dt>有效票</dt><dd>{{ lineup.valid_ballots }}/{{ lineup.target_ballots }}</dd></div>
+            <div><dt>候选人</dt><dd>{{ lineup.candidate_count }}</dd></div>
+            <div><dt>数据截至</dt><dd>{{ shortDate(lineup.data_cutoff) }}</dd></div>
+          </dl>
+        </header>
+        <div v-if="lineup.status === 'completed'" class="all-star-pitch">
+          <article v-for="team in lineupTeams" :key="team.key" class="all-star-team" :class="team.key">
+            <header><span>{{ team.code }}</span><div><h3>{{ team.title }}</h3><p>{{ team.note }}</p></div></header>
+            <ol>
+              <li v-for="member in team.members" :key="member.player_id" class="all-star-player">
+                <router-link class="all-star-avatar" :to="`/player/${encodeURIComponent(member.player_id)}/${encodeURIComponent(cup)}/`"><PlayerAvatar :src="member.avatar" :name="member.name" /></router-link>
+                <div class="all-star-player-copy">
+                  <div><router-link :to="`/player/${encodeURIComponent(member.player_id)}/${encodeURIComponent(cup)}/`">{{ member.name }}</router-link><span>{{ weaponLabel(member.weapon_role) }} · {{ functionLabel(member.function_role) }}</span></div>
+                  <p>{{ member.reason }}</p><small>{{ evidenceText(member.evidence) }}</small>
+                </div>
+                <div class="all-star-confidence" :aria-label="`${lineup.target_ballots || 21} 轮入选率 ${percent(member.selection_rate)}`">
+                  <strong>{{ percent(member.selection_rate) }}</strong><span><i :style="{ width: percent(member.selection_rate) }"></i></span><small>入选率</small>
+                </div>
+              </li>
+            </ol>
+          </article>
+          <span class="all-star-midline" aria-hidden="true"><i></i><b>10</b><i></i></span>
+        </div>
+        <div v-else class="all-star-pending" role="status"><AppIcon :name="lineup.status === 'insufficient_data' ? 'database' : 'clock'" :size="22" /><div><strong>{{ lineupPendingTitle }}</strong><p>{{ lineup.message || '评选完成后，两套五人阵容会在这里登场。' }}</p></div></div>
+        <footer v-if="lineup.status === 'completed'" class="all-star-method"><span>评选口径</span><p>{{ lineup.method }}</p><em v-if="lineup.refreshing">新一轮正在评选</em><em v-else-if="lineup.finalizing_failed">自动定稿暂未完成</em></footer>
+      </section>
+
       <section v-if="groups.length" class="honours-command" aria-label="荣誉展浏览方式">
         <div class="honours-view-switch" role="group" aria-label="切换荣誉展模式">
           <button type="button" :aria-pressed="viewMode === 'carousel'" @click="setViewMode('carousel')"><AppIcon name="television" :size="16" />逐项轮播</button>
@@ -345,8 +380,20 @@ const autoplayPaused = computed(() => (
   || viewMode.value !== 'carousel' || awards.value.length < 2
 ))
 const statusCopy = computed(() => honourStatus(payload.value?.status))
+const lineup = computed(() => payload.value?.all_star_lineups || null)
+const lineupTeams = computed(() => [
+  { key: 'first', code: 'FIRST FIVE', title: '最佳一阵', note: '本季共识最高的五人组', members: lineup.value?.first_team || [] },
+  { key: 'second', code: 'SECOND FIVE', title: '最佳二阵', note: '不与一阵重复的第二套答案', members: lineup.value?.second_team || [] },
+])
+const lineupPendingTitle = computed(() => ({ insufficient_data: '候选样本还不够', pending: '评选等待排队', queued: '评选已经排队', generating: '21 轮评审进行中', failed: '本轮评选未形成有效共识', blocked_configuration: '评选服务尚未配置', superseded: '数据已更新，请重新评选' })[lineup.value?.status] || '阵容尚未评选')
 
 function pad(value) { return String(value).padStart(2, '0') }
+function percent(value) { return `${Math.round(Number(value || 0) * 100)}%` }
+function shortDate(value) { if (!value) return '-'; const date = new Date(value); return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('zh-CN') }
+function weaponLabel(value) { return value === 'awper' ? '主狙' : '步枪手' }
+function functionLabel(value) { return ({ opener: '突破', support: '支援', closer: '残局', flex: '自由位' })[value] || value }
+const metricLabels = { pwr_rating: 'PWR', kd_ratio: 'K/D', win_rate: '胜率', adr: 'ADR', kast: 'KAST', kills_per_round: 'KPR', sniper_kills_per_round: '狙击/回合', opening_win_rate: '开局胜率', first_kills_per_round: '首杀/回合', trade_kill_share: '补枪占比', utility_damage_per_round: '道具伤害/回合', clutches_per_match: '残局/场', round_swing: 'Round Swing', champion_count: '冠军', runner_up_count: '亚军' }
+function evidenceText(evidence = {}) { return Object.entries(evidence).slice(0, 3).map(([key, value]) => { const isRate = ['win_rate', 'kast', 'opening_win_rate', 'trade_kill_share'].includes(key); const shown = isRate ? percent(value) : (typeof value === 'number' ? Number(value).toFixed(Number.isInteger(value) ? 0 : 2) : value); return `${metricLabels[key] || key} ${shown}` }).join(' · ') }
 function rankLabel(position) {
   return ({ 1: '冠军', 2: '亚军', 3: '季军' })[Number(position)] || `第 ${position} 名`
 }

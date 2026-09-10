@@ -1130,7 +1130,10 @@ def build_season_honours(cup: str) -> dict[str, Any]:
         payload = refresh_season_honours(cup, include_archived=True)
     # JSON round-tripping prevents request-specific manual data mutating a cache object.
     payload = json.loads(json.dumps(payload, ensure_ascii=False))
-    return _with_manual_awards(payload, cup)
+    payload = _with_manual_awards(payload, cup)
+    from season_lineup_service import public_lineup_payload
+    payload['all_star_lineups'] = public_lineup_payload(cup)
+    return payload
 
 
 def admin_honours_payload(cup: str) -> dict[str, Any]:
@@ -1138,6 +1141,7 @@ def admin_honours_payload(cup: str) -> dict[str, Any]:
     if not season:
         raise HonourValidationError('赛季不存在')
     snapshot = SeasonHonourSnapshot.get_or_none(SeasonHonourSnapshot.cup_name == cup)
+    from season_lineup_service import admin_lineup_payload
     return {
         'cup': cup,
         'cup_alias': season.get('cup_alias') or season.get('name') or cup,
@@ -1145,6 +1149,7 @@ def admin_honours_payload(cup: str) -> dict[str, Any]:
         'snapshot_calculated_at': _iso(snapshot.calculated_at) if snapshot else None,
         'players': _player_directory(cup),
         'awards': _manual_awards(cup),
+        'all_star_lineups': admin_lineup_payload(cup),
     }
 
 

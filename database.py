@@ -1544,6 +1544,9 @@ class Season(BaseModel, CRUDMixin):
                 'player_summaries': PlayerSeasonSummary.delete().where(
                     PlayerSeasonSummary.cup_name == cup_name
                 ).execute(),
+                'lineup_runs': SeasonLineupRun.delete().where(
+                    SeasonLineupRun.cup_name == cup_name
+                ).execute(),
                 'honour_snapshots': SeasonHonourSnapshot.delete().where(
                     SeasonHonourSnapshot.cup_name == cup_name
                 ).execute(),
@@ -1803,6 +1806,34 @@ class ManualHonourAward(BaseModel, CRUDMixin):
         )
 
 
+class SeasonLineupRun(BaseModel, CRUDMixin):
+    """One auditable multi-ballot DeepSeek all-star selection run."""
+    cup_name = CharField(max_length=128, index=True)
+    status = CharField(max_length=32, default='pending', index=True)
+    is_final = BooleanField(default=False)
+    ballot_target = IntegerField(default=21)
+    valid_ballots = IntegerField(default=0)
+    source_hash = CharField(max_length=64, null=True)
+    requested_hash = CharField(max_length=64, null=True)
+    prompt_version = CharField(max_length=32, null=True)
+    model_name = CharField(max_length=128, null=True)
+    input_snapshot = TextField(null=True)
+    ballots_json = TextField(default='[]')
+    result_json = TextField(null=True)
+    prompt_tokens = IntegerField(null=True)
+    completion_tokens = IntegerField(null=True)
+    total_tokens = IntegerField(null=True)
+    error_message = TextField(null=True)
+    generated_at = DateTimeField(null=True)
+
+    class Meta:
+        table_name = 'season_lineup_run'
+        indexes = (
+            (('cup_name', 'status', 'created_at'), False),
+            (('cup_name', 'source_hash'), False),
+        )
+
+
 class FeedbackSubmission(BaseModel, CRUDMixin):
     """Reusable public feedback inbox.
 
@@ -1963,5 +1994,6 @@ def create_tables():
                           DemoCredential, DemoAnalysis, DemoPlayerStats, Season, SeasonRoster,
                           MatchSelection, DraftSession, DraftTeam, DraftPlayer,
                           AdminUser, SeasonHonourSnapshot, ManualHonourAward,
+                          SeasonLineupRun,
                           FeedbackSubmission, SchemaMigration], safe=True)
     migrate_schema()
