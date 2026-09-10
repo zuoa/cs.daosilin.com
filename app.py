@@ -32,8 +32,9 @@ from database import (AdminUser, DemoAnalysis, MatchPlayer, Player, CupDayChampi
 from demo_service import (demo_analysis_enabled, demo_credential_status,
                           revoke_demo_credential, save_demo_credential,
                           set_demo_analysis_enabled)
-from live_service import (LiveRoomError, fetch_live_avatar, get_live_statuses,
-                          normalize_live_room, resolve_live_room)
+from live_service import (LiveRoomError, fetch_live_avatar,
+                          get_cached_live_statuses, normalize_live_room,
+                          resolve_live_room)
 from honours_service import (HonourValidationError, admin_honours_payload,
                              build_season_honours, delete_manual_honour,
                              refresh_season_honours, save_manual_honour)
@@ -409,7 +410,7 @@ def api_admin_feedback_update(reference):
 
 
 @app.route('/api/v1/live-status')
-@cached_response(timeout=15, scopes=('live-status',))
+@cached_response(timeout=60 * 60, scopes=('live-status',))
 def api_live_status():
     player_ids = list(dict.fromkeys(_parse_ids(request.args.get('player_ids'))))
     if not player_ids:
@@ -426,9 +427,9 @@ def api_live_status():
             Player.live_url != '',
         )
     }
-    response = success({'statuses': get_live_statuses(live_rooms)})
+    response = success({'statuses': get_cached_live_statuses(live_rooms)})
     response.headers['Cache-Control'] = (
-        'public, max-age=15, stale-while-revalidate=45, stale-if-error=300'
+        'public, max-age=300, stale-while-revalidate=300, stale-if-error=900'
     )
     return response
 

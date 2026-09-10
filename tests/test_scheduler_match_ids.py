@@ -14,6 +14,12 @@ class MatchIdNormalizationTest(unittest.TestCase):
 
         self.assertEqual(str(job.trigger), "cron[hour='3', minute='30']")
 
+    def test_live_status_cache_refresh_runs_every_five_minutes(self):
+        task_scheduler = create_scheduler()
+        job = task_scheduler.get_job('refresh_live_statuses')
+
+        self.assertEqual(str(job.trigger), "cron[minute='*/5']")
+
     def test_numeric_and_prefixed_ids_share_one_identity(self):
         self.assertEqual(canonical_match_id(9223339745715475470), 'PVP@9223339745715475470')
         self.assertEqual(canonical_match_id('9223339745715475470'), 'PVP@9223339745715475470')

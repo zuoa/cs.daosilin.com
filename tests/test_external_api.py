@@ -299,7 +299,7 @@ class ExternalPlayersApiTest(unittest.TestCase):
             session.delete_instance()
             cache.clear()
 
-    @patch('app.get_live_statuses')
+    @patch('app.get_cached_live_statuses')
     def test_public_live_status_endpoint_batches_configured_rooms(self, statuses):
         statuses.return_value = {
             'p1': {'platform': 'DOUYU', 'status': 'live', 'supported': True},
@@ -312,7 +312,7 @@ class ExternalPlayersApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
             response.headers.get('Cache-Control'),
-            'public, max-age=15, stale-while-revalidate=45, stale-if-error=300',
+            'public, max-age=300, stale-while-revalidate=300, stale-if-error=900',
         )
         self.assertEqual(response.headers.get('X-Cache'), 'MISS')
         self.assertEqual(payload['p1']['status'], 'live')

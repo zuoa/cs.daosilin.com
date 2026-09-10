@@ -501,9 +501,6 @@ let quickVoteAnchor = null
 let quickVoteCloseTimer = 0
 let quickVoteSwitchTimer = 0
 let quickVoteRequest = 0
-let liveStatusTimer = 0
-const LIVE_STATUS_REFRESH_MIN_MS = 55_000
-const LIVE_STATUS_REFRESH_JITTER_MS = 15_000
 
 const filteredPlayers = computed(() => {
   const search = query.value.trim().toLowerCase()
@@ -807,35 +804,14 @@ async function loadLiveStatuses(list) {
   }
 }
 
-function scheduleLiveStatusRefresh() {
-  window.clearTimeout(liveStatusTimer)
-  const delay = LIVE_STATUS_REFRESH_MIN_MS + Math.random() * LIVE_STATUS_REFRESH_JITTER_MS
-  liveStatusTimer = window.setTimeout(async () => {
-    if (document.visibilityState === 'visible') {
-      await loadLiveStatuses(players.value)
-    }
-    scheduleLiveStatusRefresh()
-  }, delay)
-}
-
-function refreshLiveStatusWhenVisible() {
-  if (document.visibilityState !== 'visible') return
-  loadLiveStatuses(players.value)
-  scheduleLiveStatusRefresh()
-}
-
 onMounted(() => {
   load()
-  scheduleLiveStatusRefresh()
-  document.addEventListener('visibilitychange', refreshLiveStatusWhenVisible)
   window.addEventListener('resize', handleQuickVoteViewportChange)
   window.addEventListener('scroll', handleQuickVoteViewportChange, true)
   document.addEventListener('pointerdown', handleQuickVoteOutside)
 })
 onBeforeUnmount(() => {
   cancelQuickVoteClose()
-  window.clearTimeout(liveStatusTimer)
-  document.removeEventListener('visibilitychange', refreshLiveStatusWhenVisible)
   window.removeEventListener('resize', handleQuickVoteViewportChange)
   window.removeEventListener('scroll', handleQuickVoteViewportChange, true)
   document.removeEventListener('pointerdown', handleQuickVoteOutside)

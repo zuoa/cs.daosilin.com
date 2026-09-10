@@ -12,7 +12,6 @@ from typing import Optional
 from urllib.parse import parse_qs, unquote, urlsplit
 
 import requests
-from flask import has_app_context
 from urllib3.util import Timeout as Urllib3Timeout
 
 from ajlog import logger
@@ -43,8 +42,8 @@ LIVE_PLATFORMS = {
     )
 }
 
-LIVE_STATUS_CACHE_SECONDS = 60
-LIVE_STATUS_FAILURE_CACHE_SECONDS = 20
+LIVE_STATUS_CACHE_SECONDS = 60 * 60
+LIVE_STATUS_FAILURE_CACHE_SECONDS = 60 * 60
 LIVE_STATUS_LAST_GOOD_SECONDS = 24 * 60 * 60
 LIVE_STATUS_TIMEOUT_SECONDS = 3
 LIVE_STATUS_BATCH_BUDGET_SECONDS = 20
@@ -199,12 +198,19 @@ def _shared_last_good_cache_key(cache_key: str) -> str:
     return f'live-status-last-good:{cache_key}'
 
 
+def _shared_redis_key(cache_key: str) -> str:
+    # Keep scheduled live-state JSON separate from Flask-Caching's pickled keys.
+    return f'cs:scheduled-{cache_key}'
+
+
 def _shared_cache_get(cache_key: str) -> Optional[dict]:
-    if not has_app_context():
-        return None
     try:
-        from cache_service import cache as shared_cache
-        value = shared_cache.get(cache_key)
+        from cache_service import _redis_client
+        client = _redis_client()
+        if client is None:
+            return None
+        value = client.get(_shared_redis_key(cache_key))
+        value = json.loads(value) if value else None
     except Exception as exc:
         logger.warning(f'直播状态共享缓存读取失败 key={cache_key}: {exc}')
         return None
@@ -212,13 +218,15 @@ def _shared_cache_get(cache_key: str) -> Optional[dict]:
 
 
 def _shared_cache_set(cache_key: str, result: dict, ttl: int) -> None:
-    if not has_app_context():
-        return
     try:
-        from cache_service import cache as shared_cache
-        shared_cache.set(cache_key, result.copy(), timeout=ttl)
+        from cache_service import _redis_client
+        client = _redis_client()
+        if client is None:
+            return
+        redis_key = _shared_redis_key(cache_key)
+        client.set(redis_key, json.dumps(result, ensure_ascii=False), ex=ttl)
         with _live_status_cache_lock:
-            _shared_live_status_keys.add(cache_key)
+            _shared_live_status_keys.add(redis_key)
     except Exception as exc:
         logger.warning(f'直播状态共享缓存写入失败 key={cache_key}: {exc}')
 
@@ -272,13 +280,14 @@ def clear_live_status_cache() -> None:
         _last_good_live_status.clear()
         _live_status_key_locks.clear()
         _shared_live_status_keys.clear()
-    if has_app_context():
-        for cache_key in shared_keys:
-            try:
-                from cache_service import cache as shared_cache
-                shared_cache.delete(cache_key)
-            except Exception:
-                pass
+    if shared_keys:
+        try:
+            from cache_service import _redis_client
+            client = _redis_client()
+            if client is not None:
+                client.delete(*shared_keys)
+        except Exception:
+            pass
 
 
 def _parse_live_status(platform_code: str, payload: object) -> str:
@@ -626,7 +635,8 @@ def _get_huya_live_status(room_id: str, timeout: Optional[float] = None,
 
 def get_live_status(platform_code: str, room_id: str,
                     timeout: Optional[float] = None,
-                    deadline: Optional[float] = None) -> dict:
+                    deadline: Optional[float] = None,
+                    force_refresh: bool = False) -> dict:
     """Return a best-effort live state without allowing upstream errors to escape."""
     platform_code = (platform_code or '').strip().upper()
     room_id = (room_id or '').strip()
@@ -641,16 +651,18 @@ def get_live_status(platform_code: str, room_id: str,
         return result
 
     cache_key = f'{platform_code}:{room_id}'
-    cached = _cached_live_status(cache_key)
-    if cached is not None:
-        return cached
+    if not force_refresh:
+        cached = _cached_live_status(cache_key)
+        if cached is not None:
+            return cached
 
     # The per-room lock turns the process-local cache into a single-flight
     # cache when overlapping API requests ask for the same room.
     with _live_status_key_lock(cache_key):
-        cached = _cached_live_status(cache_key)
-        if cached is not None:
-            return cached
+        if not force_refresh:
+            cached = _cached_live_status(cache_key)
+            if cached is not None:
+                return cached
 
         try:
             if platform_code == 'HUYA':
@@ -687,8 +699,8 @@ def get_live_status(platform_code: str, room_id: str,
         return result.copy()
 
 
-def get_live_statuses(live_rooms: dict[str, str]) -> dict[str, dict]:
-    """Resolve and check several configured rooms concurrently."""
+def _resolved_live_rooms(live_rooms: dict[str, str]) -> dict[str, Optional[dict]]:
+    """Normalize configured room URLs without performing network requests."""
     resolved = {}
     for player_id, live_url in (live_rooms or {}).items():
         try:
@@ -698,6 +710,45 @@ def get_live_statuses(live_rooms: dict[str, str]) -> dict[str, dict]:
             continue
         if room.get('room_id'):
             resolved[str(player_id)] = room
+    return resolved
+
+
+def get_cached_live_statuses(live_rooms: dict[str, str]) -> dict[str, dict]:
+    """Read scheduled statuses only; a missing cache entry means offline."""
+    resolved = _resolved_live_rooms(live_rooms)
+    statuses = {}
+    room_statuses = {}
+    for player_id, room in resolved.items():
+        if not room:
+            statuses[player_id] = {
+                'platform': '',
+                'status': 'offline',
+                'supported': False,
+                'stale': False,
+            }
+            continue
+        room_key = f"{room['platform']}:{room['room_id']}"
+        if room_key not in room_statuses:
+            # The scheduler runs in another process, so Redis is authoritative.
+            # The local value is only a development fallback when Redis is absent.
+            cached = _shared_cache_get(_shared_status_cache_key(room_key))
+            if cached is None:
+                with _live_status_cache_lock:
+                    item = _live_status_cache.get(room_key)
+                    cached = item[1].copy() if item and item[0] > time.monotonic() else None
+            room_statuses[room_key] = cached or {
+                'platform': room['platform'],
+                'status': 'offline',
+                'supported': room['platform'] in _STATUS_ENDPOINTS,
+                'stale': False,
+            }
+        statuses[player_id] = room_statuses[room_key].copy()
+    return statuses
+
+
+def get_live_statuses(live_rooms: dict[str, str], *, force_refresh=False) -> dict[str, dict]:
+    """Refresh several configured rooms concurrently for scheduled jobs."""
+    resolved = _resolved_live_rooms(live_rooms)
 
     if not resolved:
         return {}
@@ -722,6 +773,7 @@ def get_live_statuses(live_rooms: dict[str, str]) -> dict[str, dict]:
                 room['platform'],
                 room['room_id'],
                 deadline=deadline,
+                force_refresh=force_refresh,
             ): room_key
             for room_key, room in unique_rooms.items()
         }

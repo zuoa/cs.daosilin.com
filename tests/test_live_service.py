@@ -7,8 +7,8 @@ import requests
 
 from live_service import (_HuyaStatusObservation, _get_huya_live_status,
                           _parse_huya_mobile_page_status,
-                          clear_live_status_cache, get_live_status,
-                          get_live_statuses)
+                          clear_live_status_cache, get_cached_live_statuses,
+                          get_live_status, get_live_statuses)
 
 
 class LiveStatusServiceTest(unittest.TestCase):
@@ -41,6 +41,35 @@ class LiveStatusServiceTest(unittest.TestCase):
         self.assertTrue(first['supported'])
         self.assertEqual(second, first)
         get.assert_called_once()
+
+    @patch('live_service.requests.get')
+    def test_cached_batch_does_not_query_and_defaults_to_offline(self, get):
+        result = get_cached_live_statuses({
+            'p1': 'https://www.douyu.com/not-yet-refreshed',
+            'invalid': 'https://example.com/room',
+        })
+
+        self.assertEqual(result['p1']['status'], 'offline')
+        self.assertEqual(result['invalid']['status'], 'offline')
+        get.assert_not_called()
+
+    @patch('live_service.requests.get')
+    def test_forced_refresh_replaces_unexpired_status(self, get):
+        get.side_effect = [
+            self.response({'room': {'show_status': 2, 'videoLoop': 0}}),
+            self.response({'room': {'show_status': 1, 'videoLoop': 0}}),
+        ]
+
+        first = get_live_status('DOUYU', 'forced-room')
+        refreshed = get_live_status('DOUYU', 'forced-room', force_refresh=True)
+        cached = get_cached_live_statuses({
+            'p1': 'https://www.douyu.com/forced-room',
+        })
+
+        self.assertEqual(first['status'], 'offline')
+        self.assertEqual(refreshed['status'], 'live')
+        self.assertEqual(cached['p1']['status'], 'live')
+        self.assertEqual(get.call_count, 2)
 
     @patch('live_service.requests.get')
     def test_douyu_video_loop_is_treated_as_offline(self, get):

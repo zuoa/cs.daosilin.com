@@ -19,13 +19,34 @@ from database import (create_tables, Match, MatchPlayer, Player, PlayerPerfectRa
 from demo_service import load_demo_credential
 from perfect_service import (clear_perfect_rank_cache, get_perfect_rank,
                              resolve_steam_id64)
-from cache_service import invalidate_profiles, invalidate_season
+from cache_service import invalidate_cache, invalidate_profiles, invalidate_season
+from live_service import get_live_statuses
 from title_service import title_service
 from utils import get_play_day
 from wm import WMAPI
 
 
 CRAWL_HEARTBEAT_TIMEOUT = datetime.timedelta(minutes=3)
+
+
+def refresh_all_live_statuses():
+    """Refresh every configured room; public requests only read these values."""
+    live_rooms = {
+        str(player.player_id): player.live_url
+        for player in Player.select(Player.player_id, Player.live_url).where(
+            Player.live_url.is_null(False),
+            Player.live_url != '',
+        )
+    }
+    statuses = get_live_statuses(live_rooms, force_refresh=True)
+    invalidate_cache('live-status')
+    counts = {'rooms': len(set(live_rooms.values())), 'players': len(live_rooms)}
+    for state in ('live', 'offline', 'unknown'):
+        counts[state] = sum(
+            1 for result in statuses.values() if result.get('status') == state
+        )
+    logger.info(f'直播状态定时刷新完成: {counts}')
+    return counts
 
 
 def canonical_match_id(match_id):
@@ -675,6 +696,17 @@ def create_scheduler():
     }
 
     scheduler = BlockingScheduler(executors=executors)
+
+    scheduler.add_job(
+        func=refresh_all_live_statuses,
+        trigger=CronTrigger(minute='*/5'),
+        id='refresh_live_statuses',
+        name='直播状态缓存刷新',
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+    logger.info('直播状态缓存任务已添加：每 5 分钟刷新全部直播间')
 
     # 完整采集通常耗时十几分钟。每半小时错峰执行，避免任务近乎连续运行，
     # 也避免在整点流量高峰与用户请求同时争抢 CPU/数据库。
