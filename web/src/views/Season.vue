@@ -10,19 +10,24 @@
 
     <main>
       <section class="season-hero">
-        <div class="season-title-block">
-          <h1>{{ cupAlias || cup }}</h1>
-          <p>{{ day ? `${day} · 当日选手数据` : '赛季综合数据与选手排名' }}</p>
+        <div class="season-hero-heading">
+          <div class="season-title-block">
+            <h1>{{ cupAlias || cup }}</h1>
+            <p>{{ day ? `${day} · 当日选手数据` : '赛季综合数据与选手排名' }}</p>
+          </div>
           <router-link v-if="!day" class="button subtle season-honours-link" :to="`/${cup}/honours`">
             <AppIcon name="trophy" :size="16" />逛赛季荣誉展
           </router-link>
         </div>
-        <div class="season-summary" aria-label="赛季数据概览">
-          <div><span>选手</span><strong>{{ players.length }}</strong></div>
-          <div><span>最高 Rating</span><strong>{{ topRating }}</strong></div>
-          <div><span>平均 Rating</span><strong>{{ averageRating }}</strong></div>
-          <div><span>数据更新</span><strong class="summary-time">{{ formatTime(lastCrawl) || '-' }}</strong></div>
-        </div>
+        <dl class="season-summary" aria-label="当前统计范围概览">
+          <div><dt>选手</dt><dd><strong>{{ players.length }}</strong><span>人</span></dd></div>
+          <div><dt>比赛日</dt><dd><strong>{{ dayCount }}</strong><span>天</span></dd></div>
+          <div><dt>比赛场次</dt><dd><strong>{{ matchCount }}</strong><span>场</span></dd></div>
+          <div class="season-summary-updated">
+            <dt>最新更新时间</dt>
+            <dd><time class="summary-time" :datetime="lastCrawl || undefined">{{ formatTime(lastCrawl) || '—' }}</time></dd>
+          </div>
+        </dl>
       </section>
 
       <nav class="day-navigation" aria-label="比赛日筛选">
@@ -399,7 +404,7 @@
         </div>
       </section>
     </main>
-    <footer class="public-footer"><router-link to="/">返回全部赛季</router-link><span>{{ cupAlias || cup }} · 熊掌CS Major · Made with 🩷 <AuthorSupport /></span></footer>
+    <footer class="public-footer"><router-link to="/">返回全部赛季</router-link><span>{{ cupAlias || cup }} · 熊掌CS Major <AuthorSupport /></span></footer>
     <CompareTray :cup="String(cup || '')" :day="String(day || '')" />
 
     <Teleport to="body">
@@ -468,6 +473,7 @@ const cupDays = ref([])
 const championBracketEnabled = ref(false)
 const championBracket = ref(null)
 const lastCrawl = ref('')
+const matchCount = ref(0)
 const error = ref('')
 const loading = ref(true)
 const open = ref('')
@@ -506,8 +512,7 @@ const filteredPlayers = computed(() => {
     .slice()
     .sort((a, b) => playerSortValue(b) - playerSortValue(a))
 })
-const topRating = computed(() => players.value.length ? n2(Math.max(...players.value.map((p) => Number(p.avg_pw_rating || 0)))) : '0.00')
-const averageRating = computed(() => players.value.length ? n2(players.value.reduce((sum, p) => sum + Number(p.avg_pw_rating || 0), 0) / players.value.length) : '0.00')
+const dayCount = computed(() => day.value ? 1 : cupDays.value.length)
 const championRoster = computed(() => players.value.filter((player) => player.is_champion))
 const quickVoteOptions = computed(() => quickVoteData.value?.options || defaultQuickVoteOptions)
 const selectedQuickVoteLabel = computed(() => quickVoteOptions.value.find(
@@ -768,6 +773,7 @@ async function load() {
     cupDays.value = [...new Set((data.cup_days || []).filter(Boolean))].sort().reverse()
     championBracketEnabled.value = Boolean(data.champion_bracket_enabled)
     championBracket.value = data.champion_bracket || null
+    matchCount.value = Number(data.match_count || 0)
     lastCrawl.value = data.last_crawl_time || ''
     document.title = day.value
       ? `${cupAlias.value} ${day.value} 当日数据｜熊掌CS Major`

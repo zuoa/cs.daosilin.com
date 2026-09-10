@@ -195,7 +195,7 @@ def api_admin_draft_delete(session_id):
     season_scope(request.view_args['cup']), 'profiles', 'draft'))
 def api_cup(cup):
     day = request.args.get('day') or None
-    players, cup_days = _build_cup_players(cup, day)
+    players, cup_days, scope = _build_cup_players(cup, day, include_scope=True)
     season = Season.get_by_cup(cup) or {}
     cup_alias = (
         season.get('cup_alias') or season.get('name') or season.get('cup_name') or cup
@@ -216,6 +216,7 @@ def api_cup(cup):
         'cup_alias': cup_alias,
         'day': day,
         'cup_days': cup_days,
+        'match_count': scope['match_count'],
         'players': players,
         'champion_bracket_enabled': bracket_enabled,
         'champion_bracket': champion_bracket,

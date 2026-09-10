@@ -252,7 +252,7 @@
 
     <footer class="public-footer">
       <router-link :to="`/${cup}/`">返回赛季数据</router-link>
-      <span>{{ payload?.cup_alias || cup }} · 熊掌CS Major · Made with 🩷 <AuthorSupport /></span>
+      <span>{{ payload?.cup_alias || cup }} · 熊掌CS Major <AuthorSupport /></span>
     </footer>
 
     <div v-if="exportAward" class="honour-poster-render" aria-hidden="true">

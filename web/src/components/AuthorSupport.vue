@@ -7,11 +7,14 @@
     @focusin="openFromFocus"
     @focusout="closeFromFocus"
   >
-    <span class="author-by">By</span>
+    <span class="author-credit-label">
+      Made with <span class="author-heart" aria-hidden="true">♥</span> by
+    </span>
     <button
       ref="triggerEl"
       class="author-trigger"
       type="button"
+      aria-label="查看 ZUOAJ 的作者信息与支持方式"
       aria-haspopup="dialog"
       :aria-expanded="isOpen"
       aria-controls="author-support-panel"

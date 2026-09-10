@@ -108,7 +108,7 @@
 
     <footer class="public-footer">
       <router-link to="/">返回数据首页</router-link>
-      <span>{{ siteName }} · DRAFT ARCHIVE · Made with 🩷 <AuthorSupport /></span>
+      <span>{{ siteName }} · DRAFT ARCHIVE <AuthorSupport /></span>
     </footer>
   </div>
 </template>

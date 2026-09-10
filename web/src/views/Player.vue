@@ -599,7 +599,7 @@
       </div>
     </AppModal>
 
-    <footer class="public-footer"><router-link :to="cup ? `/${cup}/` : '/'">返回 {{ cupAlias || '赛季榜单' }}</router-link><span>PLAYER INTELLIGENCE · 熊掌CS Major · Made with 🩷 <AuthorSupport /></span></footer>
+    <footer class="public-footer"><router-link :to="cup ? `/${cup}/` : '/'">返回 {{ cupAlias || '赛季榜单' }}</router-link><span>PLAYER INTELLIGENCE · 熊掌CS Major <AuthorSupport /></span></footer>
     <CompareTray v-if="cup" :cup="String(cup)" :day="String(day || '')" />
     <p class="sr-only" aria-live="polite">{{ compareAnnouncement }}</p>
   </div>

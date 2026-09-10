@@ -74,7 +74,7 @@
 
     <footer class="public-footer">
       <router-link :to="`/${cup}/`">返回选手榜单</router-link>
-      <span>{{ cupAlias || cup }} · 熊掌CS Major · Made with 🩷 <AuthorSupport /></span>
+      <span>{{ cupAlias || cup }} · 熊掌CS Major <AuthorSupport /></span>
     </footer>
   </div>
 </template>

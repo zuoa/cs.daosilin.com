@@ -61,7 +61,7 @@ def season_list_payload():
     return seasons
 
 
-def build_cup_players(cup, day=None):
+def build_cup_players(cup, day=None, *, include_scope=False):
     all_players = list(Player.select().where(Player.parent_player_id.is_null(True)).dicts())
     all_players_map = {player['player_id']: player for player in all_players}
     day_champion = CupDayChampion.get_champion_by_cup_and_day(cup, day)
@@ -72,6 +72,11 @@ def build_cup_players(cup, day=None):
     if day is not None:
         filter_params['play_day'] = day
     players = MatchPlayer.filter_records(**filter_params)
+    scope = {
+        'match_count': len({
+            str(player['match_id']) for player in players if player.get('match_id')
+        }),
+    }
     account_map = Player.account_map()
     players_map = {}
     champion_ids = {
@@ -160,6 +165,8 @@ def build_cup_players(cup, day=None):
         )
         for player in player_data:
             player['community_rating'] = community_ratings.get(str(player['player_id']))
+    if include_scope:
+        return player_data, cup_days, scope
     return player_data, cup_days
 
 

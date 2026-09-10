@@ -236,6 +236,16 @@ class ExternalPlayersApiTest(unittest.TestCase):
         player = next(item for item in payload['players'] if item['player_id'] == 'p1')
         self.assertEqual(player['live_url'], 'https://www.douyu.com/731778')
 
+    def test_cup_leaderboard_exposes_match_count_for_current_scope(self):
+        cache.clear()
+        season_payload = self.client.get('/api/v1/cup/season-two').get_json()['data']
+        day_payload = self.client.get(
+            '/api/v1/cup/season-two?day=20250101'
+        ).get_json()['data']
+
+        self.assertEqual(season_payload['match_count'], 1)
+        self.assertEqual(day_payload['match_count'], 1)
+
     def test_daily_cup_exposes_champion_bracket_only_when_enabled(self):
         expected = {
             'format': 'eight_team_daily_bo3',
