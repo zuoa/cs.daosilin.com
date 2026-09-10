@@ -356,7 +356,7 @@
             <div>
               <span class="summary-kicker"><AppIcon name="shield" />TOUGH MATCHUPS</span>
               <h2 id="hard-targets-title">尿完了 · TOP 3</h2>
-              <p>同样只统计双向击杀合计超过 5 次的对位，按对位比从低到高排列。</p>
+              <p>只统计双向击杀合计超过 5 次且对位比小于 0.5 的对位，按对位比从低到高排列。</p>
             </div>
           </div>
           <ol class="soft-target-podium hard-target-podium">
@@ -751,11 +751,14 @@ const sortedSoftMatchups = computed(() => validMatchups.value
   }))
 const softTargets = computed(() => sortedSoftMatchups.value.slice(0, 3))
 const otherMatchups = computed(() => sortedSoftMatchups.value.slice(3, 10))
-const hardTargets = computed(() => [...validMatchups.value].sort((a, b) => (
-  matchupRatio(a) - matchupRatio(b)
-  || Number(b.encounters || 0) - Number(a.encounters || 0)
-  || Number(b.deaths || 0) - Number(a.deaths || 0)
-)).slice(0, 3))
+const hardTargets = computed(() => validMatchups.value
+  .filter((opponent) => matchupRatio(opponent) < 0.5)
+  .sort((a, b) => (
+    matchupRatio(a) - matchupRatio(b)
+    || Number(b.encounters || 0) - Number(a.encounters || 0)
+    || Number(b.deaths || 0) - Number(a.deaths || 0)
+  ))
+  .slice(0, 3))
 const statGroups = computed(() => buildPlayerDetailGroups(stats.value))
 const demoGroups = computed(() => {
   const s = stats.value?.demo_data || {}
