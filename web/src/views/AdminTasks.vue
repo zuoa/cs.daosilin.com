@@ -85,7 +85,7 @@ const demoJobSummary = computed(() => Object.entries(demo.value.job_counts || {}
 
 function setTab(tab) { router.replace({ query: tab === 'demo' ? {} : { tab } }) }
 function formatTime(value, trim = false) { return value ? value.replace('T', ' ').slice(0, trim ? 16 : undefined) : '未记录' }
-function isDemoRetryable(status) { return !['completed', 'queued', 'downloading', 'validating', 'parsing'].includes(status) }
+function isDemoRetryable(status) { return !['completed', 'ineligible', 'queued', 'downloading', 'validating', 'parsing'].includes(status) }
 function show(message, type = 'success') { clearTimeout(toastTimer); toast.value = { message, type }; toastTimer = setTimeout(() => { toast.value.message = '' }, 3500) }
 async function load() {
   loading.value = true
