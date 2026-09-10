@@ -1,0 +1,74 @@
+diff --git a/analysis/analyser.go b/analysis/analyser.go
+index f4adbe5..eb6203d 100644
+--- a/analysis/analyser.go
++++ b/analysis/analyser.go
+@@ -607,19 +607,24 @@ func (a *analyser) onPlayerHurt(e events.PlayerHurt) {
+ 	if damageAttacker == nil {
+ 		return
+ 	}
+-	// Team damage and self damage never count towards damage given, and
+-	// following HLTV convention neither does bomb damage (when the game
+-	// credits the explosion to the planter).
+-	if damageAttacker.SteamID64 == e.Player.SteamID64 || damageAttacker.Team == e.Player.Team {
++	// Self damage never counts. Team damage is kept separately for consumers
++	// that want friendly-fire metrics, while remaining excluded from HLTV ADR.
++	if damageAttacker.SteamID64 == e.Player.SteamID64 {
+ 		return
+ 	}
++	attackerStats := a.ensurePlayer(damageAttacker)
++	if attackerStats == nil {
++		return
++	}
++	if damageAttacker.Team == e.Player.Team {
++		attackerStats.AssistStats.TeamDamage += realDamage
++		return
++	}
++	// Following HLTV convention bomb damage does not count towards damage
++	// given when the game credits the explosion to the planter.
+ 	if e.Weapon != nil && e.Weapon.Type == common.EqBomb {
+ 		return
+ 	}
+-	attackerStats := a.ensurePlayer(damageAttacker)
+-	if attackerStats == nil {
+-		return
+-	}
+ 	if e.Attacker != nil && realDamage > 0 {
+ 		a.worldSource[victimID] = worldDamageSource{attacker: damageAttacker, frame: frame}
+ 	}
+diff --git a/analysis/series.go b/analysis/series.go
+index 59175e7..d63e8be 100644
+--- a/analysis/series.go
++++ b/analysis/series.go
+@@ -663,6 +663,7 @@ func (sp *SeriesPlayer) addMapStats(mp *DemoPlayer) {
+ 	sp.AssistStats.Total += mp.AssistStats.Total
+ 	sp.AssistStats.FlashedEnemies += mp.AssistStats.FlashedEnemies
+ 	sp.AssistStats.DamageGiven += mp.AssistStats.DamageGiven
++	sp.AssistStats.TeamDamage += mp.AssistStats.TeamDamage
+ 
+ 	sp.PlayerStats.MVPs += mp.PlayerMapStats.MVPs
+ 	sp.PlayerStats.ACEs += mp.PlayerMapStats.ACEs
+diff --git a/analysis/types.go b/analysis/types.go
+index 8d3a1fe..4314386 100644
+--- a/analysis/types.go
++++ b/analysis/types.go
+@@ -13,5 +13,6 @@ type AssistStats struct {
+ 	Total          int     `json:"total"`
+ 	FlashedEnemies int     `json:"flashed_enemies"`
+ 	DamageGiven    int     `json:"damage_given"`
++	TeamDamage     int     `json:"team_damage"`
+ 	ADR            float64 `json:"adr"`
+ }
+diff --git a/analysis/utility_test.go b/analysis/utility_test.go
+index 622a192..4c271b3 100644
+--- a/analysis/utility_test.go
++++ b/analysis/utility_test.go
+@@ -166,6 +166,9 @@ func TestUtilityDamageExcludesOtherWeaponsTeamSelfAndBombDamage(t *testing.T) {
+ 	if got.AssistStats.DamageGiven != 25 {
+ 		t.Errorf("damage given = %d, want 25 from the gun and flash projectile hits", got.AssistStats.DamageGiven)
+ 	}
++	if got.AssistStats.TeamDamage != 20 {
++		t.Errorf("team damage = %d, want 20", got.AssistStats.TeamDamage)
++	}
+ }
+ 
+ func grenadeThrow(thrower *common.Player, equipmentType common.EquipmentType) events.GrenadeProjectileThrow {

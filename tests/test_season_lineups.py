@@ -46,7 +46,7 @@ def member(player_id, offset):
         'player_id': player_id,
         'weapon_role': 'awper' if offset == 0 else 'rifler',
         'function_role': FUNCTIONS[offset],
-        'reason': '在本赛季的个人输出与赢球成果之间取得了稳定平衡。',
+        'reason': '在本赛季的个人输出与胜利成果之间取得了稳定平衡。',
         'evidence': ['pwr_rating', 'win_rate'],
     }
 

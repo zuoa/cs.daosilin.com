@@ -234,6 +234,14 @@ def _m023_season_lineups():
     logger.info('赛季最佳阵容多轮评选表已创建')
 
 
+def _m024_demo_team_damage():
+    if (_table_exists('demo_player_stats')
+            and not _column_exists('demo_player_stats', 'team_damage')):
+        _add_column('demo_player_stats', 'team_damage', 'INTEGER DEFAULT 0')
+        db.execute_sql('UPDATE demo_player_stats SET team_damage = 0 WHERE team_damage IS NULL')
+        logger.info('Demo 选手队友伤害字段已补齐')
+
+
 MIGRATIONS = [
     ('001_player_in_library', _m001_player_in_library),
     ('002_season_hit_ratio', _m002_season_hit_ratio),
@@ -258,6 +266,7 @@ MIGRATIONS = [
     ('021_feedback_submission', _m021_feedback_submission),
     ('022_season_honours', _m022_season_honours),
     ('023_season_lineups', _m023_season_lineups),
+    ('024_demo_team_damage', _m024_demo_team_damage),
 ]
 
 

@@ -13,6 +13,7 @@ from peewee import BooleanField, DoubleField, FloatField, IntegerField
 
 from app import app
 import demo_worker
+from config import DEMO_METRIC_VERSION
 from database import (Config, DemoAnalysis, DemoCredential, DemoPlayerStats,
                       MatchPlayer, Player, create_tables, db)
 from demo_service import (attach_demo_stats, demo_analysis_enabled,
@@ -56,7 +57,7 @@ def parsed_payload(steam_id, kills=15):
                 'kill_stats': {'total': kills, 'headshots': 7, 'trade_kills': 3,
                                'team_kills': 0, 'weapons_kills': {'AK-47': 10}},
                 'assist_stats': {'total': 4, 'flashed_enemies': 2,
-                                 'damage_given': 1000, 'adr': 100},
+                                 'damage_given': 1000, 'team_damage': 36, 'adr': 100},
                 'player_map_stats': {
                     'mvps': 2, 'aces': 1, 'multi_kills': {'k2': 2, 'k3': 1, 'k4': 0, 'k5': 1},
                     'clutches_won': 1, 'kast': 80,
@@ -344,7 +345,7 @@ class DemoAnalysisTest(unittest.TestCase):
         create_platform_row('m-demo', 'platform-player', kill=5, death=9, dmg_health=400, kast=5)
         create_platform_row('m-fallback', 'platform-player', kill=20, death=10,
                             dmg_health=800, kast=7)
-        DemoAnalysis.create(match_id='m-demo', status='completed', metric_version='v1')
+        DemoAnalysis.create(match_id='m-demo', status='completed', metric_version=DEMO_METRIC_VERSION)
 
         count = persist_analysis('m-demo', parsed_payload(steam_id))
         self.assertEqual(count, 2)
@@ -359,6 +360,7 @@ class DemoAnalysisTest(unittest.TestCase):
         self.assertEqual(result['demo_data']['avg_enemies_flashed_per_match'], 6)
         self.assertEqual(result['demo_data']['avg_grenades_thrown_per_match'], 12)
         self.assertEqual(result['demo_data']['avg_unused_utility_value_per_match'], 600)
+        self.assertEqual(result['demo_data']['avg_team_damage_per_match'], 36)
         self.assertEqual(result['demo_data']['avg_trade_frags_per_match'], 3)
         self.assertEqual(result['demo_data']['ct_kills_per_round'], 1.6)
         self.assertEqual(result['demo_data']['t_kills_per_round'], 1.4)
@@ -372,7 +374,7 @@ class DemoAnalysisTest(unittest.TestCase):
         Player.create(player_id='average-player', nickname='Player', steam_id=steam_id)
         for match_id in ('m-average-1', 'm-average-2'):
             create_platform_row(match_id, 'average-player')
-            DemoAnalysis.create(match_id=match_id, status='completed', metric_version='v1')
+            DemoAnalysis.create(match_id=match_id, status='completed', metric_version=DEMO_METRIC_VERSION)
             persist_analysis(match_id, parsed_payload(steam_id))
 
         result = attach_demo_stats({'match_count': 2}, 'demo-cup', 'average-player')
@@ -384,6 +386,8 @@ class DemoAnalysisTest(unittest.TestCase):
         self.assertEqual(demo['avg_enemies_flashed_per_match'], 6)
         self.assertEqual(demo['unused_utility_value'], 1200)
         self.assertEqual(demo['avg_unused_utility_value_per_match'], 600)
+        self.assertEqual(demo['total_team_damage'], 72)
+        self.assertEqual(demo['avg_team_damage_per_match'], 36)
         self.assertEqual(result['demo_coverage'], {'completed': 2, 'total': 2, 'ratio': 1.0})
 
     def test_round_swing_percent_is_weighted_by_demo_rounds(self):
@@ -395,7 +399,7 @@ class DemoAnalysisTest(unittest.TestCase):
         )
         for match_id, rounds, swing in fixtures:
             create_platform_row(match_id, 'swing-player', game_count=rounds)
-            DemoAnalysis.create(match_id=match_id, status='completed', metric_version='v1')
+            DemoAnalysis.create(match_id=match_id, status='completed', metric_version=DEMO_METRIC_VERSION)
             payload = parsed_payload(steam_id)
             payload['map_data']['total_rounds'] = rounds
             player = payload['players'][steam_id]

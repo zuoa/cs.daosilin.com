@@ -33,7 +33,7 @@ CATEGORIES = (
 )
 
 MANUAL_CATEGORY = ('manual', '评审特别奖')
-HONOURS_SCHEMA_VERSION = 5
+HONOURS_SCHEMA_VERSION = 6
 _snapshot_lock = threading.RLock()
 
 
@@ -402,6 +402,80 @@ def _unused_utility_stats(
     return _summarize_unused_utility(query, account_map, players)
 
 
+def _summarize_team_damage(
+    rows,
+    account_map: dict[str, str],
+    players: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, float]]:
+    totals = defaultdict(lambda: {'total': 0.0, 'match_ids': set()})
+    for row in rows:
+        raw_player_id = str(row.get('player_id') or '')
+        match_id = str(row.get('match_id') or '')
+        player_id = account_map.get(raw_player_id, raw_player_id)
+        if not match_id or player_id not in players:
+            continue
+        totals[player_id]['total'] += _number(row.get('team_damage'))
+        totals[player_id]['match_ids'].add(match_id)
+    result = {}
+    for player_id, stats in totals.items():
+        matches = len(stats['match_ids'])
+        if matches:
+            result[player_id] = {
+                'total': stats['total'],
+                'matches': matches,
+                'average': stats['total'] / matches,
+            }
+    return result
+
+
+def _team_damage_stats(
+    cup: str,
+    account_map: dict[str, str],
+    players: dict[str, dict[str, Any]],
+) -> dict[str, dict[str, float]]:
+    """Aggregate friendly-fire damage only from completed, current demos."""
+    if not players:
+        return {}
+    query = (DemoPlayerStats
+             .select(
+                 DemoPlayerStats.match_id,
+                 DemoPlayerStats.player_id,
+                 DemoPlayerStats.team_damage,
+             )
+             .join(MatchPlayer, on=(
+                 (DemoPlayerStats.match_id == MatchPlayer.match_id)
+                 & (DemoPlayerStats.player_id == MatchPlayer.player_id)
+             ))
+             .switch(DemoPlayerStats)
+             .join(DemoAnalysis, on=(DemoAnalysis.match_id == DemoPlayerStats.match_id))
+             .where(
+                 MatchPlayer.cup_name == cup,
+                 DemoAnalysis.status == 'completed',
+                 DemoAnalysis.metric_version == DEMO_METRIC_VERSION,
+             )
+             .dicts())
+    return _summarize_team_damage(query, account_map, players)
+
+
+def _team_damage_award(
+    players: dict[str, dict[str, Any]], minimum_matches: int,
+) -> dict[str, Any]:
+    return _award(
+        key='team-damage', category='match', title='爱护队友奖',
+        description='对队友的关照落实到了每一点伤害。',
+        method=(f'只统计已完成且指标版本有效的 Demo；至少覆盖 {minimum_matches} 场，'
+                '按伤害队友总量除以有效 Demo 场次排名。'),
+        players=players, metric='team_damage_average',
+        eligible=lambda player: (
+            int(player.get('team_damage_average_sample') or 0) >= minimum_matches
+            and _number(player.get('team_damage_average')) > 0
+        ),
+        display=lambda player: f"{_number(player.get('team_damage_average')):.2f} / 场",
+        evidence=lambda player: (f"Demo {int(player['team_damage_average_sample'])} 场"
+                                 f" · 队友总伤害 {int(player['team_damage_total'])}"),
+    )
+
+
 def _summarize_side_stats(
     rows: list[dict[str, Any]],
     account_map: dict[str, str],
@@ -737,6 +811,7 @@ def _calculate_season_honours(cup: str) -> dict[str, Any]:
     draft_stats = draft_pick_summaries(days, player_ids)
     community = community_rating_summaries(cup, player_ids) if player_ids else {}
     unused_utility = _unused_utility_stats(cup, account_map, players)
+    team_damage = _team_damage_stats(cup, account_map, players)
     side_stats = _side_stats(cup, account_map, players)
     for player_id, stats in side_stats.items():
         players[player_id].update(stats)
@@ -827,6 +902,11 @@ def _calculate_season_honours(cup: str) -> dict[str, Any]:
             player['unused_utility_average'] = utility['average']
             player['unused_utility_total'] = utility['total']
             player['unused_utility_average_sample'] = utility['matches']
+        friendly_fire = team_damage.get(player_id)
+        if friendly_fire:
+            player['team_damage_average'] = friendly_fire['average']
+            player['team_damage_total'] = friendly_fire['total']
+            player['team_damage_average_sample'] = friendly_fire['matches']
         rounds = _number(player.get('total_rounds'))
         kills = _number(player.get('total_kills'))
         matches = _number(player.get('match_count'))
@@ -858,6 +938,10 @@ def _calculate_season_honours(cup: str) -> dict[str, Any]:
     minimum_demo_matches = _minimum_matches({
         player_id: {'match_count': stats['matches']}
         for player_id, stats in unused_utility.items()
+    })
+    minimum_team_damage_matches = _minimum_matches({
+        player_id: {'match_count': stats['matches']}
+        for player_id, stats in team_damage.items()
     })
     matchup_records = _matchup_records(raw_rows, account_map, players)
 
@@ -930,6 +1014,7 @@ def _calculate_season_honours(cup: str) -> dict[str, Any]:
                description='闪光覆盖很全面，队友也没落下。', method='按致盲队友总数除以总回合数排名。',
                players=players, metric='team_flash_rate', eligible=general,
                display=percent_display('team_flash_rate'), evidence=lambda p: f"致盲队友 {int(p['total_flash_teammate'])} 次"),
+        _team_damage_award(players, minimum_team_damage_matches),
         _award(key='headshot-line', category='specialist', title='爆头生产线',
                description='击杀可以有很多种，他偏爱最短的那种。', method='按爆头击杀数除以总击杀数排名。',
                players=players, metric='headshot_rate', eligible=general,

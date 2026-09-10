@@ -75,7 +75,7 @@ DEMO_STORAGE_PATH = os.getenv(
 DEMO_MAX_BYTES = int(os.getenv('DEMO_MAX_BYTES', str(1024 * 1024 * 1024)))
 DEMO_ANALYZER_PATH = os.getenv('DEMO_ANALYZER_PATH', '/usr/local/bin/cs-demo-analyzer')
 DEMO_ANALYZER_TIMEOUT = int(os.getenv('DEMO_ANALYZER_TIMEOUT', '840'))
-DEMO_METRIC_VERSION = os.getenv('DEMO_METRIC_VERSION', 'v1').strip() or 'v1'
+DEMO_METRIC_VERSION = os.getenv('DEMO_METRIC_VERSION', 'v2').strip() or 'v2'
 DEMO_BACKFILL_DAYS = int(os.getenv('DEMO_BACKFILL_DAYS', '30'))
 DEMO_RETENTION_DAYS = max(1, int(os.getenv('DEMO_RETENTION_DAYS', '3')))
 

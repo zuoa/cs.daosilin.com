@@ -11,7 +11,7 @@ from database import (Config, DemoAnalysis, DemoCredential, DemoPlayerStats,
 
 
 PARSER_NAME = 'cs2-analyser-tool'
-PARSER_VERSION = '88cb54ea0267fc8f4a8ae8d03987b50aec2a0653'
+PARSER_VERSION = '88cb54ea0267fc8f4a8ae8d03987b50aec2a0653+team-damage-v1'
 
 
 def demo_analysis_enabled():
@@ -150,6 +150,7 @@ def persist_analysis(match_id: str, payload: dict) -> int:
             'kills': int(kills.get('total') or 0), 'deaths': int(raw.get('deaths') or 0),
             'assists': int(assists.get('total') or 0), 'headshots': int(kills.get('headshots') or 0),
             'team_kills': int(kills.get('team_kills') or 0),
+            'team_damage': int(assists.get('team_damage') or 0),
             'damage_given': int(assists.get('damage_given') or 0),
             'kast_rounds': float(map_stats.get('kast') or 0) * total_rounds / 100.0,
             'mvps': int(map_stats.get('mvps') or 0), 'aces': int(map_stats.get('aces') or 0),
@@ -270,6 +271,7 @@ def get_demo_player_stats(cup_name, player_id: str, play_day: str = None):
         'total_4k': int(total('four_kill')), 'total_5k': int(total('five_kill')),
         'total_aces': int(total('aces')), 'total_clutches_won': int(total('clutches_won')),
         'total_mvp': int(total('mvps')), 'total_team_kills': int(total('team_kills')),
+        'total_team_damage': int(total('team_damage')),
         'flash_assists': int(total('flash_assists')), 'enemies_flashed': int(total('enemies_flashed')),
         'friends_flashed': int(total('friends_flashed')),
         'avg_flash_assists_per_match': ratio(total('flash_assists'), completed),
@@ -297,6 +299,7 @@ def get_demo_player_stats(cup_name, player_id: str, play_day: str = None):
         'avg_deaths_traded_per_match': ratio(total('deaths_traded'), completed),
         'avg_clutches_won_per_match': ratio(total('clutches_won'), completed),
         'avg_team_kills_per_match': ratio(total('team_kills'), completed),
+        'avg_team_damage_per_match': ratio(total('team_damage'), completed),
         'ct_rounds': int(total('rounds_ct')), 't_rounds': int(total('rounds_t')),
         'ct_kills': int(total('ct_kills')), 't_kills': int(total('t_kills')),
         'ct_deaths': int(total('ct_deaths')), 't_deaths': int(total('t_deaths')),
@@ -398,7 +401,8 @@ def attach_demo_stats(platform_data, cup_name, player_id, play_day=None):
         effective.update(demo['effective_core'] or {})
         demo_only = (
             'total_deaths_traded', 'death_trade_rate', 'opening_round_conversion',
-            'total_aces', 'total_clutches_won', 'total_team_kills', 'flash_assists',
+            'total_aces', 'total_clutches_won', 'total_team_kills',
+            'total_team_damage', 'avg_team_damage_per_match', 'flash_assists',
             'enemies_flashed', 'friends_flashed', 'enemy_flash_seconds',
             'average_enemy_flash_seconds', 'enemies_per_flash', 'team_flash_share',
             'grenades_thrown',

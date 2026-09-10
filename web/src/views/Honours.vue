@@ -34,7 +34,7 @@
           <div>
             <p class="section-kicker">{{ lineup.is_final ? 'FINAL ROSTERS' : 'LIVE SELECTION' }} · DEEPSEEK JURY</p>
             <h2 id="all-star-title">赛季最佳阵容</h2>
-            <p>不是把 Rating 从高到低抄两遍。{{ lineup.target_ballots || 21 }} 轮评审把个人表现与赢球成果各算一半，再拼成两套角色完整的五人组。</p>
+            <p>不是把 Rating 从高到低抄两遍。{{ lineup.target_ballots || 21 }} 轮评审把个人表现与胜利成果各算一半，再拼成两套角色完整的五人组。</p>
           </div>
           <dl v-if="lineup.status === 'completed'" class="all-star-meta">
             <div><dt>有效票</dt><dd>{{ lineup.valid_ballots }}/{{ lineup.target_ballots }}</dd></div>

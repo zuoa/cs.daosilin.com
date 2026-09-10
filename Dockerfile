@@ -15,6 +15,8 @@ RUN git init \
     && git fetch --depth=1 origin 88cb54ea0267fc8f4a8ae8d03987b50aec2a0653 \
     && git checkout --detach FETCH_HEAD
 COPY demo_analyzer/main.go /src/cmd/cs-site-demo/main.go
+COPY demo_analyzer/team_damage.patch /src/team_damage.patch
+RUN git apply /src/team_damage.patch
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/cs-demo-analyzer ./cmd/cs-site-demo
 
 FROM python:3.12-slim

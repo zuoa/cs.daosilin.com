@@ -16,7 +16,9 @@ from honours_service import (
     _percentiles,
     _side_award,
     _summarize_side_stats,
+    _summarize_team_damage,
     _summarize_unused_utility,
+    _team_damage_award,
     build_season_honours,
     refresh_season_honours,
 )
@@ -189,6 +191,44 @@ class HonourCalculationTest(unittest.TestCase):
         self.assertEqual(result['a'], {'total': 1200.0, 'matches': 2, 'average': 600.0})
         self.assertEqual(result['b'], {'total': 300.0, 'matches': 1, 'average': 300.0})
         self.assertNotIn('outsider', result)
+
+    def test_team_damage_uses_per_demo_average_for_canonical_player(self):
+        players = {
+            'a': {'player_id': 'a', 'name': 'Alpha'},
+            'b': {'player_id': 'b', 'name': 'Bravo'},
+        }
+        rows = [
+            {'match_id': 'm1', 'player_id': 'a-alt', 'team_damage': 24},
+            {'match_id': 'm2', 'player_id': 'a', 'team_damage': 36},
+            {'match_id': 'm1', 'player_id': 'b', 'team_damage': 45},
+            {'match_id': 'm3', 'player_id': 'outsider', 'team_damage': 99},
+        ]
+
+        result = _summarize_team_damage(rows, {'a-alt': 'a'}, players)
+
+        self.assertEqual(result['a'], {'total': 60.0, 'matches': 2, 'average': 30.0})
+        self.assertEqual(result['b'], {'total': 45.0, 'matches': 1, 'average': 45.0})
+        self.assertNotIn('outsider', result)
+
+    def test_team_damage_award_ranks_highest_eligible_average(self):
+        players = {
+            'a': {'player_id': 'a', 'name': 'Alpha', 'avg_pw_rating': 1.1,
+                  'team_damage_average': 30, 'team_damage_total': 60,
+                  'team_damage_average_sample': 2},
+            'b': {'player_id': 'b', 'name': 'Bravo', 'avg_pw_rating': 1.2,
+                  'team_damage_average': 45, 'team_damage_total': 45,
+                  'team_damage_average_sample': 1},
+            'c': {'player_id': 'c', 'name': 'Charlie', 'avg_pw_rating': 1.0,
+                  'team_damage_average': 25, 'team_damage_total': 75,
+                  'team_damage_average_sample': 3},
+        }
+
+        award = _team_damage_award(players, minimum_matches=2)
+
+        self.assertEqual(award['title'], '爱护队友奖')
+        self.assertEqual([entry['player_id'] for entry in award['entries']], ['a', 'c'])
+        self.assertEqual(award['entries'][0]['display_value'], '30.00 / 场')
+        self.assertEqual(award['entries'][0]['evidence'], 'Demo 2 场 · 队友总伤害 60')
 
     def test_side_awards_use_canonical_demo_totals_and_sample_thresholds(self):
         players = {
