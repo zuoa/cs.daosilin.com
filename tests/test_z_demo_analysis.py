@@ -15,13 +15,15 @@ from app import app
 import demo_worker
 from config import DEMO_METRIC_VERSION
 from database import (Config, DemoAnalysis, DemoCredential, DemoPlayerStats,
-                      MatchPlayer, Player, create_tables, db)
+                      Match, MatchPlayer, MatchSelection, Player, create_tables,
+                      db)
 from demo_service import (attach_demo_stats, demo_analysis_enabled,
                           load_demo_credential, persist_analysis,
                           save_demo_credential, set_demo_analysis_enabled)
 from demo_tasks import (_demo_job_id, _extract_demo, _safe_error,
-                        cleanup_demo_archives,
-                        run_demo_analysis, schedule_demo_analysis)
+                        cleanup_demo_archives, demo_analysis_readiness,
+                        reconcile_demo_jobs, run_demo_analysis,
+                        schedule_demo_analysis)
 from rq.job import validate_job_id
 
 
@@ -95,6 +97,34 @@ def parsed_payload(steam_id, kills=15):
     }
 
 
+def approve_demo_match(match_id, cup_name='demo-cup'):
+    return MatchSelection.create(
+        match_id=match_id,
+        season_cup_name=cup_name,
+        status='approved',
+        play_day='20260830',
+    )
+
+
+def create_match(match_id, *, end_time=None, cup_name='demo-cup'):
+    end_time = end_time or datetime.now()
+    return Match.create(
+        match_id=match_id,
+        map_name='de_mirage',
+        map_name_en='de_mirage',
+        start_time=end_time - timedelta(minutes=30),
+        end_time=end_time,
+        duration=1800,
+        win_team=1,
+        team1_score=13,
+        team1_half_score=7,
+        team2_score=8,
+        team2_half_score=5,
+        game_mode='standard',
+        cup_name=cup_name,
+    )
+
+
 class DemoAnalysisTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -115,6 +145,8 @@ class DemoAnalysisTest(unittest.TestCase):
         DemoAnalysis.delete().execute()
         DemoCredential.delete().execute()
         MatchPlayer.delete().execute()
+        MatchSelection.delete().execute()
+        Match.delete().execute()
         Player.delete().execute()
         Config.delete().where(Config.key == 'demo_analysis_enabled').execute()
 
@@ -165,6 +197,71 @@ class DemoAnalysisTest(unittest.TestCase):
         set_demo_analysis_enabled(False)
         self.assertFalse(demo_analysis_enabled())
 
+    def test_reconcile_only_schedules_recent_approved_matches_once(self):
+        set_demo_analysis_enabled(True)
+        now = datetime.now()
+        create_match('PVP@approved', end_time=now)
+        create_match('PVP@rejected', end_time=now, cup_name=None)
+        create_match('PVP@unselected', end_time=now, cup_name=None)
+        create_match('PVP@old-approved', end_time=now - timedelta(days=31))
+        approve_demo_match('PVP@approved', 'season-one')
+        approve_demo_match('PVP@approved', 'season-two')
+        rejected = approve_demo_match('PVP@rejected')
+        rejected.status = 'rejected'
+        rejected.save()
+        approve_demo_match('PVP@old-approved')
+
+        with patch('demo_tasks.schedule_demo_analysis') as schedule:
+            result = reconcile_demo_jobs(days=30)
+
+        self.assertEqual(result, {'eligible': 1, 'scheduled': 1, 'disabled': False})
+        schedule.assert_called_once_with('PVP@approved', force=False)
+
+    def test_readiness_ignores_recent_matches_not_approved_for_a_season(self):
+        set_demo_analysis_enabled(True)
+        create_match('PVP@approved')
+        create_match('PVP@rejected', cup_name=None)
+        create_match('PVP@unselected', cup_name=None)
+        approve_demo_match('PVP@approved')
+        rejected = approve_demo_match('PVP@rejected')
+        rejected.status = 'rejected'
+        rejected.save()
+
+        waiting = demo_analysis_readiness(days=30)
+        self.assertEqual(waiting['eligible'], 1)
+        self.assertEqual(waiting['pending'], 1)
+        self.assertFalse(waiting['ready'])
+
+        DemoAnalysis.create(
+            match_id='PVP@approved',
+            status='completed',
+            metric_version=DEMO_METRIC_VERSION,
+        )
+        ready = demo_analysis_readiness(days=30)
+        self.assertTrue(ready['ready'])
+        self.assertEqual(ready['eligible'], 1)
+        self.assertEqual(ready['pending'], 0)
+
+    def test_unapproved_match_is_not_enqueued_or_downloaded(self):
+        set_demo_analysis_enabled(True)
+        create_match('PVP@not-approved', cup_name=None)
+        queue = MagicMock()
+
+        with patch('demo_tasks.has_demo_credential', return_value=True), \
+                patch('demo_tasks._queue', return_value=queue):
+            row = schedule_demo_analysis('PVP@not-approved')
+
+        self.assertEqual(row.status, 'ineligible')
+        self.assertEqual(row.error_code, 'match_not_approved')
+        queue.fetch_job.assert_not_called()
+        queue.enqueue.assert_not_called()
+
+        with patch('demo_tasks._download_demo') as download:
+            result = run_demo_analysis('PVP@not-approved')
+
+        self.assertEqual(result, {'status': 'ineligible', 'ineligible': True})
+        download.assert_not_called()
+
     def test_admin_api_never_echoes_demo_access_token(self):
         key = Fernet.generate_key().decode()
         token = 'another-secret-access-token'
@@ -188,6 +285,7 @@ class DemoAnalysisTest(unittest.TestCase):
 
     def test_missing_credentials_produce_explicit_blocked_state(self):
         set_demo_analysis_enabled(True)
+        approve_demo_match('PVP@123')
         with patch('demo_service.WMPVP_ACCESS_TOKEN', ''), \
                 patch('demo_service.WMPVP_STEAM_ID', ''):
             row = schedule_demo_analysis('PVP@123')
@@ -196,6 +294,7 @@ class DemoAnalysisTest(unittest.TestCase):
 
     def test_manual_retry_replaces_scheduled_rq_retry(self):
         set_demo_analysis_enabled(True)
+        approve_demo_match('PVP@manual-retry')
         existing = MagicMock()
         existing.get_status.return_value = 'scheduled'
         queue = MagicMock()
@@ -213,6 +312,7 @@ class DemoAnalysisTest(unittest.TestCase):
 
     def test_automatic_scheduling_keeps_existing_scheduled_retry(self):
         set_demo_analysis_enabled(True)
+        approve_demo_match('PVP@automatic-retry')
         existing = MagicMock()
         existing.get_status.return_value = 'scheduled'
         queue = MagicMock()
@@ -234,6 +334,8 @@ class DemoAnalysisTest(unittest.TestCase):
         for status in ('unavailable', 'failed'):
             with self.subTest(status=status):
                 DemoAnalysis.delete().execute()
+                MatchSelection.delete().execute()
+                approve_demo_match(f'PVP@terminal-{status}')
                 DemoAnalysis.create(
                     match_id=f'PVP@terminal-{status}', status=status,
                     metric_version=DEMO_METRIC_VERSION,
@@ -248,6 +350,7 @@ class DemoAnalysisTest(unittest.TestCase):
 
     def test_completed_analysis_does_not_archive_downloaded_demo(self):
         set_demo_analysis_enabled(True)
+        approve_demo_match('PVP@delete-after-parse')
         storage = Path(self.temp_dir) / 'delete-demo-after-analysis'
         shutil.rmtree(storage, ignore_errors=True)
         DemoAnalysis.create(

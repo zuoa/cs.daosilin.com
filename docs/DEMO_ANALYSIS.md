@@ -2,9 +2,9 @@
 
 ## 数据链路
 
-比赛先按原有 WMPVP 接口写入，页面可立即显示基础统计。Demo 是不阻塞采集的第二阶段：调度器将最近 30 天的新比赛写入持久化任务表并投递到 Redis，单并发 `demo-worker` 下载、校验、解析后再发布事件指标。
+比赛先按原有 WMPVP 接口写入，页面可立即显示基础统计。Demo 是不阻塞采集的第二阶段：调度器只将最近 30 天内已纳入赛季（`approved`）的比赛写入持久化任务表并投递到 Redis，单并发 `demo-worker` 下载、校验、解析后再发布事件指标。Worker 执行前会再次校验纳入状态，已剔除比赛不会下载。
 
-数据库是任务状态的事实来源，Redis 只负责执行。状态包括：`pending`、`queued`、`downloading`、`validating`、`parsing`、`completed`、`unavailable`、`blocked_credentials`、`failed`。任务 ID 使用 `demo:{match_id}:{metric_version}`，重复扫描不会并发解析同一版本。
+数据库是任务状态的事实来源，Redis 只负责执行。状态包括：`pending`、`queued`、`downloading`、`validating`、`parsing`、`completed`、`unavailable`、`blocked_credentials`、`failed`、`ineligible`。任务 ID 使用 `demo:{match_id}:{metric_version}`，重复扫描不会并发解析同一版本。
 
 失败任务按 1 分钟、10 分钟、1 小时由 RQ 有界重试；上游不存在/过期和凭证失效不会盲目重试。管理员可在「API 与安全」查看状态并手动重试。
 

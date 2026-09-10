@@ -19,7 +19,7 @@ from cache_service import invalidate_season
 from config import (DEMO_ANALYZER_PATH, DEMO_ANALYZER_TIMEOUT, DEMO_BACKFILL_DAYS,
                     DEMO_MAX_BYTES, DEMO_METRIC_VERSION, DEMO_STORAGE_PATH,
                     DEMO_RETENTION_DAYS, REDIS_URL)
-from database import DemoAnalysis, DemoCredential, Match, db
+from database import DemoAnalysis, DemoCredential, Match, MatchSelection, db
 from demo_service import (PARSER_NAME, PARSER_VERSION, demo_analysis_enabled,
                           has_demo_credential, load_demo_credential,
                           persist_analysis)
@@ -82,6 +82,29 @@ def _demo_job_id(row_id, match_id, metric_version):
     return f'demo-analysis-{row_id}-{hashlib.sha256(identity).hexdigest()[:16]}'
 
 
+def _is_demo_match_approved(match_id: str) -> bool:
+    """Only matches currently included in at least one season may be analysed."""
+    return (MatchSelection.select(MatchSelection.id)
+            .where(
+                (MatchSelection.match_id == match_id) &
+                (MatchSelection.status == 'approved')
+            )
+            .exists())
+
+
+def _eligible_demo_matches(days=None):
+    """Recent matches currently approved for at least one season, without duplicates."""
+    cutoff = datetime.now() - timedelta(days=days or DEMO_BACKFILL_DAYS)
+    return (Match
+            .select(Match.match_id)
+            .join(MatchSelection, on=(MatchSelection.match_id == Match.match_id))
+            .where(
+                (Match.end_time >= cutoff) &
+                (MatchSelection.status == 'approved')
+            )
+            .distinct())
+
+
 def schedule_demo_analysis(match_id: str, force=False):
     """Create durable state first, then best-effort enqueue an idempotent RQ job."""
     row, _ = DemoAnalysis.get_or_create(
@@ -91,6 +114,15 @@ def schedule_demo_analysis(match_id: str, force=False):
     )
     if not demo_analysis_enabled():
         return row
+    if not _is_demo_match_approved(match_id):
+        return _state(
+            match_id,
+            'ineligible',
+            error_code='match_not_approved',
+            error_message='比赛当前未纳入任何赛季',
+            finished_at=datetime.now(),
+            next_retry_at=None,
+        )
     # Automatic callers must leave terminal results alone.  In particular,
     # unavailable/failed matches may still appear in every subsequent crawl;
     # only an explicit manual retry should enqueue them again.
@@ -135,11 +167,10 @@ def schedule_demo_analysis(match_id: str, force=False):
 
 
 def reconcile_demo_jobs(days=None):
-    """Backfill recent matches and recover pending or stale queue states."""
+    """Backfill recent approved matches and recover pending or stale queue states."""
     if not demo_analysis_enabled():
         return {'eligible': 0, 'scheduled': 0, 'disabled': True}
-    cutoff = datetime.now() - timedelta(days=days or DEMO_BACKFILL_DAYS)
-    matches = Match.select(Match.match_id).where(Match.end_time >= cutoff)
+    matches = _eligible_demo_matches(days)
     scheduled = 0
     for match in matches:
         row = DemoAnalysis.get_or_none(DemoAnalysis.match_id == match.match_id)
@@ -166,11 +197,7 @@ def demo_analysis_readiness(days=None):
             'eligible': 0,
             'pending': 0,
         }
-    cutoff = datetime.now() - timedelta(days=days or DEMO_BACKFILL_DAYS)
-    match_ids = [
-        row.match_id for row in
-        Match.select(Match.match_id).where(Match.end_time >= cutoff)
-    ]
+    match_ids = [row.match_id for row in _eligible_demo_matches(days)]
     if not match_ids:
         return {
             'ready': True,
@@ -450,6 +477,16 @@ def run_demo_analysis(match_id: str):
         row = _state(match_id, 'pending', error_code='analysis_disabled',
                      error_message='Demo 分析已在管理后台关闭', next_retry_at=None)
         return {'status': row.status, 'disabled': True}
+    if not _is_demo_match_approved(match_id):
+        row = _state(
+            match_id,
+            'ineligible',
+            error_code='match_not_approved',
+            error_message='比赛当前未纳入任何赛季',
+            finished_at=datetime.now(),
+            next_retry_at=None,
+        )
+        return {'status': row.status, 'ineligible': True}
     row = _state(match_id, 'downloading', started_at=datetime.now(), heartbeat_at=datetime.now(),
                  attempt_count=(DemoAnalysis.get(DemoAnalysis.match_id == match_id).attempt_count or 0) + 1,
                  error_code=None, error_message=None, finished_at=None, next_retry_at=None)
